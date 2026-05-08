@@ -67,7 +67,7 @@ function createBeeSeedContext(config: BeeSeedConfig): BeeSeedContextValue {
 
   const handleEvent = (event: WSEvent) => {
     if (event.type === 'auth_ok') {
-      roomsStore.getState().setRooms(event.rooms)
+      roomsStore.getState().setRooms(event.rooms ?? [])
     }
     messagesStore.getState().handleEvent(event)
 

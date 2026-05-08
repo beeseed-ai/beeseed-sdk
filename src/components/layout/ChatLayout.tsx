@@ -21,7 +21,7 @@ export function ChatLayout({ className }: Props) {
   const { state: connState } = useConnection()
   const [showCreateRoom, setShowCreateRoom] = useState(false)
 
-  const currentRoom = rooms.find((r) => r.id === currentRoomId)
+  const currentRoom = rooms?.find((r) => r.id === currentRoomId) ?? null
 
   function handleSelectRoom(room: RoomWithMeta) {
     joinRoom(room.id)
