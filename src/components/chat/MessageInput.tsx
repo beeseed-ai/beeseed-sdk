@@ -1,8 +1,7 @@
 import { useRef, useCallback, useState, type KeyboardEvent, type ChangeEvent } from 'react'
-import { SendHorizonal, X } from 'lucide-react'
+import { X, Plus, AtSign, Zap, ListChecks, Workflow, ArrowUp } from 'lucide-react'
 import type { ChatMessage, RoomMemberInfo } from '../../core/types.js'
 import { cn } from '../../lib/cn.js'
-import { Button } from '../ui/button.js'
 import { MentionMenu, getFilteredCount, getFilteredMember } from './MentionMenu.js'
 
 interface Props {
@@ -149,7 +148,7 @@ export function MessageInput({
         </div>
       )}
 
-      <div className="relative flex items-end gap-2 px-4 py-3">
+      <div className="relative px-4 pt-3 pb-2">
         {/* Mention menu */}
         {mentionOpen && members.length > 0 && (
           <MentionMenu
@@ -166,14 +165,46 @@ export function MessageInput({
           rows={1}
           disabled={disabled}
           placeholder={placeholder}
-          className="flex-1 resize-none rounded-lg border border-input bg-transparent px-3 py-2 text-sm outline-none placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 disabled:opacity-50"
+          className="w-full resize-none rounded-xl border border-input bg-muted/30 px-4 py-2.5 text-sm outline-none placeholder:text-muted-foreground focus-visible:border-ring disabled:opacity-50"
           onInput={autoResize}
           onKeyDown={handleKeyDown}
           onChange={handleChange}
         />
-        <Button size="icon" disabled={disabled} onClick={handleSend}>
-          <SendHorizonal className="size-4" />
-        </Button>
+
+        {/* Toolbar */}
+        <div className="flex items-center justify-between mt-1.5">
+          <div className="flex items-center gap-0.5">
+            <button className="flex items-center gap-1 rounded-md px-2 py-1 text-xs text-muted-foreground hover:text-foreground hover:bg-muted transition-colors">
+              <Plus className="w-3.5 h-3.5" />
+            </button>
+            <button
+              onClick={() => { const el = ref.current; if (el) { const pos = el.selectionStart; el.value = el.value.slice(0, pos) + '@' + el.value.slice(pos); el.setSelectionRange(pos + 1, pos + 1); el.focus(); el.dispatchEvent(new Event('input', { bubbles: true })); setMentionOpen(true); setMentionQuery(''); setMentionIndex(0); setMentionStart(pos) } }}
+              className="flex items-center gap-1 rounded-md px-2 py-1 text-xs text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
+            >
+              <AtSign className="w-3.5 h-3.5" />
+              <span>提及</span>
+            </button>
+            <button className="flex items-center gap-1 rounded-md px-2 py-1 text-xs text-muted-foreground hover:text-foreground hover:bg-muted transition-colors">
+              <Zap className="w-3.5 h-3.5" />
+              <span>技能</span>
+            </button>
+            <button className="flex items-center gap-1 rounded-md px-2 py-1 text-xs text-muted-foreground hover:text-foreground hover:bg-muted transition-colors">
+              <ListChecks className="w-3.5 h-3.5" />
+              <span>任务</span>
+            </button>
+            <button className="flex items-center gap-1 rounded-md px-2 py-1 text-xs text-muted-foreground hover:text-foreground hover:bg-muted transition-colors">
+              <Workflow className="w-3.5 h-3.5" />
+              <span>工作流</span>
+            </button>
+          </div>
+          <button
+            disabled={disabled}
+            onClick={handleSend}
+            className="w-7 h-7 rounded-full bg-primary text-primary-foreground flex items-center justify-center hover:bg-primary/90 transition-colors disabled:opacity-50"
+          >
+            <ArrowUp className="w-4 h-4" />
+          </button>
+        </div>
       </div>
     </div>
   )

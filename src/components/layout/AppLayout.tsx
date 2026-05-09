@@ -1,7 +1,10 @@
 import { lazy, Suspense } from 'react'
+import { PanelRight } from 'lucide-react'
 import { cn } from '../../lib/cn.js'
 import { useRooms } from '../../hooks/use-rooms.js'
+import { useChat } from '../../hooks/use-chat.js'
 import { useDetailPanel } from '../../hooks/use-detail-panel.js'
+import { useTasks } from '../../hooks/use-tasks.js'
 import { ChatRoom } from '../chat/ChatRoom.js'
 import { RoomHeader } from '../rooms/RoomHeader.js'
 import { LeftNavSidebar } from './LeftNavSidebar.js'
@@ -13,25 +16,22 @@ const CloudStoragePanel = lazy(() => import('../storage/CloudStoragePanel.js').t
 const AgentManagePanel = lazy(() => import('../agents/AgentManagePanel.js').then((m) => ({ default: m.AgentManagePanel })))
 const CronPanel = lazy(() => import('../cron/CronPanel.js').then((m) => ({ default: m.CronPanel })))
 
-interface Props {
-  className?: string
-}
+interface Props { className?: string }
 
 function FeatureLoading() {
-  return (
-    <div className="flex-1 flex items-center justify-center">
-      <span className="text-sm text-muted-foreground">加载中...</span>
-    </div>
-  )
+  return <div className="flex-1 flex items-center justify-center"><span className="text-sm text-muted-foreground">加载中...</span></div>
 }
 
 export function AppLayout({ className }: Props) {
   const { rooms, currentRoomId, setCurrentRoom, createRoom } = useRooms()
-  const { activeFeature, setActiveFeature, panelVisible, togglePanel } = useDetailPanel()
+  const { activeFeature, setActiveFeature, panelVisible, togglePanel, setPanel } = useDetailPanel()
+  const { members } = useChat(currentRoomId)
+  const { tasks } = useTasks(currentRoomId)
 
   const handleRoomSelect = (roomId: string) => {
     setCurrentRoom(roomId)
     setActiveFeature('chat')
+    setPanel(true)
   }
 
   const handleCreateRoom = (name: string, agentIds: string[]) => {
@@ -42,7 +42,6 @@ export function AppLayout({ className }: Props) {
 
   return (
     <div className={cn('flex h-[100dvh] bg-background', className)}>
-      {/* Left sidebar */}
       <LeftNavSidebar
         activeFeature={activeFeature}
         onFeatureChange={setActiveFeature}
@@ -52,7 +51,6 @@ export function AppLayout({ className }: Props) {
         onCreateRoom={handleCreateRoom}
       />
 
-      {/* Center content */}
       <div className="flex-1 flex flex-col min-w-0">
         {activeFeature === 'chat' && currentRoomId ? (
           <ChatRoom
@@ -63,21 +61,17 @@ export function AppLayout({ className }: Props) {
                 trailing={
                   <button
                     onClick={togglePanel}
-                    className={cn('p-1 rounded hover:bg-muted transition-colors', panelVisible && 'bg-muted')}
+                    className={cn('p-1.5 rounded-md hover:bg-black/5 transition-colors', panelVisible && 'bg-black/5')}
                     title="详情面板"
                   >
-                    <svg className="w-4 h-4 text-muted-foreground" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                      <rect x="3" y="3" width="18" height="18" rx="2" /><line x1="15" y1="3" x2="15" y2="21" />
-                    </svg>
+                    <PanelRight className="w-4 h-4 text-muted-foreground" />
                   </button>
                 }
               />
             }
           />
         ) : activeFeature === 'chat' ? (
-          <div className="flex-1 flex items-center justify-center text-muted-foreground">
-            选择一个对话开始聊天
-          </div>
+          <div className="flex-1 flex items-center justify-center text-muted-foreground">选择一个对话开始聊天</div>
         ) : (
           <Suspense fallback={<FeatureLoading />}>
             {activeFeature === 'tasks' && <TaskPanel roomId={currentRoomId} />}
@@ -89,8 +83,13 @@ export function AppLayout({ className }: Props) {
         )}
       </div>
 
-      {/* Right detail panel (only in chat mode) */}
-      {activeFeature === 'chat' && <DetailPanel roomId={currentRoomId} />}
+      {activeFeature === 'chat' && (
+        <DetailPanel
+          roomId={currentRoomId}
+          members={members}
+          tasks={tasks}
+        />
+      )}
     </div>
   )
 }
