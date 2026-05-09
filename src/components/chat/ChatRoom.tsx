@@ -1,3 +1,5 @@
+import { useState, useCallback } from 'react'
+import type { ChatMessage } from '../../core/types.js'
 import { cn } from '../../lib/cn.js'
 import { useAuth } from '../../hooks/use-auth.js'
 import { useChat } from '../../hooks/use-chat.js'
@@ -13,7 +15,25 @@ interface Props {
 
 export function ChatRoom({ roomId, className, header }: Props) {
   const { user } = useAuth()
-  const { messages, stream, typing, send, loading } = useChat(roomId)
+  const { messages, stream, agentLoop, members, typing, send, sendWithQuote, submitAnswer, loading } = useChat(roomId)
+  const [quotedMessage, setQuotedMessage] = useState<ChatMessage | null>(null)
+
+  const handleSend = useCallback((content: string) => {
+    if (quotedMessage) {
+      sendWithQuote(content, quotedMessage)
+      setQuotedMessage(null)
+    } else {
+      send(content)
+    }
+  }, [quotedMessage, send, sendWithQuote])
+
+  const handleQuote = useCallback((msg: ChatMessage) => {
+    setQuotedMessage(msg)
+  }, [])
+
+  const handleSubmitAnswer = useCallback((askId: string, answers: Record<string, unknown>) => {
+    submitAnswer(askId, answers)
+  }, [submitAnswer])
 
   return (
     <div className={cn('flex h-full flex-col', className)}>
@@ -28,12 +48,20 @@ export function ChatRoom({ roomId, className, header }: Props) {
           className="flex-1"
           messages={messages}
           stream={stream}
+          agentLoop={agentLoop}
+          onQuote={handleQuote}
           currentUserId={user?.id}
+          onSubmitAnswer={handleSubmitAnswer}
         />
       )}
 
       <TypingIndicator text={typing} />
-      <MessageInput onSend={send} />
+      <MessageInput
+        onSend={handleSend}
+        members={members}
+        quotedMessage={quotedMessage}
+        onClearQuote={() => setQuotedMessage(null)}
+      />
     </div>
   )
 }

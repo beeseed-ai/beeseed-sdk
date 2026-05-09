@@ -42,12 +42,16 @@ function createBeeSeedContext(config: BeeSeedConfig): BeeSeedContextValue {
   const api = createApiClient({ workerUrl: config.workerUrl, getToken })
 
   const roomsStore = createRoomsStore({ api })
+  // Will be set after ws is created
+  let wsSendRef: (cmd: unknown) => void = () => {}
+
   const messagesStore = createMessagesStore({
     api,
     getCurrentRoomId: () => roomsStore.getState().currentRoomId,
+    getCurrentUserId: () => authStore.getState().user?.id,
+    sendWsCommand: (cmd) => wsSendRef(cmd),
   })
 
-  // Will be set after ws is created
   let wsRef: WSClient
 
   const authStore = createAuthStore({
@@ -83,6 +87,7 @@ function createBeeSeedContext(config: BeeSeedConfig): BeeSeedContextValue {
     onStateChange: (state) => connectionStore.getState().setState(state),
   })
   wsRef = ws
+  wsSendRef = (cmd) => ws.send(cmd as Parameters<typeof ws.send>[0])
 
   return { api, ws, authStore, connectionStore, roomsStore, messagesStore, config }
 }
