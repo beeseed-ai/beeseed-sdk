@@ -133,23 +133,28 @@ export function MessageInput({
     [autoResize, members.length, mentionOpen, mentionStart],
   )
 
-  return (
-    <div className={cn('border-t bg-background', className)}>
-      {/* Quoted message bar */}
-      {quotedMessage && (
-        <div className="flex items-center gap-2 px-4 pt-2 pb-1">
-          <div className="flex-1 min-w-0 border-l-2 border-primary/50 pl-2 py-0.5">
-            <div className="text-[11px] font-medium text-muted-foreground">{quotedMessage.senderName || '引用'}</div>
-            <div className="text-xs text-muted-foreground/70 truncate">{quotedMessage.content}</div>
-          </div>
-          <button onClick={onClearQuote} className="p-0.5 hover:bg-muted rounded transition-colors">
-            <X className="w-3.5 h-3.5 text-muted-foreground" />
-          </button>
-        </div>
-      )}
+  const triggerMention = () => {
+    const el = ref.current
+    if (!el) return
+    const pos = el.selectionStart
+    el.value = el.value.slice(0, pos) + '@' + el.value.slice(pos)
+    el.setSelectionRange(pos + 1, pos + 1)
+    el.focus()
+    el.dispatchEvent(new Event('input', { bubbles: true }))
+    setMentionOpen(true)
+    setMentionQuery('')
+    setMentionIndex(0)
+    setMentionStart(pos)
+  }
 
-      <div className="relative px-4 pt-3 pb-2">
-        {/* Mention menu */}
+  return (
+    <div className={cn('shrink-0 bg-white px-3 pb-3 relative', className)}>
+      {/* Unified input card — textarea + toolbar in one bordered container */}
+      <div
+        className="relative bg-white border border-[#e5e5e5] focus-within:border-[#d4d4d4] rounded-2xl transition-colors"
+        style={{ boxShadow: '0 2.7px 8px rgba(0,0,0,0.06)' }}
+      >
+        {/* Mention menu — anchored above */}
         {mentionOpen && members.length > 0 && (
           <MentionMenu
             members={members}
@@ -160,50 +165,70 @@ export function MessageInput({
           />
         )}
 
+        {/* Quoted message inside card */}
+        {quotedMessage && (
+          <div className="flex items-start gap-2 px-4 pt-3 pb-1">
+            <div className="flex-1 border-l-2 border-[#aaa] pl-2 min-w-0">
+              <p className="text-[11px] font-medium text-[#555]">{quotedMessage.senderName || '引用'}</p>
+              <p className="text-[11px] text-[#888] truncate">{quotedMessage.content.slice(0, 80)}</p>
+            </div>
+            <button onClick={onClearQuote} className="shrink-0 text-[#aaa] hover:text-[#555] transition-colors mt-0.5">
+              <X className="w-3.5 h-3.5" />
+            </button>
+          </div>
+        )}
+
+        {/* Textarea — no border, transparent */}
         <textarea
           ref={ref}
           rows={1}
           disabled={disabled}
           placeholder={placeholder}
-          className="w-full resize-none rounded-xl border border-input bg-muted/30 px-4 py-2.5 text-sm outline-none placeholder:text-muted-foreground focus-visible:border-ring disabled:opacity-50"
+          style={{ minHeight: '46px' }}
+          className="w-full resize-none bg-transparent pt-4 pb-1.5 px-[22px] text-[14px] text-black outline-none placeholder:text-[#aaaaaa]"
           onInput={autoResize}
           onKeyDown={handleKeyDown}
           onChange={handleChange}
         />
 
-        {/* Toolbar */}
-        <div className="flex items-center justify-between mt-1.5">
-          <div className="flex items-center gap-0.5">
-            <button className="flex items-center gap-1 rounded-md px-2 py-1 text-xs text-muted-foreground hover:text-foreground hover:bg-muted transition-colors">
-              <Plus className="w-3.5 h-3.5" />
+        {/* Toolbar — inside the card */}
+        <div className="flex items-center px-3 pb-3 gap-1">
+          <div className="flex items-center gap-1 flex-1 min-w-0">
+            <button className="flex items-center justify-center w-8 h-8 rounded-lg text-[#888] hover:text-black hover:bg-black/5 transition-colors shrink-0">
+              <Plus className="w-4 h-4" />
             </button>
-            <button
-              onClick={() => { const el = ref.current; if (el) { const pos = el.selectionStart; el.value = el.value.slice(0, pos) + '@' + el.value.slice(pos); el.setSelectionRange(pos + 1, pos + 1); el.focus(); el.dispatchEvent(new Event('input', { bubbles: true })); setMentionOpen(true); setMentionQuery(''); setMentionIndex(0); setMentionStart(pos) } }}
-              className="flex items-center gap-1 rounded-md px-2 py-1 text-xs text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
-            >
-              <AtSign className="w-3.5 h-3.5" />
+            <div className="w-px h-4 bg-[#e5e5e5] mx-1 shrink-0" />
+            <button onClick={triggerMention} className="flex items-center gap-1 h-8 px-2 rounded-lg text-[#888] hover:text-black hover:bg-black/5 transition-colors text-sm shrink-0">
+              <AtSign className="w-4 h-4" />
               <span>提及</span>
             </button>
-            <button className="flex items-center gap-1 rounded-md px-2 py-1 text-xs text-muted-foreground hover:text-foreground hover:bg-muted transition-colors">
-              <Zap className="w-3.5 h-3.5" />
+            <button className="flex items-center gap-1 h-8 px-2 rounded-lg text-[#888] hover:text-black hover:bg-black/5 transition-colors text-sm shrink-0">
+              <Zap className="w-4 h-4" />
               <span>技能</span>
             </button>
-            <button className="flex items-center gap-1 rounded-md px-2 py-1 text-xs text-muted-foreground hover:text-foreground hover:bg-muted transition-colors">
-              <ListChecks className="w-3.5 h-3.5" />
+            <button className="flex items-center gap-1 h-8 px-2 rounded-lg text-[#888] hover:text-black hover:bg-black/5 transition-colors text-sm shrink-0">
+              <ListChecks className="w-4 h-4" />
               <span>任务</span>
             </button>
-            <button className="flex items-center gap-1 rounded-md px-2 py-1 text-xs text-muted-foreground hover:text-foreground hover:bg-muted transition-colors">
-              <Workflow className="w-3.5 h-3.5" />
+            <button className="flex items-center gap-1 h-8 px-2 rounded-lg text-[#888] hover:text-black hover:bg-black/5 transition-colors text-sm shrink-0">
+              <Workflow className="w-4 h-4" />
               <span>工作流</span>
             </button>
           </div>
-          <button
-            disabled={disabled}
-            onClick={handleSend}
-            className="w-7 h-7 rounded-full bg-primary text-primary-foreground flex items-center justify-center hover:bg-primary/90 transition-colors disabled:opacity-50"
-          >
-            <ArrowUp className="w-4 h-4" />
-          </button>
+          {/* Right side — model + send */}
+          <div className="flex items-center gap-2 shrink-0 ml-auto">
+            <button className="flex items-center gap-0.5 h-8 px-2 rounded-lg text-[#888] hover:text-black hover:bg-black/5 transition-colors text-sm shrink-0">
+              <span className="text-xs">快速</span>
+              <svg className="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="6 9 12 15 18 9"/></svg>
+            </button>
+            <button
+              disabled={disabled}
+              onClick={handleSend}
+              className="flex items-center justify-center w-8 h-8 rounded-full bg-[#1a1a1a] text-white hover:bg-[#333] disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+            >
+              <ArrowUp className="w-4 h-4" />
+            </button>
+          </div>
         </div>
       </div>
     </div>
