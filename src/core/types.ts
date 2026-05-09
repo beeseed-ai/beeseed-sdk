@@ -169,6 +169,9 @@ export interface AgentMeta {
   id: string
   model: string
   provider: string
+  display_name?: string
+  avatar_url?: string
+  status?: string
   created_at: string
 }
 
@@ -177,7 +180,164 @@ export interface AgentConfig {
   provider: string
   tools: string[]
   temperature: number
+  system_prompt?: string
+  identity?: string
 }
+
+// ── Task System ──
+
+export interface Project {
+  id: string
+  room_id: string
+  title: string
+  description?: string
+  status: 'active' | 'completed' | 'archived'
+  created_by?: string
+  created_at: string
+  updated_at: string
+  task_count?: number
+  done_count?: number
+}
+
+export interface Task {
+  id: string
+  room_id: string
+  project_id?: string
+  title: string
+  description?: string
+  status: 'pending' | 'in_progress' | 'done' | 'failed' | 'blocked'
+  assigned_type?: 'user' | 'agent'
+  assigned_user_id?: string
+  assigned_agent_id?: string
+  assigned_name?: string
+  priority: number
+  due_at?: string
+  created_by?: string
+  created_at: string
+  updated_at: string
+}
+
+export interface TaskComment {
+  id: number
+  task_id: string
+  author_type: 'user' | 'agent' | 'system'
+  author_id?: string
+  content: string
+  comment_type: 'comment' | 'progress' | 'result' | 'system'
+  created_at: string
+}
+
+// ── Knowledge Base ──
+
+export interface KnowledgeSource {
+  id: number
+  title: string
+  source_type: 'file_upload' | 'chat_distillation'
+  file_key?: string
+  file_size: number
+  mime_type?: string
+  status: 'pending' | 'processing' | 'ready' | 'error'
+  error_message?: string
+  summary?: string
+  chunk_count: number
+  tags: string[]
+  created_by?: string
+  created_at: string
+}
+
+export interface KnowledgeSearchResult {
+  chunk_id: number
+  content: string
+  similarity: number
+  source_id: number
+  source_title: string
+}
+
+export interface KnowledgeEntity {
+  id: number
+  name: string
+  entity_type: string
+  description?: string
+  aliases: string[]
+  mention_count: number
+}
+
+export interface KnowledgeGraphNode {
+  id: string
+  node_type: 'source' | 'entity'
+  title: string
+  entity_type?: string
+  tags?: string[]
+  chunk_count?: number
+}
+
+export interface KnowledgeGraphEdge {
+  source: string
+  target: string
+  weight: number
+  type: string
+  description?: string
+}
+
+export interface KnowledgeGraphData {
+  nodes: KnowledgeGraphNode[]
+  edges: KnowledgeGraphEdge[]
+}
+
+// ── Storage ──
+
+export interface StorageObject {
+  key: string
+  size: number
+  last_modified: string
+  content_type: string
+}
+
+// ── Notifications ──
+
+export interface AppNotification {
+  id: number
+  user_id: string
+  type: string
+  title: string
+  content?: string
+  metadata?: Record<string, unknown>
+  is_read: boolean
+  created_at: string
+}
+
+// ── Cron Jobs ──
+
+export interface CronJob {
+  id: string
+  room_id: string
+  cron_expr: string
+  message: string
+  timezone: string
+  enabled: boolean
+  last_run?: string
+  created_by?: string
+  created_at: string
+}
+
+// ── Room Memory ──
+
+export interface RoomMemory {
+  id: number
+  room_id: string
+  content: string
+  category: string
+  priority: string
+  importance: number
+  entities: string[]
+  topics: string[]
+  created_at: string
+  expires_at?: string
+}
+
+// ── Detail Panel ──
+
+export type FeatureView = 'chat' | 'tasks' | 'knowledge' | 'storage' | 'agents' | 'cron' | 'settings'
 
 // ── Streaming state per agent ──
 
@@ -230,4 +390,5 @@ export interface BeeSeedConfig {
   workerUrl: string
   tokenKey?: string
   onAuthError?: () => void
+  useMockData?: boolean
 }

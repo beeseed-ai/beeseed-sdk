@@ -1,0 +1,48 @@
+import { createStore } from 'zustand/vanilla'
+import type { FeatureView } from '../core/types.js'
+
+export interface AccordionSections {
+  members: boolean
+  tasks: boolean
+  storage: boolean
+}
+
+export interface DetailPanelState {
+  panelVisible: boolean
+  sections: AccordionSections
+  activeFeature: FeatureView
+
+  togglePanel: () => void
+  setPanel: (visible: boolean) => void
+  toggleSection: (key: keyof AccordionSections) => void
+  setActiveFeature: (feature: FeatureView) => void
+  reset: () => void
+}
+
+const DEFAULT_SECTIONS: AccordionSections = { members: true, tasks: false, storage: false }
+
+export function createDetailPanelStore() {
+  return createStore<DetailPanelState>()((set, get) => ({
+    panelVisible: false,
+    sections: { ...DEFAULT_SECTIONS },
+    activeFeature: 'chat',
+
+    togglePanel: () => set({ panelVisible: !get().panelVisible }),
+    setPanel: (visible) => set({ panelVisible: visible }),
+
+    toggleSection: (key) => {
+      const sections = { ...get().sections }
+      sections[key] = !sections[key]
+      set({ sections })
+    },
+
+    setActiveFeature: (feature) => set({
+      activeFeature: feature,
+      panelVisible: feature === 'chat' ? get().panelVisible : false,
+    }),
+
+    reset: () => set({ panelVisible: false, sections: { ...DEFAULT_SECTIONS }, activeFeature: 'chat' }),
+  }))
+}
+
+export type DetailPanelStore = ReturnType<typeof createDetailPanelStore>

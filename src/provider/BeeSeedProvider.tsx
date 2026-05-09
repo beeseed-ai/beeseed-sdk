@@ -7,6 +7,13 @@ import { createAuthStore, type AuthStore } from '../stores/auth.js'
 import { createConnectionStore, type ConnectionStore } from '../stores/connection.js'
 import { createRoomsStore, type RoomsStore } from '../stores/rooms.js'
 import { createMessagesStore, type MessagesStore } from '../stores/messages.js'
+import { createDetailPanelStore, type DetailPanelStore } from '../stores/detail-panel.js'
+import { createTasksStore, type TasksStore } from '../stores/tasks.js'
+import { createKnowledgeStore, type KnowledgeStore } from '../stores/knowledge.js'
+import { createStorageStore, type StorageStore } from '../stores/storage.js'
+import { createNotificationsStore, type NotificationsStore } from '../stores/notifications.js'
+import { createCronStore, type CronStore } from '../stores/cron.js'
+import { createAgentsStore, type AgentsStore } from '../stores/agents.js'
 
 export interface BeeSeedContextValue {
   api: KyInstance
@@ -15,6 +22,13 @@ export interface BeeSeedContextValue {
   connectionStore: ConnectionStore
   roomsStore: RoomsStore
   messagesStore: MessagesStore
+  detailPanelStore: DetailPanelStore
+  tasksStore: TasksStore
+  knowledgeStore: KnowledgeStore
+  storageStore: StorageStore
+  notificationsStore: NotificationsStore
+  cronStore: CronStore
+  agentsStore: AgentsStore
   config: BeeSeedConfig
 }
 
@@ -33,16 +47,15 @@ interface Props {
 
 function createBeeSeedContext(config: BeeSeedConfig): BeeSeedContextValue {
   const tokenKey = config.tokenKey ?? 'beeseed_token'
+  const useMock = config.useMockData ?? false
   const getToken = () => {
     try { return localStorage.getItem(tokenKey) } catch { return null }
   }
 
   const connectionStore = createConnectionStore()
-
   const api = createApiClient({ workerUrl: config.workerUrl, getToken })
-
   const roomsStore = createRoomsStore({ api })
-  // Will be set after ws is created
+
   let wsSendRef: (cmd: unknown) => void = () => {}
 
   const messagesStore = createMessagesStore({
@@ -51,6 +64,14 @@ function createBeeSeedContext(config: BeeSeedConfig): BeeSeedContextValue {
     getCurrentUserId: () => authStore.getState().user?.id,
     sendWsCommand: (cmd) => wsSendRef(cmd),
   })
+
+  const detailPanelStore = createDetailPanelStore()
+  const tasksStore = createTasksStore({ api, useMock })
+  const knowledgeStore = createKnowledgeStore({ api, useMock })
+  const storageStore = createStorageStore({ api, useMock })
+  const notificationsStore = createNotificationsStore({ api, useMock })
+  const cronStore = createCronStore({ api, useMock })
+  const agentsStore = createAgentsStore({ api, useMock })
 
   let wsRef: WSClient
 
@@ -65,6 +86,13 @@ function createBeeSeedContext(config: BeeSeedConfig): BeeSeedContextValue {
       wsRef?.disconnect()
       roomsStore.getState().reset()
       messagesStore.getState().reset()
+      detailPanelStore.getState().reset()
+      tasksStore.getState().reset()
+      knowledgeStore.getState().reset()
+      storageStore.getState().reset()
+      notificationsStore.getState().reset()
+      cronStore.getState().reset()
+      agentsStore.getState().reset()
       config.onAuthError?.()
     },
   })
@@ -89,7 +117,11 @@ function createBeeSeedContext(config: BeeSeedConfig): BeeSeedContextValue {
   wsRef = ws
   wsSendRef = (cmd) => ws.send(cmd as Parameters<typeof ws.send>[0])
 
-  return { api, ws, authStore, connectionStore, roomsStore, messagesStore, config }
+  return {
+    api, ws, authStore, connectionStore, roomsStore, messagesStore,
+    detailPanelStore, tasksStore, knowledgeStore, storageStore,
+    notificationsStore, cronStore, agentsStore, config,
+  }
 }
 
 export function BeeSeedProvider({ config, children }: Props) {
