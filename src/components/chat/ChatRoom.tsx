@@ -5,7 +5,8 @@ import { useAuth } from '../../hooks/use-auth.js'
 import { useChat } from '../../hooks/use-chat.js'
 import { MessageList } from './MessageList.js'
 import { MessageInput } from './MessageInput.js'
-import { TypingIndicator } from './TypingIndicator.js'
+
+const CHAT_MAX_WIDTH = 820
 
 interface Props {
   roomId: string
@@ -15,7 +16,7 @@ interface Props {
 
 export function ChatRoom({ roomId, className, header }: Props) {
   const { user } = useAuth()
-  const { messages, stream, agentLoop, members, typing, send, sendWithQuote, submitAnswer, loading } = useChat(roomId)
+  const { messages, stream, agentLoop, members, send, sendWithQuote, submitAnswer, loading } = useChat(roomId)
   const [quotedMessage, setQuotedMessage] = useState<ChatMessage | null>(null)
 
   const handleSend = useCallback((content: string) => {
@@ -27,41 +28,34 @@ export function ChatRoom({ roomId, className, header }: Props) {
     }
   }, [quotedMessage, send, sendWithQuote])
 
-  const handleQuote = useCallback((msg: ChatMessage) => {
-    setQuotedMessage(msg)
-  }, [])
-
-  const handleSubmitAnswer = useCallback((askId: string, answers: Record<string, unknown>) => {
-    submitAnswer(askId, answers)
-  }, [submitAnswer])
-
   return (
-    <div className={cn('flex h-full flex-col', className)}>
+    <div className={cn('flex h-full flex-col bg-white', className)}>
       {header}
 
       {loading ? (
         <div className="flex-1 flex items-center justify-center">
-          <span className="text-sm text-muted-foreground">加载中...</span>
+          <span className="text-sm text-[#777169]">加载消息中...</span>
         </div>
       ) : (
         <MessageList
-          className="flex-1"
           messages={messages}
           stream={stream}
           agentLoop={agentLoop}
-          onQuote={handleQuote}
+          onQuote={setQuotedMessage}
           currentUserId={user?.id}
-          onSubmitAnswer={handleSubmitAnswer}
+          onSubmitAnswer={submitAnswer}
         />
       )}
 
-      <TypingIndicator text={typing} />
-      <MessageInput
-        onSend={handleSend}
-        members={members}
-        quotedMessage={quotedMessage}
-        onClearQuote={() => setQuotedMessage(null)}
-      />
+      {/* Input area — centered at max-width */}
+      <div className="shrink-0 mx-auto w-full" style={{ maxWidth: CHAT_MAX_WIDTH }}>
+        <MessageInput
+          onSend={handleSend}
+          members={members}
+          quotedMessage={quotedMessage}
+          onClearQuote={() => setQuotedMessage(null)}
+        />
+      </div>
     </div>
   )
 }
