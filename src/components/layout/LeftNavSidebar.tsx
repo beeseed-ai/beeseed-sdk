@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { MessageSquareText, Bot, BookOpen, HardDrive, ListChecks, Plus, MoreHorizontal, LogOut, Bell, Hash } from 'lucide-react'
+import { MessageSquareText, Bot, BookOpen, HardDrive, ListChecks, Plus, MoreHorizontal, LogOut, Bell, Hash, Shield } from 'lucide-react'
 import type { FeatureView, RoomWithMeta } from '../../core/types.js'
 import { cn } from '../../lib/cn.js'
 import { useAuth } from '../../hooks/use-auth.js'
@@ -30,6 +30,8 @@ export function LeftNavSidebar({ activeFeature, onFeatureChange, rooms, currentR
   const { user, signOut } = useAuth()
   const { unreadCount } = useNotifications()
   const [createDialogOpen, setCreateDialogOpen] = useState(false)
+  const [menuOpen, setMenuOpen] = useState(false)
+  const isAdmin = user?.role === 'admin' || user?.role === 'super_admin'
 
   return (
     <div className={cn('w-[200px] shrink-0 border-r border-border bg-[#fafaf8] flex flex-col', className)}>
@@ -107,26 +109,63 @@ export function LeftNavSidebar({ activeFeature, onFeatureChange, rooms, currentR
       <CreateRoomDialog open={createDialogOpen} onOpenChange={setCreateDialogOpen} />
 
       {/* Footer */}
-      <div className="border-t border-border px-3 py-2.5 flex items-center gap-2">
-        <Avatar className="size-7 shrink-0">
-          {user?.avatar_url ? <AvatarImage src={user.avatar_url} /> : null}
-          <AvatarFallback className="text-xs bg-primary/10 text-primary">{user?.name?.[0] || '?'}</AvatarFallback>
-        </Avatar>
-        <div className="flex-1 min-w-0">
-          <div className="text-sm font-medium truncate">{user?.name}</div>
-          <div className="text-[10px] text-muted-foreground truncate">{user?.email}</div>
+      <div className="border-t border-border px-3 py-2.5 relative">
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => setMenuOpen(!menuOpen)}
+            className="flex items-center gap-2 flex-1 min-w-0 rounded-md p-1 -m-1 hover:bg-black/5 transition-colors"
+          >
+            <Avatar className="size-7 shrink-0">
+              {user?.avatar_url ? <AvatarImage src={user.avatar_url} /> : null}
+              <AvatarFallback className="text-xs bg-primary/10 text-primary">{user?.name?.[0] || '?'}</AvatarFallback>
+            </Avatar>
+            <div className="flex-1 min-w-0 text-left">
+              <div className="text-sm font-medium truncate">{user?.name}</div>
+              <div className="text-[10px] text-muted-foreground truncate">{user?.email}</div>
+            </div>
+          </button>
+          <button className="relative p-1 rounded hover:bg-black/5 transition-colors">
+            <Bell className="w-4 h-4 text-muted-foreground" />
+            {unreadCount > 0 && (
+              <span className="absolute -top-0.5 -right-0.5 w-3.5 h-3.5 rounded-full bg-destructive text-destructive-foreground text-[9px] flex items-center justify-center font-bold">
+                {unreadCount > 9 ? '9+' : unreadCount}
+              </span>
+            )}
+          </button>
         </div>
-        <button className="relative p-1 rounded hover:bg-black/5 transition-colors">
-          <Bell className="w-4 h-4 text-muted-foreground" />
-          {unreadCount > 0 && (
-            <span className="absolute -top-0.5 -right-0.5 w-3.5 h-3.5 rounded-full bg-destructive text-destructive-foreground text-[9px] flex items-center justify-center font-bold">
-              {unreadCount > 9 ? '9+' : unreadCount}
-            </span>
-          )}
-        </button>
-        <button onClick={signOut} className="p-1 rounded hover:bg-black/5 transition-colors" title="退出登录">
-          <LogOut className="w-4 h-4 text-muted-foreground" />
-        </button>
+
+        {/* User menu popover */}
+        {menuOpen && (
+          <>
+            <div className="fixed inset-0 z-40" onClick={() => setMenuOpen(false)} />
+            <div className="absolute bottom-full left-2 mb-1 z-50 w-48 rounded-lg border border-border bg-white shadow-lg py-1">
+              {isAdmin && (
+                <button
+                  onClick={() => { setMenuOpen(false); onFeatureChange('admin' as FeatureView) }}
+                  className="flex w-full items-center gap-2.5 px-3 py-2 text-sm text-[#555] hover:bg-[#f5f5f5] hover:text-[#1a1a1a] transition-colors"
+                >
+                  <Shield className="w-4 h-4" />
+                  管理面板
+                </button>
+              )}
+              <button
+                onClick={() => { setMenuOpen(false); onFeatureChange('agents') }}
+                className="flex w-full items-center gap-2.5 px-3 py-2 text-sm text-[#555] hover:bg-[#f5f5f5] hover:text-[#1a1a1a] transition-colors"
+              >
+                <Bot className="w-4 h-4" />
+                Agent 管理
+              </button>
+              <div className="my-1 border-t border-border" />
+              <button
+                onClick={() => { setMenuOpen(false); signOut() }}
+                className="flex w-full items-center gap-2.5 px-3 py-2 text-sm text-red-500 hover:bg-red-50 transition-colors"
+              >
+                <LogOut className="w-4 h-4" />
+                退出登录
+              </button>
+            </div>
+          </>
+        )}
       </div>
     </div>
   )

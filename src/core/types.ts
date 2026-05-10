@@ -337,7 +337,7 @@ export interface RoomMemory {
 
 // ── Detail Panel ──
 
-export type FeatureView = 'chat' | 'tasks' | 'knowledge' | 'storage' | 'agents' | 'cron' | 'settings'
+export type FeatureView = 'chat' | 'tasks' | 'knowledge' | 'storage' | 'agents' | 'cron' | 'settings' | 'admin'
 
 // ── Streaming state per agent ──
 
