@@ -12,6 +12,7 @@ interface Props {
   members?: RoomMemberInfo[]
   quotedMessage?: ChatMessage | null
   onClearQuote?: () => void
+  onImageSelect?: (file: File) => void
 }
 
 export function MessageInput({
@@ -22,8 +23,10 @@ export function MessageInput({
   members = [],
   quotedMessage,
   onClearQuote,
+  onImageSelect,
 }: Props) {
   const ref = useRef<HTMLTextAreaElement>(null)
+  const fileInputRef = useRef<HTMLInputElement>(null)
 
   // Mention state
   const [mentionOpen, setMentionOpen] = useState(false)
@@ -194,9 +197,23 @@ export function MessageInput({
         {/* Toolbar — inside the card */}
         <div className="flex items-center px-3 pb-3 gap-1">
           <div className="flex items-center gap-1 flex-1 min-w-0">
-            <button className="flex items-center justify-center w-8 h-8 rounded-lg text-[#888] hover:text-black hover:bg-black/5 transition-colors shrink-0">
+            <button
+              onClick={() => fileInputRef.current?.click()}
+              className="flex items-center justify-center w-8 h-8 rounded-lg text-[#888] hover:text-black hover:bg-black/5 transition-colors shrink-0"
+            >
               <Plus className="w-4 h-4" />
             </button>
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept="image/*"
+              className="hidden"
+              onChange={(e) => {
+                const file = e.target.files?.[0]
+                if (file && onImageSelect) onImageSelect(file)
+                e.target.value = ''
+              }}
+            />
             <div className="w-px h-4 bg-[#e5e5e5] mx-1 shrink-0" />
             <button onClick={triggerMention} className="flex items-center gap-1 h-8 px-2 rounded-lg text-[#888] hover:text-black hover:bg-black/5 transition-colors text-sm shrink-0">
               <AtSign className="w-4 h-4" />

@@ -1,7 +1,7 @@
 import { createStore } from 'zustand/vanilla'
 import type { KyInstance } from 'ky'
 import type {
-  Message, ChatMessage, StreamState, WSEvent,
+  Message, ChatMessage, StreamState, WSEvent, RoomMember,
   RoomMemberInfo, AgentLoopState, AgentLoopTurn, AgentLoopToolCall,
   AskUserQuestion,
 } from '../core/types.js'
@@ -173,7 +173,11 @@ export function createMessagesStore(config: MessagesStoreConfig) {
 
     fetchMembers: async (roomId) => {
       try {
-        const data = await config.api.get(`rooms/${roomId}/members`).json<RoomMemberInfo[]>()
+        const raw = await config.api.get(`rooms/${roomId}/members`).json<RoomMember[]>()
+        const data: RoomMemberInfo[] = raw.map((m) => ({
+          ...m,
+          display_name: m.nickname || m.agent_id || m.user_id || 'unknown',
+        }))
         const map = new Map(get().members)
         map.set(roomId, data)
         set({ members: map })
