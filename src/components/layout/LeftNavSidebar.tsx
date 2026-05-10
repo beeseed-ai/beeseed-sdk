@@ -139,21 +139,12 @@ export function LeftNavSidebar({ activeFeature, onFeatureChange, rooms, currentR
           <>
             <div className="fixed inset-0 z-40" onClick={() => setMenuOpen(false)} />
             <div className="absolute bottom-full left-2 mb-1 z-50 w-48 rounded-lg border border-border bg-white shadow-lg py-1">
-              {isAdmin && (
-                <button
-                  onClick={() => { setMenuOpen(false); onFeatureChange('admin' as FeatureView) }}
-                  className="flex w-full items-center gap-2.5 px-3 py-2 text-sm text-[#555] hover:bg-[#f5f5f5] hover:text-[#1a1a1a] transition-colors"
-                >
-                  <Shield className="w-4 h-4" />
-                  管理面板
-                </button>
-              )}
               <button
-                onClick={() => { setMenuOpen(false); onFeatureChange('agents') }}
+                onClick={() => { setMenuOpen(false); onFeatureChange(isAdmin ? 'admin' : 'agents') }}
                 className="flex w-full items-center gap-2.5 px-3 py-2 text-sm text-[#555] hover:bg-[#f5f5f5] hover:text-[#1a1a1a] transition-colors"
               >
-                <Bot className="w-4 h-4" />
-                Agent 管理
+                {isAdmin ? <Shield className="w-4 h-4" /> : <Bot className="w-4 h-4" />}
+                {isAdmin ? '管理面板' : 'Agent 管理'}
               </button>
               <div className="my-1 border-t border-border" />
               <button
