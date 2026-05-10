@@ -13,10 +13,10 @@ interface Props {
 
 function filterMembers(members: RoomMemberInfo[], query: string): RoomMemberInfo[] {
   const q = query.toLowerCase()
-  return members.filter((m) =>
-    m.display_name.toLowerCase().includes(q) ||
-    (m.chinese_name?.toLowerCase().includes(q) ?? false),
-  )
+  return members.filter((m) => {
+    const name = m.display_name || m.nickname || m.agent_id || m.user_id || ''
+    return name.toLowerCase().includes(q) || (m.chinese_name?.toLowerCase().includes(q) ?? false)
+  })
 }
 
 export function getFilteredCount(members: RoomMemberInfo[], query: string): number {
@@ -69,13 +69,13 @@ export function MentionMenu({ members, query, selectedIndex, onSelect, onClose }
             <Avatar className="size-6 shrink-0">
               {m.avatar_url ? <AvatarImage src={m.avatar_url} /> : null}
               <AvatarFallback className="text-[10px]">
-                {m.member_type === 'agent' ? '🤖' : m.display_name[0]}
+                {m.member_type === 'agent' ? '🤖' : (m.display_name || '?')[0]}
               </AvatarFallback>
             </Avatar>
             <span className="truncate">
               {m.chinese_name && m.chinese_name !== m.display_name
-                ? `${m.display_name}（${m.chinese_name}）`
-                : m.display_name}
+                ? `${m.display_name || m.agent_id || m.user_id}（${m.chinese_name}）`
+                : m.display_name || m.agent_id || m.user_id || 'unknown'}
             </span>
           </div>
         )

@@ -46,7 +46,7 @@ export function MessageInput({
     if (!el || mentionStart < 0) return
     const before = el.value.slice(0, mentionStart)
     const after = el.value.slice(el.selectionStart)
-    const name = member.display_name
+    const name = member.display_name || member.agent_id || member.user_id || 'unknown'
     el.value = `${before}@${name} ${after}`
     setMentionOpen(false)
     setMentionStart(-1)
