@@ -1,6 +1,6 @@
 import type { StreamState, AgentLoopState } from '../../core/types.js'
 import { cn } from '../../lib/cn.js'
-import { Avatar, AvatarFallback } from '../ui/avatar.js'
+import { Avatar, AvatarImage, AvatarFallback } from '../ui/avatar.js'
 import { MarkdownRenderer } from './MarkdownRenderer.js'
 import { ThinkingBlock } from './ThinkingBlock.js'
 import { AgentLoopTimeline } from './AgentLoopTimeline.js'
@@ -8,15 +8,17 @@ import { AgentLoopTimeline } from './AgentLoopTimeline.js'
 interface Props {
   stream: StreamState
   agentLoop?: AgentLoopState
+  agentAvatarUrl?: string
   className?: string
 }
 
-export function StreamRenderer({ stream, agentLoop, className }: Props) {
+export function StreamRenderer({ stream, agentLoop, agentAvatarUrl, className }: Props) {
   const hasContent = stream.content || stream.thinking || stream.toolCall || agentLoop
 
   return (
     <div className={cn('flex gap-2 px-4 py-1', className)}>
       <Avatar className="size-7 shrink-0 mt-0.5">
+        {agentAvatarUrl ? <AvatarImage src={agentAvatarUrl} /> : null}
         <AvatarFallback className="text-xs">🤖</AvatarFallback>
       </Avatar>
       <div className="flex flex-col gap-0.5 max-w-[85%]">

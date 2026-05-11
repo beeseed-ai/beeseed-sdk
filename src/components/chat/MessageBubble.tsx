@@ -17,6 +17,13 @@ interface Props {
   className?: string
 }
 
+const AVATAR_COLORS = ['#F59E0B', '#10B981', '#3B82F6', '#EF4444', '#8B5CF6', '#EC4899', '#6D28D9', '#059669', '#2563EB', '#DC2626']
+function avatarColor(name: string): string {
+  let hash = 0
+  for (const c of name) hash = (hash * 31 + c.charCodeAt(0)) & 0xffffffff
+  return AVATAR_COLORS[Math.abs(hash) % AVATAR_COLORS.length]!
+}
+
 const SYSTEM_COLORS: Record<string, string> = {
   task_scheduler: 'text-[#6d28d9] bg-[#ede9fe]',
   task_plan_created: 'text-[#6d28d9] bg-[#ede9fe]',
@@ -103,7 +110,7 @@ export function MessageBubble({
           {message.senderAvatarUrl ? (
             <img src={message.senderAvatarUrl} alt="" className="w-9 h-9 rounded-full object-cover" />
           ) : (
-            <div className="w-9 h-9 rounded-full bg-[#F59E0B] flex items-center justify-center text-white text-xs font-medium">
+            <div className="w-9 h-9 rounded-full flex items-center justify-center text-white text-xs font-medium" style={{ backgroundColor: avatarColor(senderLabel) }}>
               {senderLabel.charAt(0)}
             </div>
           )}

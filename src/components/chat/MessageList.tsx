@@ -1,5 +1,5 @@
 import { useEffect, useRef, useMemo, useCallback } from 'react'
-import type { ChatMessage, StreamState, AgentLoopState } from '../../core/types.js'
+import type { ChatMessage, StreamState, AgentLoopState, RoomMemberInfo } from '../../core/types.js'
 import { MessageBubble } from './MessageBubble.js'
 import { ToolGroupBubble } from './ToolGroupBubble.js'
 import { StreamRenderer } from './StreamRenderer.js'
@@ -24,6 +24,7 @@ interface Props {
   messages: ChatMessage[]
   stream?: StreamState
   agentLoop?: AgentLoopState
+  members?: RoomMemberInfo[]
   onQuote?: (message: ChatMessage) => void
   onMentionClick?: (name: string) => void
   currentUserId?: string
@@ -31,7 +32,7 @@ interface Props {
   className?: string
 }
 
-export function MessageList({ messages, stream, agentLoop, onQuote, onMentionClick, currentUserId, onSubmitAnswer }: Props) {
+export function MessageList({ messages, stream, agentLoop, members, onQuote, onMentionClick, currentUserId, onSubmitAnswer }: Props) {
   const containerRef = useRef<HTMLDivElement>(null)
   const shouldAutoScroll = useRef(true)
   const grouped = useMemo(() => groupMessages(messages), [messages])
@@ -105,7 +106,11 @@ export function MessageList({ messages, stream, agentLoop, onQuote, onMentionCli
         {/* Streaming */}
         {stream && (
           <div className="px-4 pb-3 mx-auto" style={{ maxWidth: CHAT_MAX_WIDTH }}>
-            <StreamRenderer stream={stream} agentLoop={agentLoop} />
+            <StreamRenderer
+              stream={stream}
+              agentLoop={agentLoop}
+              agentAvatarUrl={members?.find(m => m.agent_id === stream.agentId)?.avatar_url}
+            />
           </div>
         )}
 

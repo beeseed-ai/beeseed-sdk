@@ -14,6 +14,7 @@ export interface AuthState {
   signUp: (email: string, password: string, name: string) => Promise<{ error: string | null }>
   signOut: () => void
   setToken: (token: string | null) => void
+  updateAvatar: (file: File) => Promise<{ error: string | null }>
 }
 
 export interface AuthStoreConfig {
@@ -95,6 +96,19 @@ export function createAuthStore(config: AuthStoreConfig) {
     setToken: (token) => {
       storeToken(token)
       set({ token })
+    },
+
+    updateAvatar: async (file) => {
+      try {
+        const form = new FormData()
+        form.append('avatar', file)
+        const res = await config.api.put('profile/avatar', { body: form }).json<{ avatar_url: string }>()
+        const user = get().user
+        if (user) set({ user: { ...user, avatar_url: res.avatar_url } })
+        return { error: null }
+      } catch (e) {
+        return { error: e instanceof Error ? e.message : 'Upload failed' }
+      }
     },
   }))
 }

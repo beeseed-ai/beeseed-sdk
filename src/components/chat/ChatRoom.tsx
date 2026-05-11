@@ -41,6 +41,7 @@ export function ChatRoom({ roomId, className, header }: Props) {
           messages={messages}
           stream={stream}
           agentLoop={agentLoop}
+          members={members}
           onQuote={setQuotedMessage}
           currentUserId={user?.id}
           onSubmitAnswer={submitAnswer}

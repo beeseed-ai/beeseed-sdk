@@ -25,7 +25,7 @@ export function createDetailPanelStore() {
   return createStore<DetailPanelState>()((set, get) => ({
     panelVisible: false,
     sections: { ...DEFAULT_SECTIONS },
-    activeFeature: 'chat',
+    activeFeature: (typeof sessionStorage !== 'undefined' && sessionStorage.getItem('beeseed-feature') as FeatureView) || 'chat',
 
     togglePanel: () => set({ panelVisible: !get().panelVisible }),
     setPanel: (visible) => set({ panelVisible: visible }),
@@ -36,10 +36,13 @@ export function createDetailPanelStore() {
       set({ sections })
     },
 
-    setActiveFeature: (feature) => set({
-      activeFeature: feature,
-      panelVisible: feature === 'chat' ? get().panelVisible : false,
-    }),
+    setActiveFeature: (feature) => {
+      if (typeof sessionStorage !== 'undefined') sessionStorage.setItem('beeseed-feature', feature)
+      set({
+        activeFeature: feature,
+        panelVisible: feature === 'chat' ? get().panelVisible : false,
+      })
+    },
 
     reset: () => set({ panelVisible: false, sections: { ...DEFAULT_SECTIONS }, activeFeature: 'chat' }),
   }))
