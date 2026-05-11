@@ -15,6 +15,8 @@ export interface AuthState {
   signOut: () => void
   setToken: (token: string | null) => void
   updateAvatar: (file: File) => Promise<{ error: string | null }>
+  updateName: (name: string) => Promise<{ error: string | null }>
+  changePassword: (oldPassword: string, newPassword: string) => Promise<{ error: string | null }>
 }
 
 export interface AuthStoreConfig {
@@ -108,6 +110,25 @@ export function createAuthStore(config: AuthStoreConfig) {
         return { error: null }
       } catch (e) {
         return { error: e instanceof Error ? e.message : 'Upload failed' }
+      }
+    },
+
+    updateName: async (name) => {
+      try {
+        const updated = await config.api.put('profile', { json: { name } }).json<User>()
+        set({ user: updated })
+        return { error: null }
+      } catch (e) {
+        return { error: e instanceof Error ? e.message : 'Update failed' }
+      }
+    },
+
+    changePassword: async (oldPassword, newPassword) => {
+      try {
+        await config.api.put('profile/password', { json: { old_password: oldPassword, new_password: newPassword } })
+        return { error: null }
+      } catch (e) {
+        return { error: e instanceof Error ? e.message : 'Password change failed' }
       }
     },
   }))
