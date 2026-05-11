@@ -174,9 +174,7 @@ export function createMessagesStore(config: MessagesStoreConfig) {
     fetchMembers: async (roomId) => {
       try {
         const raw = await config.api.get(`rooms/${roomId}/members`).json<RoomMemberInfo[]>()
-        const myId = config.getCurrentUserId()
         const data = raw
-          .filter((m) => !(m.member_type === 'user' && m.user_id === myId))
           .map((m) => ({
             ...m,
             display_name: m.display_name || m.nickname || m.agent_id || m.user_id || 'unknown',
