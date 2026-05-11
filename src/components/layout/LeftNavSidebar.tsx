@@ -1,10 +1,11 @@
-import { useState, useRef } from 'react'
-import { MessageSquareText, Bot, BookOpen, HardDrive, ListChecks, Plus, MoreHorizontal, LogOut, Bell, Hash, Shield, Camera } from 'lucide-react'
+import { useState } from 'react'
+import { MessageSquareText, Bot, BookOpen, HardDrive, ListChecks, Plus, MoreHorizontal, LogOut, Bell, Hash, Shield, User } from 'lucide-react'
 import type { FeatureView, RoomWithMeta } from '../../core/types.js'
 import { cn } from '../../lib/cn.js'
 import { useAuth } from '../../hooks/use-auth.js'
 import { useNotifications } from '../../hooks/use-notifications.js'
 import { CreateRoomDialog } from '../rooms/CreateRoomDialog.js'
+import { ProfileModal } from '../user/ProfileModal.js'
 import { Avatar, AvatarFallback, AvatarImage } from '../ui/avatar.js'
 
 interface NavItem { id: FeatureView; label: string; icon: React.ElementType }
@@ -27,19 +28,12 @@ interface Props {
 }
 
 export function LeftNavSidebar({ activeFeature, onFeatureChange, rooms, currentRoomId, onRoomSelect, className }: Props) {
-  const { user, signOut, updateAvatar } = useAuth()
+  const { user, signOut } = useAuth()
   const { unreadCount } = useNotifications()
   const [createDialogOpen, setCreateDialogOpen] = useState(false)
   const [menuOpen, setMenuOpen] = useState(false)
-  const avatarInputRef = useRef<HTMLInputElement>(null)
+  const [profileOpen, setProfileOpen] = useState(false)
   const isAdmin = user?.role === 'admin' || user?.role === 'super_admin'
-
-  const handleAvatarUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0]
-    if (!file) return
-    await updateAvatar(file)
-    if (avatarInputRef.current) avatarInputRef.current.value = ''
-  }
 
   return (
     <div className={cn('w-[200px] shrink-0 border-r border-border bg-[#fafaf8] flex flex-col', className)}>
@@ -115,6 +109,7 @@ export function LeftNavSidebar({ activeFeature, onFeatureChange, rooms, currentR
       </div>
 
       <CreateRoomDialog open={createDialogOpen} onOpenChange={setCreateDialogOpen} />
+      <ProfileModal open={profileOpen} onOpenChange={setProfileOpen} />
 
       {/* Footer */}
       <div className="border-t border-border px-3 py-2.5 relative">
@@ -148,11 +143,11 @@ export function LeftNavSidebar({ activeFeature, onFeatureChange, rooms, currentR
             <div className="fixed inset-0 z-40" onClick={() => setMenuOpen(false)} />
             <div className="absolute bottom-full left-2 mb-1 z-50 w-48 rounded-lg border border-border bg-white shadow-lg py-1">
               <button
-                onClick={() => { setMenuOpen(false); avatarInputRef.current?.click() }}
+                onClick={() => { setMenuOpen(false); setProfileOpen(true) }}
                 className="flex w-full items-center gap-2.5 px-3 py-2 text-sm text-[#555] hover:bg-[#f5f5f5] hover:text-[#1a1a1a] transition-colors"
               >
-                <Camera className="w-4 h-4" />
-                更换头像
+                <User className="w-4 h-4" />
+                个人中心
               </button>
               <button
                 onClick={() => { setMenuOpen(false); onFeatureChange(isAdmin ? 'admin' : 'agents') }}
@@ -173,13 +168,6 @@ export function LeftNavSidebar({ activeFeature, onFeatureChange, rooms, currentR
           </>
         )}
       </div>
-      <input
-        ref={avatarInputRef}
-        type="file"
-        accept="image/jpeg,image/png,image/webp"
-        className="hidden"
-        onChange={handleAvatarUpload}
-      />
     </div>
   )
 }
