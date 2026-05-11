@@ -25,7 +25,7 @@ function AvatarImage({ className, src, alt, ...props }: React.ComponentProps<'im
     <img
       src={src}
       alt={alt}
-      className={cn('aspect-square size-full rounded-full object-cover', className)}
+      className={cn('absolute inset-0 size-full rounded-full object-cover', className)}
       {...props}
     />
   )

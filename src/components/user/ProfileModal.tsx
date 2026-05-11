@@ -1,10 +1,9 @@
 import { useState, useRef } from 'react'
-import { Camera, Mail, LogOut, User } from 'lucide-react'
+import { Camera, Mail, LogOut, User, X } from 'lucide-react'
 import { cn } from '../../lib/cn.js'
 import { useAuth } from '../../hooks/use-auth.js'
-import { Dialog, DialogContent } from '../ui/dialog.js'
+import { Dialog } from '../ui/dialog.js'
 import { Avatar, AvatarImage, AvatarFallback } from '../ui/avatar.js'
-import { Button } from '../ui/button.js'
 
 interface Props {
   open: boolean
@@ -34,37 +33,38 @@ export function ProfileModal({ open, onOpenChange }: Props) {
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent
-        className="sm:max-w-[400px] p-0 overflow-hidden"
-        showCloseButton
-        onClose={() => onOpenChange(false)}
-      >
-        {/* Banner */}
-        <div className="h-20 bg-gradient-to-r from-[#1a1a1a] to-[#333]" />
+      <div className="w-full max-w-[420px] rounded-2xl bg-white shadow-xl ring-1 ring-black/5 overflow-hidden">
+        {/* Header with close */}
+        <div className="flex items-center justify-between px-6 pt-5 pb-0">
+          <h2 className="text-base font-semibold">个人中心</h2>
+          <button
+            onClick={() => onOpenChange(false)}
+            className="p-1 rounded-md hover:bg-black/5 transition-colors"
+          >
+            <X className="w-4 h-4 text-muted-foreground" />
+          </button>
+        </div>
 
-        {/* Avatar overlapping banner */}
-        <div className="px-6 -mt-10">
-          <div className="relative inline-block group">
-            <Avatar className="size-20 ring-4 ring-white">
+        {/* Avatar + Info */}
+        <div className="flex flex-col items-center pt-6 pb-4 px-6">
+          <div className="relative group cursor-pointer" onClick={() => fileRef.current?.click()}>
+            <Avatar className="size-20">
               {user.avatar_url ? <AvatarImage src={user.avatar_url} /> : null}
-              <AvatarFallback className="text-xl bg-primary/10 text-primary">
+              <AvatarFallback className="text-2xl bg-primary/10 text-primary">
                 {user.name?.[0]?.toUpperCase() || '?'}
               </AvatarFallback>
             </Avatar>
-            <button
-              onClick={() => fileRef.current?.click()}
-              className={cn(
-                'absolute inset-0 rounded-full flex items-center justify-center transition-opacity',
-                'bg-black/40 opacity-0 group-hover:opacity-100',
-                uploading && 'opacity-100',
-              )}
-            >
+            <div className={cn(
+              'absolute inset-0 rounded-full flex items-center justify-center transition-opacity',
+              'bg-black/40 opacity-0 group-hover:opacity-100',
+              uploading && 'opacity-100',
+            )}>
               {uploading ? (
                 <span className="w-5 h-5 border-2 border-white/60 border-t-white rounded-full animate-spin" />
               ) : (
                 <Camera className="w-5 h-5 text-white" />
               )}
-            </button>
+            </div>
             <input
               ref={fileRef}
               type="file"
@@ -73,38 +73,43 @@ export function ProfileModal({ open, onOpenChange }: Props) {
               onChange={handleAvatarChange}
             />
           </div>
+          <div className="mt-3 text-center">
+            <div className="text-lg font-semibold">{user.name}</div>
+            <div className="text-sm text-muted-foreground mt-0.5">{user.email}</div>
+          </div>
         </div>
 
-        {/* Info */}
-        <div className="px-6 pt-3 pb-5 space-y-4">
-          <div>
-            <h3 className="text-lg font-semibold">{user.name}</h3>
-            <div className="flex items-center gap-1.5 text-sm text-muted-foreground mt-0.5">
-              <Mail className="w-3.5 h-3.5" />
-              {user.email}
+        {/* Details */}
+        <div className="px-6 pb-5 space-y-3">
+          <div className="rounded-lg bg-[#f8f8f6] px-4 py-3 space-y-2.5">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2 text-sm text-[#555]">
+                <Mail className="w-3.5 h-3.5" />
+                邮箱
+              </div>
+              <span className="text-sm">{user.email}</span>
+            </div>
+            <div className="border-t border-black/5" />
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2 text-sm text-[#555]">
+                <User className="w-3.5 h-3.5" />
+                角色
+              </div>
+              <span className="text-sm">
+                {user.role === 'admin' || user.role === 'super_admin' ? '管理员' : '成员'}
+              </span>
             </div>
           </div>
 
-          <div className="space-y-1.5">
-            <label className="text-xs font-medium text-[#555]">角色</label>
-            <div className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-[#f5f5f5] text-sm text-[#555]">
-              <User className="w-3.5 h-3.5" />
-              {user.role === 'admin' || user.role === 'super_admin' ? '管理员' : '成员'}
-            </div>
-          </div>
-
-          <div className="pt-2 border-t border-border">
-            <Button
-              variant="ghost"
-              className="w-full justify-start text-red-500 hover:text-red-600 hover:bg-red-50"
-              onClick={handleSignOut}
-            >
-              <LogOut className="w-4 h-4 mr-2" />
-              退出登录
-            </Button>
-          </div>
+          <button
+            onClick={handleSignOut}
+            className="flex items-center justify-center gap-2 w-full px-4 py-2.5 rounded-lg text-sm text-red-500 hover:bg-red-50 transition-colors"
+          >
+            <LogOut className="w-4 h-4" />
+            退出登录
+          </button>
         </div>
-      </DialogContent>
+      </div>
     </Dialog>
   )
 }
