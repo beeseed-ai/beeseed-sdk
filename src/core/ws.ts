@@ -25,7 +25,7 @@ export class WSClient {
   }
 
   connect() {
-    if (this.disposed) return
+    this.disposed = false
     const token = this.config.getToken()
     if (!token) return
 
