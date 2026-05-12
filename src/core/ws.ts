@@ -29,6 +29,16 @@ export class WSClient {
     const token = this.config.getToken()
     if (!token) return
 
+    if (this.ws) {
+      const rs = this.ws.readyState
+      if (rs === WebSocket.CONNECTING || rs === WebSocket.OPEN) {
+        return
+      }
+      this.ws.onclose = null
+      this.ws.close()
+      this.ws = null
+    }
+
     this.config.onStateChange(this.attempt > 0 ? 'reconnecting' : 'connecting')
 
     const proto = typeof window !== 'undefined' && location.protocol === 'https:' ? 'wss:' : 'ws:'
@@ -38,6 +48,7 @@ export class WSClient {
     this.ws = new WebSocket(url)
 
     this.ws.onopen = () => {
+      console.log('[WS] connected', url.replace(/token=.*/, 'token=***'))
       this.attempt = 0
       this.flushQueue()
     }
@@ -49,25 +60,37 @@ export class WSClient {
           this.config.onStateChange('connected')
         }
         this.config.onEvent(data)
-      } catch {
-        // ignore malformed messages
+      } catch (e) {
+        console.warn('[WS] parse error', e)
       }
     }
 
-    this.ws.onclose = () => {
+    this.ws.onclose = (evt) => {
+      console.log('[WS] closed', evt.code, evt.reason)
       this.ws = null
       if (!this.disposed) this.scheduleReconnect()
     }
 
-    this.ws.onerror = () => {
+    this.ws.onerror = (evt) => {
+      console.error('[WS] error', evt)
       this.ws?.close()
     }
   }
 
   send(command: WSCommand) {
+    const cmd = command as Record<string, unknown>
+    const cmdType = cmd.type as string
+    const cmdRoom = (cmd.room_id as string) || ''
     if (this.ws?.readyState === WebSocket.OPEN) {
       this.ws.send(JSON.stringify(command))
     } else {
+      if (cmdType === 'join_room' || cmdType === 'leave_room') {
+        this.queue = this.queue.filter(q => {
+          const qt = (q as Record<string, unknown>).type
+          const qr = (q as Record<string, unknown>).room_id
+          return !(qt === 'join_room' || qt === 'leave_room') || qr !== cmdRoom
+        })
+      }
       if (this.queue.length < 50) this.queue.push(command)
     }
   }

@@ -11,7 +11,7 @@ export interface AuthState {
 
   init: () => Promise<void>
   signIn: (email: string, password: string) => Promise<{ error: string | null }>
-  signUp: (email: string, password: string, name: string) => Promise<{ error: string | null }>
+  signUp: (email: string, password: string, name: string, inviteCode?: string) => Promise<{ error: string | null }>
   signOut: () => void
   setToken: (token: string | null) => void
   updateAvatar: (file: File) => Promise<{ error: string | null }>
@@ -75,10 +75,10 @@ export function createAuthStore(config: AuthStoreConfig) {
       }
     },
 
-    signUp: async (email, password, name) => {
+    signUp: async (email, password, name, inviteCode) => {
       try {
         const data = await config.api.post('auth/register', {
-          json: { email, password, name },
+          json: { email, password, name, invite_code: inviteCode },
         }).json<AuthResponse>()
         storeToken(data.token)
         set({ user: data.user, token: data.token })

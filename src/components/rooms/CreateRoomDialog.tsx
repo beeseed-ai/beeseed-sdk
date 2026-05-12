@@ -32,16 +32,16 @@ export function CreateRoomDialog({ open, onOpenChange }: Props) {
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent onClose={() => onOpenChange(false)}>
         <DialogHeader>
-          <DialogTitle>新建群聊</DialogTitle>
+          <DialogTitle>新建频道</DialogTitle>
         </DialogHeader>
 
         <form onSubmit={handleSubmit} className="space-y-4 mt-2">
           <div className="space-y-2">
-            <label className="text-sm font-medium">群聊名称</label>
+            <label className="text-sm font-medium">频道名称</label>
             <Input
               value={name}
               onChange={(e) => setName(e.target.value)}
-              placeholder="输入群聊名称"
+              placeholder="输入频道名称"
               autoFocus
             />
           </div>

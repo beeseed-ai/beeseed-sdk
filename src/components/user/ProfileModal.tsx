@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react'
-import { Camera, Copy, Check, Key, LogOut, Mail, User, Shield } from 'lucide-react'
+import { Camera, Copy, Check, Key, LogOut, Mail, User, Shield, X } from 'lucide-react'
 import { cn } from '../../lib/cn.js'
 import { useAuth } from '../../hooks/use-auth.js'
 import { Dialog } from '../ui/dialog.js'
@@ -21,7 +21,10 @@ export function ProfileModal({ open, onOpenChange }: Props) {
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <div className="w-full max-w-[560px] rounded-2xl bg-white shadow-xl ring-1 ring-black/5 overflow-hidden">
+      <div className="relative w-full max-w-[560px] rounded-2xl bg-white shadow-xl ring-1 ring-black/5 overflow-hidden">
+        <button onClick={() => onOpenChange(false)} className="absolute top-3 right-3 z-10 p-1 rounded-md hover:bg-black/5 transition-colors">
+          <X className="w-4 h-4 text-[#999]" />
+        </button>
         <div className="flex h-[480px]">
           {/* Left tabs */}
           <div className="w-[140px] shrink-0 border-r border-[#f0f0f0] p-2 flex flex-col gap-0.5">

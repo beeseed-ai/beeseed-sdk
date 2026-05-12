@@ -9,8 +9,9 @@ export function useChat(roomId: string | null) {
 
   useEffect(() => {
     if (!roomId) return
-    void state.fetchMessages(roomId)
-    void state.fetchMembers(roomId)
+    const s = messagesStore.getState()
+    void s.fetchMessages(roomId)
+    void s.fetchMembers(roomId)
     ws.send({ type: 'join_room', room_id: roomId })
     return () => {
       ws.send({ type: 'leave_room', room_id: roomId })
@@ -20,9 +21,10 @@ export function useChat(roomId: string | null) {
   const send = useCallback(
     (content: string, metadata?: Record<string, unknown>) => {
       if (!roomId || !content.trim()) return
+      messagesStore.getState().addOptimisticMessage(roomId, content.trim())
       ws.send({ type: 'message', room_id: roomId, content: content.trim(), metadata })
     },
-    [roomId, ws],
+    [roomId, ws, messagesStore],
   )
 
   const sendWithQuote = useCallback(
@@ -31,17 +33,18 @@ export function useChat(roomId: string | null) {
       const prefix = quoted.senderName
         ? `> ${quoted.senderName}: ${quoted.content.slice(0, 100)}\n\n`
         : ''
+      messagesStore.getState().addOptimisticMessage(roomId, prefix + content.trim())
       ws.send({ type: 'message', room_id: roomId, content: prefix + content.trim() })
     },
-    [roomId, ws],
+    [roomId, ws, messagesStore],
   )
 
   const submitAnswer = useCallback(
     (askId: string, answers: Record<string, unknown>) => {
       if (!roomId) return
-      state.submitAskUserAnswer(roomId, askId, answers)
+      messagesStore.getState().submitAskUserAnswer(roomId, askId, answers)
     },
-    [roomId, state],
+    [roomId, messagesStore],
   )
 
   const ack = useCallback(

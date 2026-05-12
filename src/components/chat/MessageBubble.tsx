@@ -208,9 +208,16 @@ export function MessageBubble({
           </div>
         )}
 
-        {/* User message timestamp */}
+        {/* User message timestamp + routing info */}
         {isUser && (
-          <span className="text-[10px] text-[#999999] mt-0.5">{timeStr}</span>
+          <div className="flex items-center gap-2 mt-0.5">
+            <span className="text-[10px] text-[#999999]">{timeStr}</span>
+            {message.routingInfo && (
+              <span className="text-[10px] text-[#bbb] font-mono">
+                → {message.routingInfo.targets.join(', ')} ({message.routingInfo.method})
+              </span>
+            )}
+          </div>
         )}
 
         {/* Suggestions */}

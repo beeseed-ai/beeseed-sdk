@@ -16,7 +16,7 @@ interface Props {
 
 export function ChatRoom({ roomId, className, header }: Props) {
   const { user } = useAuth()
-  const { messages, stream, agentLoop, members, send, sendWithQuote, submitAnswer, loading } = useChat(roomId)
+  const { messages, stream, agentLoop, members, typing, send, sendWithQuote, submitAnswer, loading } = useChat(roomId)
   const [quotedMessage, setQuotedMessage] = useState<ChatMessage | null>(null)
 
   const handleSend = useCallback((content: string) => {
@@ -42,6 +42,7 @@ export function ChatRoom({ roomId, className, header }: Props) {
           stream={stream}
           agentLoop={agentLoop}
           members={members}
+          typing={typing}
           onQuote={setQuotedMessage}
           currentUserId={user?.id}
           onSubmitAnswer={submitAnswer}

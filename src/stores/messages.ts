@@ -114,6 +114,10 @@ export function parseMessage(m: Message, myUserId?: string): ChatMessage | null 
     contentType: m.msg_type !== 'text' ? m.msg_type : undefined,
     suggestions: Array.isArray(meta.suggestions) ? meta.suggestions as string[] : undefined,
     thinkingContent: (meta.thinking_content as string) || undefined,
+    routingInfo: meta.routing_info ? {
+      targets: ((meta.routing_info as Record<string, unknown>).target_agent_ids as string[]) ?? [],
+      method: ((meta.routing_info as Record<string, unknown>).routing_method as string) ?? '',
+    } : undefined,
   }
 }
 
@@ -130,6 +134,7 @@ export interface MessagesState {
   fetchMessages: (roomId: string) => Promise<void>
   fetchMembers: (roomId: string) => Promise<void>
   handleEvent: (event: WSEvent) => void
+  addOptimisticMessage: (roomId: string, content: string) => void
   submitAskUserAnswer: (roomId: string, askId: string, answers: Record<string, unknown>) => void
   getMessages: (roomId: string) => ChatMessage[]
   getStream: (roomId: string) => StreamState | undefined
@@ -187,6 +192,19 @@ export function createMessagesStore(config: MessagesStoreConfig) {
       }
     },
 
+    addOptimisticMessage: (roomId, content) => {
+      const map = new Map(get().messages)
+      const msgs = [...(map.get(roomId) || [])]
+      msgs.push({
+        role: 'user',
+        content,
+        timestamp: Date.now(),
+        senderType: 'user',
+      })
+      map.set(roomId, msgs)
+      set({ messages: map })
+    },
+
     handleEvent: (event) => {
       const state = get()
       const userId = config.getCurrentUserId()
@@ -196,12 +214,41 @@ export function createMessagesStore(config: MessagesStoreConfig) {
           const parsed = parseMessage(event.message, userId)
           if (!parsed) break
           const map = new Map(state.messages)
-          const msgs = [...(map.get(event.room_id) || [])]
-          if (!msgs.some((m) => m.msgId === parsed.msgId)) {
+          let msgs = [...(map.get(event.room_id) || [])]
+          if (msgs.some((m) => m.msgId === parsed.msgId)) break
+          const optIdx = parsed.role === 'user'
+            ? msgs.findIndex((m) => m.role === 'user' && !m.msgId && m.content === parsed.content)
+            : -1
+          if (optIdx >= 0) {
+            msgs[optIdx] = parsed
+          } else {
             msgs.push(parsed)
-            map.set(event.room_id, msgs)
-            set({ messages: map })
           }
+          map.set(event.room_id, msgs)
+          set({ messages: map })
+          break
+        }
+
+        case 'routing_info': {
+          if (!event.routing_info) break
+          const ri = event.routing_info as { routing_method: string; target_agent_ids: string[]; reason: string }
+          const map = new Map(state.messages)
+          const msgs = [...(map.get(event.room_id) || [])]
+          for (let i = msgs.length - 1; i >= 0; i--) {
+            if (msgs[i].role === 'user') {
+              msgs[i] = { ...msgs[i], routingInfo: { targets: ri.target_agent_ids, method: ri.routing_method } }
+              break
+            }
+          }
+          map.set(event.room_id, msgs)
+          set({ messages: map })
+          break
+        }
+
+        case 'typing': {
+          const typing = new Map(state.typingStatus)
+          typing.set(event.room_id, `${event.agent_id || 'Agent'} 正在输入...`)
+          set({ typingStatus: typing })
           break
         }
 
@@ -216,10 +263,6 @@ export function createMessagesStore(config: MessagesStoreConfig) {
             agentLoop: existing?.agentLoop,
           })
           set({ streams })
-
-          const typing = new Map(state.typingStatus)
-          typing.set(event.room_id, `${event.agent_id} 正在输入...`)
-          set({ typingStatus: typing })
           break
         }
 

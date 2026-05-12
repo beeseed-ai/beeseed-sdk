@@ -32,10 +32,10 @@ export function AgentManageTab() {
   const [presets, setPresets] = useState<string[]>([])
 
   useEffect(() => {
-    api.get('agents').json<AgentInfo[]>().then((data) => { setAgents(data); setLoading(false) }).catch(() => setLoading(false))
-    api.get('models').json<{ id: string; label: string; provider: string }[]>().then(setModels).catch(() => {})
-    api.get('providers').json<{ id: string; label: string }[]>().then(setProviders).catch(() => {})
-    api.get('agents/presets').json<string[]>().then(setPresets).catch(() => {})
+    api.get('agents').json<AgentInfo[]>().then((data) => { setAgents(data ?? []); setLoading(false) }).catch(() => setLoading(false))
+    api.get('models').json<{ id: string; label: string; provider: string }[]>().then((d) => setModels(d ?? [])).catch(() => {})
+    api.get('providers').json<{ id: string; label: string }[]>().then((d) => setProviders(d ?? [])).catch(() => {})
+    api.get('agents/presets').json<string[]>().then((d) => setPresets(d ?? [])).catch(() => {})
   }, [api])
 
   useEffect(() => {

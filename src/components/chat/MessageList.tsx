@@ -25,6 +25,7 @@ interface Props {
   stream?: StreamState
   agentLoop?: AgentLoopState
   members?: RoomMemberInfo[]
+  typing?: string
   onQuote?: (message: ChatMessage) => void
   onMentionClick?: (name: string) => void
   currentUserId?: string
@@ -32,7 +33,7 @@ interface Props {
   className?: string
 }
 
-export function MessageList({ messages, stream, agentLoop, members, onQuote, onMentionClick, currentUserId, onSubmitAnswer }: Props) {
+export function MessageList({ messages, stream, agentLoop, members, typing, onQuote, onMentionClick, currentUserId, onSubmitAnswer }: Props) {
   const containerRef = useRef<HTMLDivElement>(null)
   const shouldAutoScroll = useRef(true)
   const grouped = useMemo(() => groupMessages(messages), [messages])
@@ -44,7 +45,7 @@ export function MessageList({ messages, stream, agentLoop, members, onQuote, onM
 
   useEffect(() => {
     if (shouldAutoScroll.current) { scrollToBottom(); requestAnimationFrame(scrollToBottom) }
-  }, [messages.length, stream?.content, scrollToBottom])
+  }, [messages.length, stream?.content, typing, scrollToBottom])
 
   const handleScroll = useCallback(() => {
     const el = containerRef.current
@@ -114,14 +115,15 @@ export function MessageList({ messages, stream, agentLoop, members, onQuote, onM
           </div>
         )}
 
-        {/* Streaming dots indicator */}
-        {stream && !stream.content && !stream.thinking && !stream.toolCall && (
-          <div className="flex items-center gap-2 px-16 py-2 text-[#777169] mx-auto" style={{ maxWidth: CHAT_MAX_WIDTH }}>
+        {/* Typing indicator */}
+        {typing && !stream?.content && (
+          <div className="flex items-center gap-2 px-16 py-2 text-[#999] text-xs mx-auto" style={{ maxWidth: CHAT_MAX_WIDTH }}>
             <span className="inline-flex gap-1">
-              <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-[#777169] [animation-delay:0ms]" />
-              <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-[#777169] [animation-delay:150ms]" />
-              <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-[#777169] [animation-delay:300ms]" />
+              <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-[#999] [animation-delay:0ms]" />
+              <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-[#999] [animation-delay:150ms]" />
+              <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-[#999] [animation-delay:300ms]" />
             </span>
+            <span>{typing}</span>
           </div>
         )}
       </div>

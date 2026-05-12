@@ -14,6 +14,9 @@ import { createStorageStore, type StorageStore } from '../stores/storage.js'
 import { createNotificationsStore, type NotificationsStore } from '../stores/notifications.js'
 import { createCronStore, type CronStore } from '../stores/cron.js'
 import { createAgentsStore, type AgentsStore } from '../stores/agents.js'
+import { createAppUsersStore, type AppUsersStore } from '../stores/app-users.js'
+import { createInvitesStore, type InvitesStore } from '../stores/invites.js'
+import { createAppSettingsStore, type AppSettingsStore } from '../stores/app-settings.js'
 
 export interface BeeSeedContextValue {
   api: KyInstance
@@ -29,6 +32,9 @@ export interface BeeSeedContextValue {
   notificationsStore: NotificationsStore
   cronStore: CronStore
   agentsStore: AgentsStore
+  appUsersStore: AppUsersStore
+  invitesStore: InvitesStore
+  appSettingsStore: AppSettingsStore
   config: BeeSeedConfig
 }
 
@@ -72,6 +78,9 @@ function createBeeSeedContext(config: BeeSeedConfig): BeeSeedContextValue {
   const notificationsStore = createNotificationsStore({ api, useMock })
   const cronStore = createCronStore({ api, useMock })
   const agentsStore = createAgentsStore({ api, useMock })
+  const appUsersStore = createAppUsersStore({ api, useMock })
+  const invitesStore = createInvitesStore({ api, useMock })
+  const appSettingsStore = createAppSettingsStore({ api, useMock })
 
   let wsRef: WSClient
 
@@ -79,6 +88,7 @@ function createBeeSeedContext(config: BeeSeedConfig): BeeSeedContextValue {
     api,
     tokenKey,
     onSignIn: () => {
+      console.log('[Auth] onSignIn, wsRef exists:', !!wsRef)
       wsRef?.connect()
       void roomsStore.getState().fetchRooms()
     },
@@ -98,6 +108,7 @@ function createBeeSeedContext(config: BeeSeedConfig): BeeSeedContextValue {
   })
 
   const handleEvent = (event: WSEvent) => {
+    console.log('[Provider] handleEvent', event.type)
     if (event.type === 'auth_ok') {
       roomsStore.getState().setRooms(event.rooms ?? [])
     }
@@ -120,7 +131,7 @@ function createBeeSeedContext(config: BeeSeedConfig): BeeSeedContextValue {
   return {
     api, ws, authStore, connectionStore, roomsStore, messagesStore,
     detailPanelStore, tasksStore, knowledgeStore, storageStore,
-    notificationsStore, cronStore, agentsStore, config,
+    notificationsStore, cronStore, agentsStore, appUsersStore, invitesStore, appSettingsStore, config,
   }
 }
 

@@ -11,6 +11,36 @@ export interface User {
   updated_at: string
 }
 
+// ── App User Management ──
+
+export type AppRole = 'owner' | 'admin' | 'member'
+export type RegistrationPolicy = 'open' | 'invite' | 'closed'
+
+export interface AppUser {
+  id: string
+  email: string
+  name: string
+  avatar_url?: string
+  role: AppRole
+  is_disabled: boolean
+  created_at: string
+  updated_at: string
+}
+
+export interface Invite {
+  id: string
+  token_prefix: string
+  code?: string
+  note?: string | null
+  created_by: string
+  created_at: string
+  expires_at?: string | null
+  used_at?: string | null
+  used_by?: string | null
+  revoked_at?: string | null
+  revoked_by?: string | null
+}
+
 // ── Room ──
 
 export interface Room {
@@ -367,6 +397,9 @@ export type WSEvent =
   | { type: 'agent_progress'; room_id: string; agent_id: string; turn: number; summary: string }
   | { type: 'agent_done'; room_id: string; agent_id: string; turn: number; content: string }
   | { type: 'max_turns_reached'; room_id: string; agent_id: string; turn: number }
+  // UI events
+  | { type: 'routing_info'; room_id: string; routing_info: { routing_method: string; target_agent_ids: string[]; reason: string } }
+  | { type: 'typing'; room_id: string; agent_id?: string }
 
 // ── WebSocket Commands — Client to Server ──
 

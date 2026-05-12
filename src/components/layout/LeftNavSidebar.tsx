@@ -44,7 +44,7 @@ export function LeftNavSidebar({ activeFeature, onFeatureChange, rooms, currentR
           className="flex items-center gap-2.5 w-full rounded-md px-2.5 py-2 text-sm text-foreground hover:bg-black/5 transition-colors"
         >
           <MessageSquareText className="w-4 h-4 text-muted-foreground" />
-          <span>新建群聊</span>
+          <span>新建频道</span>
         </button>
 
         {NAV_ITEMS.map((item) => {
@@ -69,7 +69,7 @@ export function LeftNavSidebar({ activeFeature, onFeatureChange, rooms, currentR
       {/* Room list section */}
       <div className="flex-1 flex flex-col overflow-hidden">
         <div className="flex items-center justify-between px-3 pt-3 pb-1.5">
-          <span className="text-xs font-medium text-muted-foreground/70 uppercase tracking-wider">群聊</span>
+          <span className="text-xs font-medium text-muted-foreground/70 uppercase tracking-wider">频道</span>
           <div className="flex items-center gap-0.5">
             <button
               onClick={() => setCreateDialogOpen(true)}

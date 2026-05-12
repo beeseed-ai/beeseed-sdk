@@ -2,11 +2,12 @@ import { useState } from 'react'
 import { Bot, Users, MessageSquare, Settings } from 'lucide-react'
 import { cn } from '../../lib/cn.js'
 import { AgentManageTab } from './AgentManageTab.js'
+import { UserManageTab } from './UserManageTab.js'
 
 const tabs = [
   { id: 'agents', label: 'Agent 管理', icon: Bot },
   { id: 'users', label: '用户管理', icon: Users },
-  { id: 'rooms', label: 'Room 管理', icon: MessageSquare },
+  { id: 'rooms', label: '频道管理', icon: MessageSquare },
   { id: 'settings', label: '设置', icon: Settings },
 ] as const
 
@@ -41,8 +42,8 @@ export function AdminPanel() {
 
       <div className="flex-1 overflow-hidden">
         {activeTab === 'agents' && <AgentManageTab />}
-        {activeTab === 'users' && <Placeholder label="用户管理" />}
-        {activeTab === 'rooms' && <Placeholder label="Room 管理" />}
+        {activeTab === 'users' && <UserManageTab />}
+        {activeTab === 'rooms' && <Placeholder label="频道管理" />}
         {activeTab === 'settings' && <Placeholder label="设置" />}
       </div>
     </div>

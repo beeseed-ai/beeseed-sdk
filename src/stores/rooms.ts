@@ -22,7 +22,7 @@ export interface RoomsStoreConfig {
 export function createRoomsStore(config: RoomsStoreConfig) {
   return createStore<RoomsState>()((set, get) => ({
     rooms: [],
-    currentRoomId: null,
+    currentRoomId: (() => { try { return sessionStorage.getItem('beeseed_current_room') } catch { return null } })(),
     loading: false,
 
     fetchRooms: async () => {
@@ -35,7 +35,10 @@ export function createRoomsStore(config: RoomsStoreConfig) {
       }
     },
 
-    setCurrentRoom: (roomId) => set({ currentRoomId: roomId }),
+    setCurrentRoom: (roomId) => {
+      try { if (roomId) sessionStorage.setItem('beeseed_current_room', roomId); else sessionStorage.removeItem('beeseed_current_room') } catch {}
+      set({ currentRoomId: roomId })
+    },
 
     setRooms: (rooms) => set({ rooms }),
 
