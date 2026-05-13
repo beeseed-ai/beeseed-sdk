@@ -3,6 +3,7 @@ import type { ChatMessage } from '../../core/types.js'
 import { cn } from '../../lib/cn.js'
 import { useAuth } from '../../hooks/use-auth.js'
 import { useChat } from '../../hooks/use-chat.js'
+import { useDetailPanel } from '../../hooks/use-detail-panel.js'
 import { MessageList } from './MessageList.js'
 import { MessageInput } from './MessageInput.js'
 
@@ -17,6 +18,7 @@ interface Props {
 export function ChatRoom({ roomId, className, header }: Props) {
   const { user } = useAuth()
   const { messages, stream, agentLoop, members, typing, send, sendWithQuote, submitAnswer, stopAgent, loading } = useChat(roomId)
+  const { composerInsertText, consumeComposerInsert } = useDetailPanel()
   const [quotedMessage, setQuotedMessage] = useState<ChatMessage | null>(null)
 
   const handleSend = useCallback((content: string) => {
@@ -57,6 +59,8 @@ export function ChatRoom({ roomId, className, header }: Props) {
           members={members}
           quotedMessage={quotedMessage}
           onClearQuote={() => setQuotedMessage(null)}
+          insertText={composerInsertText}
+          onInsertTextConsumed={consumeComposerInsert}
         />
       </div>
     </div>

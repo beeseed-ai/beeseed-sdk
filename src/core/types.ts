@@ -336,6 +336,11 @@ export interface StoragePolicy {
   members_can_delete_own: boolean
 }
 
+export interface StorageUsage {
+  objects: number
+  bytes: number
+}
+
 // ── Notifications ──
 
 export interface AppNotification {

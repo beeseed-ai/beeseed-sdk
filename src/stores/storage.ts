@@ -1,6 +1,6 @@
 import { createStore } from 'zustand/vanilla'
 import type { KyInstance } from 'ky'
-import type { StorageObject, StoragePolicy } from '../core/types.js'
+import type { StorageObject, StoragePolicy, StorageUsage } from '../core/types.js'
 import { MOCK_OBJECTS, MOCK_DIRECTORIES } from '../mocks/storage.js'
 
 export interface StorageState {
@@ -12,6 +12,7 @@ export interface StorageState {
   uploadProgress: number
   uploadError: string | null
   policy: StoragePolicy
+  usage: StorageUsage
   canUpload: boolean
   searchQuery: string
   previewObj: StorageObject | null
@@ -43,6 +44,7 @@ export function createStorageStore(config: StorageStoreConfig) {
     uploadProgress: 0,
     uploadError: null,
     policy: { enabled: true, visibility: 'room', members_can_upload: true, members_can_delete_own: true },
+    usage: { objects: 0, bytes: 0 },
     canUpload: true,
     searchQuery: '',
     previewObj: null,
@@ -55,12 +57,12 @@ export function createStorageStore(config: StorageStoreConfig) {
           .map((d) => d.slice(pfx.length).split('/')[0] + '/')
           .filter((v, i, a) => a.indexOf(v) === i)
         const objs = MOCK_OBJECTS.filter((o) => o.key.startsWith(pfx) && !o.key.slice(pfx.length).includes('/'))
-        set({ directories: dirs, objects: objs, loading: false })
+        set({ directories: dirs, objects: objs, usage: { objects: MOCK_OBJECTS.length, bytes: MOCK_OBJECTS.reduce((sum, obj) => sum + obj.size, 0) }, loading: false })
         return
       }
       try {
-        const data = await config.api.get(`rooms/${roomId}/storage`, { searchParams: prefix ? { prefix } : {} }).json<{ objects: StorageObject[]; common_prefixes: string[]; policy?: StoragePolicy; capabilities?: { can_upload?: boolean } }>()
-        set({ objects: data.objects || [], directories: data.common_prefixes || [], policy: data.policy || get().policy, canUpload: data.capabilities?.can_upload ?? get().canUpload, loading: false })
+        const data = await config.api.get(`rooms/${roomId}/storage`, { searchParams: prefix ? { prefix } : {} }).json<{ objects: StorageObject[]; common_prefixes: string[]; policy?: StoragePolicy; usage?: StorageUsage; capabilities?: { can_upload?: boolean } }>()
+        set({ objects: data.objects || [], directories: data.common_prefixes || [], policy: data.policy || get().policy, usage: data.usage || get().usage, canUpload: data.capabilities?.can_upload ?? get().canUpload, loading: false })
       } catch { set({ loading: false }) }
     },
 
@@ -131,7 +133,7 @@ export function createStorageStore(config: StorageStoreConfig) {
       return crumbs
     },
 
-    reset: () => set({ objects: [], directories: [], currentPrefix: '', loading: false, uploading: false, uploadProgress: 0, uploadError: null, policy: { enabled: true, visibility: 'room', members_can_upload: true, members_can_delete_own: true }, canUpload: true, searchQuery: '', previewObj: null }),
+    reset: () => set({ objects: [], directories: [], currentPrefix: '', loading: false, uploading: false, uploadProgress: 0, uploadError: null, policy: { enabled: true, visibility: 'room', members_can_upload: true, members_can_delete_own: true }, usage: { objects: 0, bytes: 0 }, canUpload: true, searchQuery: '', previewObj: null }),
   }))
 }
 

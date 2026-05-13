@@ -11,11 +11,14 @@ export interface DetailPanelState {
   panelVisible: boolean
   sections: AccordionSections
   activeFeature: FeatureView
+  composerInsertText: string | null
 
   togglePanel: () => void
   setPanel: (visible: boolean) => void
   toggleSection: (key: keyof AccordionSections) => void
   setActiveFeature: (feature: FeatureView) => void
+  insertIntoComposer: (text: string) => void
+  consumeComposerInsert: () => void
   reset: () => void
 }
 
@@ -26,6 +29,7 @@ export function createDetailPanelStore() {
     panelVisible: false,
     sections: { ...DEFAULT_SECTIONS },
     activeFeature: (typeof sessionStorage !== 'undefined' && sessionStorage.getItem('beeseed-feature') as FeatureView) || 'chat',
+    composerInsertText: null,
 
     togglePanel: () => set({ panelVisible: !get().panelVisible }),
     setPanel: (visible) => set({ panelVisible: visible }),
@@ -44,7 +48,10 @@ export function createDetailPanelStore() {
       })
     },
 
-    reset: () => set({ panelVisible: false, sections: { ...DEFAULT_SECTIONS }, activeFeature: 'chat' }),
+    insertIntoComposer: (text) => set({ composerInsertText: text }),
+    consumeComposerInsert: () => set({ composerInsertText: null }),
+
+    reset: () => set({ panelVisible: false, sections: { ...DEFAULT_SECTIONS }, activeFeature: 'chat', composerInsertText: null }),
   }))
 }
 

@@ -1,9 +1,11 @@
-import { Plus, Search, Upload, ChevronDown, ChevronRight, FileText, Users, ListChecks, FolderOpen } from 'lucide-react'
+import { Plus, Search, Upload, ChevronDown, ChevronRight, FileText, Users, ListChecks, FolderOpen, MessageSquareQuote } from 'lucide-react'
 import { useState } from 'react'
 import type { RoomMemberInfo, Task, StorageObject } from '../../core/types.js'
 import { cn } from '../../lib/cn.js'
 import { formatBytes, formatTime } from '../../lib/format.js'
+import { storageRefFromKey } from '../../lib/storage-ref.js'
 import { useDetailPanel } from '../../hooks/use-detail-panel.js'
+import { useStorage } from '../../hooks/use-storage.js'
 import { Avatar, AvatarFallback, AvatarImage } from '../ui/avatar.js'
 
 interface Props {
@@ -16,7 +18,8 @@ interface Props {
 }
 
 export function DetailPanel({ roomId, members = [], tasks = [], files = [], onCreateTask, className }: Props) {
-  const { panelVisible } = useDetailPanel()
+  const { panelVisible, insertIntoComposer } = useDetailPanel()
+  const { objects: storageObjects, uploadFile } = useStorage(roomId)
   const [tasksOpen, setTasksOpen] = useState(true)
   const [filesOpen, setFilesOpen] = useState(true)
   const [membersOpen, setMembersOpen] = useState(true)
@@ -25,6 +28,16 @@ export function DetailPanel({ roomId, members = [], tasks = [], files = [], onCr
 
   const agents = members.filter((m) => m.member_type === 'agent')
   const users = members.filter((m) => m.member_type === 'user')
+  const roomFiles = storageObjects.length > 0 ? storageObjects : files
+
+  function referenceFile(file: StorageObject) {
+    insertIntoComposer(storageRefFromKey(file.key))
+  }
+
+  async function uploadFromPicker(file: File | undefined) {
+    if (!file) return
+    await uploadFile(file)
+  }
 
   return (
     <div className={cn('w-[300px] shrink-0 border-l border-border bg-background flex flex-col overflow-hidden', className)}>
@@ -72,19 +85,29 @@ export function DetailPanel({ roomId, members = [], tasks = [], files = [], onCr
                 <span className="text-[10px] text-muted-foreground">当前对话</span>
                 <div className="flex-1" />
                 <Search className="w-3 h-3 text-muted-foreground cursor-pointer" />
-                <Upload className="w-3 h-3 text-muted-foreground cursor-pointer" />
+                <label className="cursor-pointer">
+                  <Upload className="w-3 h-3 text-muted-foreground" />
+                  <input type="file" className="hidden" onChange={(e) => { void uploadFromPicker(e.target.files?.[0]); e.target.value = '' }} />
+                </label>
               </div>
-              {files.length === 0 ? (
+              {roomFiles.length === 0 ? (
                 <div className="text-xs text-muted-foreground/60 py-2">暂无文件</div>
               ) : (
                 <div className="space-y-1.5">
-                  {files.slice(0, 5).map((f) => (
-                    <div key={f.key} className="flex items-start gap-2 py-1 cursor-pointer hover:bg-muted/30 rounded px-1 -mx-1 transition-colors">
+                  {roomFiles.slice(0, 5).map((f) => (
+                    <div key={f.key} className="group flex items-start gap-2 py-1 hover:bg-muted/30 rounded px-1 -mx-1 transition-colors">
                       <FileText className="w-4 h-4 text-blue-500 mt-0.5 shrink-0" />
-                      <div className="min-w-0">
+                      <div className="min-w-0 flex-1">
                         <div className="text-xs truncate">{f.key.split('/').pop()}</div>
                         <div className="text-[10px] text-muted-foreground">{formatBytes(f.size)} · {formatTime(f.last_modified)}</div>
                       </div>
+                      <button
+                        title="引用到聊天"
+                        className="hidden rounded p-1 text-muted-foreground hover:bg-muted group-hover:block"
+                        onClick={() => referenceFile(f)}
+                      >
+                        <MessageSquareQuote className="h-3.5 w-3.5" />
+                      </button>
                     </div>
                   ))}
                 </div>

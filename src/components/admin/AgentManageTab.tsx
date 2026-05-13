@@ -16,7 +16,16 @@ interface AgentConfig {
 
 interface Selection { roomId: string; agentId: string; key: string }
 
-const ALL_TOOLS = ['shell', 'file_read', 'file_write', 'file_edit', 'glob_search', 'content_search', 'http_request', 'state']
+const ALL_TOOLS = [
+  'http_request',
+  'storage_list',
+  'storage_read',
+  'storage_write',
+  'storage_delete',
+  'storage_presign_download',
+]
+const ALL_TOOL_NAMES = new Set(ALL_TOOLS)
+const sanitizeTools = (tools: string[] = []) => tools.filter((tool) => ALL_TOOL_NAMES.has(tool))
 
 export function AgentManageTab() {
   const { api } = useBeeSeedContext()
@@ -67,7 +76,7 @@ export function AgentManageTab() {
         api.get(`${basePath}/config`).json<AgentConfig>(),
       ])
       setIdentity(id)
-      setAgentConfig(cfg)
+      setAgentConfig({ ...cfg, tools: sanitizeTools(cfg.tools || []) })
       setDirty(false)
     } catch {
       setIdentity({ name: agentId, personality: '', content: '' })
@@ -101,7 +110,7 @@ export function AgentManageTab() {
 
   const toggleTool = (tool: string) => {
     if (!agentConfig) return
-    const tools = agentConfig.tools || []
+    const tools = sanitizeTools(agentConfig.tools || [])
     const next = tools.includes(tool) ? tools.filter((t) => t !== tool) : [...tools, tool]
     setAgentConfig({ ...agentConfig, tools: next })
     setDirty(true)

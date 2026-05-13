@@ -181,7 +181,11 @@ export function MessageBubble({
                 )}
               </div>
             ) : isUser ? (
-              <span className="whitespace-pre-wrap break-words">{message.content}</span>
+              <MarkdownRenderer
+                content={message.content}
+                className="prose prose-sm max-w-none break-words text-inherit [&_p]:my-1 [&_p:first-child]:mt-0 [&_p:last-child]:mb-0"
+                onMentionClick={onMentionClick}
+              />
             ) : (
               <MarkdownRenderer
                 content={message.content}

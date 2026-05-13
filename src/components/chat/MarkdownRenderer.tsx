@@ -4,19 +4,20 @@ import remarkGfm from 'remark-gfm'
 import remarkBreaks from 'remark-breaks'
 import { isLikelyFilePath } from '../../lib/file-path-utils.js'
 import { cn } from '../../lib/cn.js'
+import { STORAGE_REF_RE, StorageRefChip } from '../../lib/storage-ref.js'
 
 const MENTION_RE = /@([一-鿿\w][一-鿿\w\-]*)/g
 
-function processMentions(
+function processInlineTokens(
   children: ReactNode,
   onMentionClick?: (name: string) => void,
+  onStorageRefClick?: (key: string) => void,
 ): ReactNode {
-  if (!onMentionClick) return children
-  if (typeof children === 'string') return splitMentions(children, onMentionClick)
+  if (typeof children === 'string') return splitInlineTokens(children, onMentionClick, onStorageRefClick)
   if (Array.isArray(children)) {
     return children.map((child, i) => {
       if (typeof child === 'string') {
-        const result = splitMentions(child, onMentionClick)
+        const result = splitInlineTokens(child, onMentionClick, onStorageRefClick)
         if (Array.isArray(result)) {
           return result.map((el, j) =>
             typeof el === 'string' ? el : <span key={`${i}-${j}`}>{el}</span>,
@@ -30,10 +31,45 @@ function processMentions(
   return children
 }
 
-function splitMentions(text: string, onMentionClick: (name: string) => void): ReactNode {
-  const parts: ReactNode[] = []
+function splitInlineTokens(
+  text: string,
+  onMentionClick?: (name: string) => void,
+  onStorageRefClick?: (key: string) => void,
+): ReactNode {
+  const storageParts: ReactNode[] = []
   let lastIndex = 0
 
+  STORAGE_REF_RE.lastIndex = 0
+  let storageMatch: RegExpExecArray | null
+  while ((storageMatch = STORAGE_REF_RE.exec(text)) !== null) {
+    const full = storageMatch[0]
+    const idx = storageMatch.index
+    if (idx > lastIndex) storageParts.push(text.slice(lastIndex, idx))
+    storageParts.push(<StorageRefChip key={`storage-${idx}`} refText={full} onClick={onStorageRefClick} />)
+    lastIndex = idx + full.length
+  }
+  if (storageParts.length === 0) {
+    storageParts.push(text)
+  } else if (lastIndex < text.length) {
+    storageParts.push(text.slice(lastIndex))
+  }
+
+  if (!onMentionClick) return storageParts.length === 1 ? storageParts[0] : storageParts
+
+  const parts: ReactNode[] = []
+  for (const part of storageParts) {
+    if (typeof part !== 'string') {
+      parts.push(part)
+      continue
+    }
+    appendMentionParts(parts, part, onMentionClick)
+  }
+
+  return parts.length === 1 ? parts[0] : parts
+}
+
+function appendMentionParts(parts: ReactNode[], text: string, onMentionClick: (name: string) => void) {
+  let lastIndex = 0
   MENTION_RE.lastIndex = 0
   let match: RegExpExecArray | null
   while ((match = MENTION_RE.exec(text)) !== null) {
@@ -52,9 +88,7 @@ function splitMentions(text: string, onMentionClick: (name: string) => void): Re
     lastIndex = idx + full.length
   }
 
-  if (parts.length === 0) return text
   if (lastIndex < text.length) parts.push(text.slice(lastIndex))
-  return parts
 }
 
 interface MarkdownRendererProps {
@@ -62,6 +96,7 @@ interface MarkdownRendererProps {
   className?: string
   onMentionClick?: (name: string) => void
   onFileClick?: (path: string) => void
+  onStorageRefClick?: (key: string) => void
 }
 
 export const MarkdownRenderer = memo(function MarkdownRenderer({
@@ -69,6 +104,7 @@ export const MarkdownRenderer = memo(function MarkdownRenderer({
   className,
   onMentionClick,
   onFileClick,
+  onStorageRefClick,
 }: MarkdownRendererProps) {
   const processed = useMemo(() => {
     return content
@@ -82,7 +118,7 @@ export const MarkdownRenderer = memo(function MarkdownRenderer({
         remarkPlugins={[remarkGfm, remarkBreaks]}
         components={{
           p(props: { children?: ReactNode }) {
-            const withMentions = processMentions(props.children, onMentionClick)
+            const withMentions = processInlineTokens(props.children, onMentionClick, onStorageRefClick)
             return <p className="my-1 leading-relaxed">{withMentions}</p>
           },
           code(props: { className?: string; children?: ReactNode }) {
@@ -95,6 +131,9 @@ export const MarkdownRenderer = memo(function MarkdownRenderer({
               )
             }
             const text = String(props.children).replace(/\n$/, '')
+            if (text.startsWith('storage://')) {
+              return <StorageRefChip refText={text} onClick={onStorageRefClick} />
+            }
             if (onFileClick && isLikelyFilePath(text)) {
               return (
                 <span
@@ -115,6 +154,9 @@ export const MarkdownRenderer = memo(function MarkdownRenderer({
             return <>{props.children}</>
           },
           a(props: { children?: ReactNode; href?: string }) {
+            if (props.href?.startsWith('storage://')) {
+              return <StorageRefChip refText={props.href} onClick={onStorageRefClick} />
+            }
             return (
               <a
                 className="text-blue-600 hover:underline"

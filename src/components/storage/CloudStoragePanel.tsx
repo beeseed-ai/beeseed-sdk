@@ -1,7 +1,9 @@
 import { useRef } from 'react'
-import { AlertCircle, Download, File, FolderOpen, Search, Trash2, Upload, X } from 'lucide-react'
+import { AlertCircle, Download, File, FolderOpen, MessageSquareQuote, Search, Trash2, Upload, X } from 'lucide-react'
 import { useStorage } from '../../hooks/use-storage.js'
+import { useDetailPanel } from '../../hooks/use-detail-panel.js'
 import { formatBytes } from '../../lib/format.js'
+import { storageRefFromKey } from '../../lib/storage-ref.js'
 import { Input } from '../ui/input.js'
 import { Button } from '../ui/button.js'
 
@@ -10,6 +12,7 @@ interface Props {
 }
 
 export function CloudStoragePanel({ roomId }: Props) {
+  const { insertIntoComposer, setActiveFeature, setPanel } = useDetailPanel()
   const {
     objects,
     directories,
@@ -19,6 +22,7 @@ export function CloudStoragePanel({ roomId }: Props) {
     uploadProgress,
     uploadError,
     policy,
+    usage,
     canUpload,
     searchQuery,
     breadcrumbs,
@@ -51,13 +55,19 @@ export function CloudStoragePanel({ roomId }: Props) {
     if (url) window.open(url, '_blank')
   }
 
+  function handleReference(key: string) {
+    insertIntoComposer(storageRefFromKey(key))
+    setActiveFeature('chat')
+    setPanel(true)
+  }
+
   return (
     <div className="flex-1 flex flex-col overflow-hidden">
       <div className="flex items-center gap-2 px-4 py-3 border-b border-border">
         <div>
           <h2 className="text-sm font-semibold">文件存储</h2>
           <div className="text-[11px] text-muted-foreground">
-            {policy.visibility === 'shared' ? '共享空间' : '个人空间'} · {directories.length + objects.length > 0 ? `${directories.length} 个文件夹 · ${objects.length} 个文件` : '当前目录'}
+            {policy.visibility === 'shared' ? '共享空间' : '个人空间'} · {directories.length + objects.length > 0 ? `${directories.length} 个文件夹 · ${objects.length} 个文件` : '当前目录'} · 已用 {formatBytes(usage.bytes)}
           </div>
         </div>
         <div className="flex-1" />
@@ -152,12 +162,21 @@ export function CloudStoragePanel({ roomId }: Props) {
                   </div>
                 </div>
                 <button
+                  title="引用到聊天"
+                  onClick={() => handleReference(obj.key)}
+                  className="hidden group-hover:block p-1 rounded hover:bg-muted transition-colors"
+                >
+                  <MessageSquareQuote className="w-3.5 h-3.5 text-muted-foreground" />
+                </button>
+                <button
+                  title="下载"
                   onClick={() => void handleDownload(obj.key)}
                   className="hidden group-hover:block p-1 rounded hover:bg-muted transition-colors"
                 >
                   <Download className="w-3.5 h-3.5 text-muted-foreground" />
                 </button>
                 <button
+                  title="删除"
                   onClick={() => deleteFile(obj.key)}
                   className="hidden group-hover:block p-1 rounded hover:bg-destructive/10 transition-colors"
                 >

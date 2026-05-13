@@ -1,4 +1,4 @@
-import { useRef, useCallback, useState, type KeyboardEvent, type ChangeEvent } from 'react'
+import { useRef, useCallback, useEffect, useState, type KeyboardEvent, type ChangeEvent } from 'react'
 import { X, Plus, AtSign, Zap, ListChecks, Workflow, ArrowUp } from 'lucide-react'
 import type { ChatMessage, RoomMemberInfo } from '../../core/types.js'
 import { cn } from '../../lib/cn.js'
@@ -13,6 +13,8 @@ interface Props {
   quotedMessage?: ChatMessage | null
   onClearQuote?: () => void
   onImageSelect?: (file: File) => void
+  insertText?: string | null
+  onInsertTextConsumed?: () => void
 }
 
 export function MessageInput({
@@ -24,6 +26,8 @@ export function MessageInput({
   quotedMessage,
   onClearQuote,
   onImageSelect,
+  insertText,
+  onInsertTextConsumed,
 }: Props) {
   const ref = useRef<HTMLTextAreaElement>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
@@ -40,6 +44,25 @@ export function MessageInput({
     el.style.height = 'auto'
     el.style.height = Math.min(el.scrollHeight, 120) + 'px'
   }, [])
+
+  useEffect(() => {
+    if (!insertText) return
+    const el = ref.current
+    if (!el) return
+    const start = el.selectionStart ?? el.value.length
+    const end = el.selectionEnd ?? el.value.length
+    const before = el.value.slice(0, start)
+    const after = el.value.slice(end)
+    const prefix = before.length > 0 && !before.endsWith('\n') && !before.endsWith(' ') ? ' ' : ''
+    const suffix = after.length > 0 && !after.startsWith('\n') && !after.startsWith(' ') ? ' ' : ''
+    const text = `${prefix}${insertText}${suffix}`
+    el.value = before + text + after
+    const cursor = before.length + text.length
+    el.setSelectionRange(cursor, cursor)
+    autoResize()
+    el.focus()
+    onInsertTextConsumed?.()
+  }, [insertText, onInsertTextConsumed, autoResize])
 
   const insertMention = useCallback((member: RoomMemberInfo) => {
     const el = ref.current

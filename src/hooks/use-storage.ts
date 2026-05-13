@@ -20,6 +20,7 @@ export function useStorage(roomId: string | null) {
     uploadProgress: state.uploadProgress,
     uploadError: state.uploadError,
     policy: state.policy,
+    usage: state.usage,
     canUpload: state.canUpload,
     searchQuery: state.searchQuery,
     previewObj: state.previewObj,
