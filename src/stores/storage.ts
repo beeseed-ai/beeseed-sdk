@@ -1,6 +1,6 @@
 import { createStore } from 'zustand/vanilla'
 import type { KyInstance } from 'ky'
-import type { StorageObject } from '../core/types.js'
+import type { StorageObject, StoragePolicy } from '../core/types.js'
 import { MOCK_OBJECTS, MOCK_DIRECTORIES } from '../mocks/storage.js'
 
 export interface StorageState {
@@ -8,11 +8,19 @@ export interface StorageState {
   directories: string[]
   currentPrefix: string
   loading: boolean
+  uploading: boolean
+  uploadProgress: number
+  uploadError: string | null
+  policy: StoragePolicy
+  canUpload: boolean
   searchQuery: string
   previewObj: StorageObject | null
 
   browse: (roomId: string, prefix?: string) => Promise<void>
+  uploadFile: (roomId: string, file: File, prefix?: string) => Promise<void>
+  downloadFile: (roomId: string, key: string) => Promise<string | null>
   deleteFile: (roomId: string, key: string) => Promise<void>
+  clearUploadError: () => void
   setSearchQuery: (q: string) => void
   setPreviewObj: (obj: StorageObject | null) => void
   filteredObjects: () => StorageObject[]
@@ -31,6 +39,11 @@ export function createStorageStore(config: StorageStoreConfig) {
     directories: [],
     currentPrefix: '',
     loading: false,
+    uploading: false,
+    uploadProgress: 0,
+    uploadError: null,
+    policy: { enabled: true, visibility: 'room', members_can_upload: true, members_can_delete_own: true },
+    canUpload: true,
     searchQuery: '',
     previewObj: null,
 
@@ -46,9 +59,50 @@ export function createStorageStore(config: StorageStoreConfig) {
         return
       }
       try {
-        const data = await config.api.get(`rooms/${roomId}/storage`, { searchParams: prefix ? { prefix } : {} }).json<{ objects: StorageObject[]; common_prefixes: string[] }>()
-        set({ objects: data.objects || [], directories: data.common_prefixes || [], loading: false })
+        const data = await config.api.get(`rooms/${roomId}/storage`, { searchParams: prefix ? { prefix } : {} }).json<{ objects: StorageObject[]; common_prefixes: string[]; policy?: StoragePolicy; capabilities?: { can_upload?: boolean } }>()
+        set({ objects: data.objects || [], directories: data.common_prefixes || [], policy: data.policy || get().policy, canUpload: data.capabilities?.can_upload ?? get().canUpload, loading: false })
       } catch { set({ loading: false }) }
+    },
+
+    uploadFile: async (roomId, file, prefix = get().currentPrefix) => {
+      set({ uploading: true, uploadProgress: 0, uploadError: null })
+      if (config.useMock) {
+        const key = `${prefix || ''}${file.name}`
+        set({ objects: [{ key, name: file.name, size: file.size, content_type: file.type || 'application/octet-stream', last_modified: new Date().toISOString(), status: 'available' }, ...get().objects] })
+        set({ uploading: false, uploadProgress: 100 })
+        return
+      }
+      try {
+        const presign = await config.api.post(`rooms/${roomId}/storage/presign-upload`, {
+          json: { file_name: file.name, content_type: file.type || 'application/octet-stream', size: file.size, prefix },
+        }).json<{ object: StorageObject; upload_url: string; method: string; headers?: Record<string, string> }>()
+
+        const headers = presign.headers && Object.keys(presign.headers).length > 0 ? presign.headers : undefined
+        const uploadBody = file.slice(0, file.size, '')
+        await uploadWithProgress(presign.upload_url, presign.method || 'PUT', uploadBody, headers, (progress) => {
+          set({ uploadProgress: progress })
+        })
+
+        await config.api.post(`rooms/${roomId}/storage/complete-upload`, {
+          json: { object_id: presign.object.id },
+        })
+        set({ uploadProgress: 100 })
+        await get().browse(roomId, prefix)
+      } catch (err) {
+        const message = err instanceof Error ? err.message : '上传失败'
+        set({ uploadError: message })
+        throw err
+      } finally {
+        set({ uploading: false })
+      }
+    },
+
+    downloadFile: async (roomId, key) => {
+      if (config.useMock) return null
+      const data = await config.api.post(`rooms/${roomId}/storage/presign-download`, {
+        json: { key },
+      }).json<{ url: string }>()
+      return data.url
     },
 
     deleteFile: async (roomId, key) => {
@@ -59,6 +113,7 @@ export function createStorageStore(config: StorageStoreConfig) {
       } catch { /* */ }
     },
 
+    clearUploadError: () => set({ uploadError: null }),
     setSearchQuery: (q) => set({ searchQuery: q }),
     setPreviewObj: (obj) => set({ previewObj: obj }),
 
@@ -76,8 +131,38 @@ export function createStorageStore(config: StorageStoreConfig) {
       return crumbs
     },
 
-    reset: () => set({ objects: [], directories: [], currentPrefix: '', loading: false, searchQuery: '', previewObj: null }),
+    reset: () => set({ objects: [], directories: [], currentPrefix: '', loading: false, uploading: false, uploadProgress: 0, uploadError: null, policy: { enabled: true, visibility: 'room', members_can_upload: true, members_can_delete_own: true }, canUpload: true, searchQuery: '', previewObj: null }),
   }))
 }
 
 export type StorageStore = ReturnType<typeof createStorageStore>
+
+function uploadWithProgress(
+  url: string,
+  method: string,
+  body: Blob,
+  headers: Record<string, string> | undefined,
+  onProgress: (progress: number) => void,
+) {
+  return new Promise<void>((resolve, reject) => {
+    const xhr = new XMLHttpRequest()
+    xhr.open(method, url)
+    if (headers) {
+      Object.entries(headers).forEach(([key, value]) => xhr.setRequestHeader(key, value))
+    }
+    xhr.upload.onprogress = (event) => {
+      if (!event.lengthComputable) return
+      onProgress(Math.max(1, Math.min(99, Math.round((event.loaded / event.total) * 100))))
+    }
+    xhr.onload = () => {
+      if (xhr.status >= 200 && xhr.status < 300) {
+        resolve()
+        return
+      }
+      reject(new Error(`上传失败：HTTP ${xhr.status}`))
+    }
+    xhr.onerror = () => reject(new Error('上传失败：网络或跨域请求被拒绝'))
+    xhr.onabort = () => reject(new Error('上传已取消'))
+    xhr.send(body)
+  })
+}

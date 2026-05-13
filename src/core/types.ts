@@ -317,10 +317,20 @@ export interface KnowledgeGraphData {
 // ── Storage ──
 
 export interface StorageObject {
+  id?: string
   key: string
+  name?: string
   size: number
   last_modified: string
   content_type: string
+  status?: string
+}
+
+export interface StoragePolicy {
+  enabled: boolean
+  visibility: 'room' | 'shared'
+  members_can_upload: boolean
+  members_can_delete_own: boolean
 }
 
 // ── Notifications ──

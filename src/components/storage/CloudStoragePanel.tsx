@@ -1,24 +1,71 @@
-import { FolderOpen, File, Trash2, Search } from 'lucide-react'
+import { useRef } from 'react'
+import { AlertCircle, Download, File, FolderOpen, Search, Trash2, Upload, X } from 'lucide-react'
 import { useStorage } from '../../hooks/use-storage.js'
 import { formatBytes } from '../../lib/format.js'
 import { Input } from '../ui/input.js'
+import { Button } from '../ui/button.js'
 
 interface Props {
   roomId: string | null
 }
 
 export function CloudStoragePanel({ roomId }: Props) {
-  const { objects, directories, loading, searchQuery, breadcrumbs, browse, deleteFile, setSearchQuery } = useStorage(roomId)
+  const {
+    objects,
+    directories,
+    currentPrefix,
+    loading,
+    uploading,
+    uploadProgress,
+    uploadError,
+    policy,
+    canUpload,
+    searchQuery,
+    breadcrumbs,
+    browse,
+    uploadFile,
+    downloadFile,
+    deleteFile,
+    clearUploadError,
+    setSearchQuery,
+  } = useStorage(roomId)
+  const fileRef = useRef<HTMLInputElement>(null)
 
   if (!roomId) {
     return <div className="flex-1 flex items-center justify-center text-muted-foreground text-sm">选择一个对话查看文件</div>
   }
 
+  async function handleUpload(file: File | undefined) {
+    if (!file || !canUpload) return
+    try {
+      await uploadFile(file, currentPrefix)
+    } catch {
+      // The store owns the visible upload error state.
+    } finally {
+      if (fileRef.current) fileRef.current.value = ''
+    }
+  }
+
+  async function handleDownload(key: string) {
+    const url = await downloadFile(key)
+    if (url) window.open(url, '_blank')
+  }
+
   return (
     <div className="flex-1 flex flex-col overflow-hidden">
       <div className="flex items-center gap-2 px-4 py-3 border-b border-border">
-        <h2 className="text-sm font-semibold">文件存储</h2>
+        <div>
+          <h2 className="text-sm font-semibold">文件存储</h2>
+          <div className="text-[11px] text-muted-foreground">
+            {policy.visibility === 'shared' ? '共享空间' : '个人空间'} · {directories.length + objects.length > 0 ? `${directories.length} 个文件夹 · ${objects.length} 个文件` : '当前目录'}
+          </div>
+        </div>
         <div className="flex-1" />
+        <Button size="sm" variant="outline" className="h-7 px-2 text-xs" disabled={uploading || !canUpload} onClick={() => fileRef.current?.click()}>
+          <Upload className="w-3.5 h-3.5 mr-1" />
+          {uploading ? '上传中' : canUpload ? '上传' : '只读'}
+        </Button>
+        <input ref={fileRef} type="file" className="hidden" onChange={(e) => void handleUpload(e.target.files?.[0])} />
         <div className="relative w-48">
           <Search className="absolute left-2 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground" />
           <Input
@@ -42,11 +89,47 @@ export function CloudStoragePanel({ roomId }: Props) {
         ))}
       </div>
 
+      {(uploading || uploadError) && (
+        <div className="border-b border-border px-4 py-2">
+          {uploading ? (
+            <div className="space-y-1.5">
+              <div className="flex items-center justify-between text-xs">
+                <span className="text-foreground">正在上传</span>
+                <span className="text-muted-foreground">{uploadProgress}%</span>
+              </div>
+              <div className="h-1.5 overflow-hidden rounded-full bg-muted">
+                <div className="h-full rounded-full bg-foreground transition-all" style={{ width: `${uploadProgress}%` }} />
+              </div>
+            </div>
+          ) : (
+            <div className="flex items-center gap-2 rounded-md border border-destructive/30 bg-destructive/5 px-2.5 py-2 text-xs text-destructive">
+              <AlertCircle className="h-3.5 w-3.5 shrink-0" />
+              <span className="min-w-0 flex-1 truncate">{uploadError}</span>
+              <button className="rounded p-0.5 hover:bg-destructive/10" onClick={clearUploadError} aria-label="关闭错误">
+                <X className="h-3.5 w-3.5" />
+              </button>
+            </div>
+          )}
+        </div>
+      )}
+
       <div className="flex-1 overflow-y-auto">
         {loading ? (
           <div className="text-center text-sm text-muted-foreground py-8">加载中...</div>
         ) : directories.length === 0 && objects.length === 0 ? (
-          <div className="text-center text-sm text-muted-foreground py-8">暂无文件</div>
+          <div className="flex h-full flex-col items-center justify-center gap-3 px-6 text-center">
+            <div className="flex h-10 w-10 items-center justify-center rounded-md border border-border bg-muted/40">
+              <File className="h-5 w-5 text-muted-foreground" />
+            </div>
+            <div>
+              <div className="text-sm font-medium text-foreground">当前目录暂无文件</div>
+              <div className="mt-1 text-xs text-muted-foreground">当前目录是空的。</div>
+            </div>
+            <Button size="sm" variant="outline" className="h-8 px-3 text-xs" disabled={uploading || !canUpload} onClick={() => fileRef.current?.click()}>
+              <Upload className="mr-1 h-3.5 w-3.5" />
+              {canUpload ? '上传文件' : '只读空间'}
+            </Button>
+          </div>
         ) : (
           <div className="divide-y divide-border">
             {directories.map((dir) => (
@@ -63,11 +146,17 @@ export function CloudStoragePanel({ roomId }: Props) {
               <div key={obj.key} className="flex items-center gap-3 px-4 py-2 group">
                 <File className="w-4 h-4 text-blue-500" />
                 <div className="flex-1 min-w-0">
-                  <div className="text-sm truncate">{obj.key.split('/').pop()}</div>
+                  <div className="text-sm truncate">{obj.name || obj.key.split('/').pop()}</div>
                   <div className="text-[10px] text-muted-foreground">
                     {formatBytes(obj.size)} · {new Date(obj.last_modified).toLocaleDateString('zh-CN')}
                   </div>
                 </div>
+                <button
+                  onClick={() => void handleDownload(obj.key)}
+                  className="hidden group-hover:block p-1 rounded hover:bg-muted transition-colors"
+                >
+                  <Download className="w-3.5 h-3.5 text-muted-foreground" />
+                </button>
                 <button
                   onClick={() => deleteFile(obj.key)}
                   className="hidden group-hover:block p-1 rounded hover:bg-destructive/10 transition-colors"
