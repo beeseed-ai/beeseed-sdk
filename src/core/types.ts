@@ -412,7 +412,7 @@ export type WSEvent =
   | { type: 'agent_ask_user_expired'; room_id: string; agent_id: string; turn: number; summary: string }
   | { type: 'agent_done'; room_id: string; agent_id: string; turn: number; content: string }
   | { type: 'max_turns_reached'; room_id: string; agent_id: string; turn: number }
-  | { type: 'agent_stopped'; room_id: string; agent_id: string; turn?: number }
+  | { type: 'agent_stopped'; room_id: string; agent_id: string; turn?: number; summary?: string }
   // UI events
   | { type: 'routing_info'; room_id: string; routing_info: { routing_method: string; target_agent_ids: string[]; reason: string } }
   | { type: 'typing'; room_id: string; agent_id?: string }

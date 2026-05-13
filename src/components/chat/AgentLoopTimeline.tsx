@@ -194,6 +194,7 @@ export function AgentLoopTimeline({ loop, className }: Props) {
         <div className="flex items-center gap-1.5 py-1 text-xs">
           <span className="w-2.5 h-2.5 rounded-full bg-zinc-400" />
           <span className="font-medium text-zinc-700">已停止</span>
+          {loop.error && <span className="text-muted-foreground truncate max-w-[300px]">{loop.error}</span>}
         </div>
       )}
 

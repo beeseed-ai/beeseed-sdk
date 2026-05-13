@@ -269,6 +269,7 @@ function buildAgentLoopsFromMessages(roomId: string, messages: Message[]): Map<s
         ...nextLoop,
         turns: nextLoop.turns.map((t) => t.turnNumber === turnNumber ? stoppedTurn : t),
         status: 'stopped',
+        error: message.content || '任务已停止。',
         completedAt: timestamp,
       }
     }
@@ -903,10 +904,10 @@ export function createMessagesStore(config: MessagesStoreConfig) {
           if (loop) {
             const turns = loop.turns.map((turn, index) => (
               index === loop.turns.length - 1 && turn.status === 'active'
-                ? { ...turn, status: 'completed' as const, progress: turn.progress || '任务已停止。', completedAt: Date.now() }
+                ? { ...turn, status: 'completed' as const, progress: event.summary || turn.progress || '任务已停止。', completedAt: Date.now() }
                 : turn
             ))
-            loops.set(loopKey, { ...loop, turns, status: 'stopped' as const, completedAt: Date.now() })
+            loops.set(loopKey, { ...loop, turns, status: 'stopped' as const, error: event.summary || '任务已停止。', completedAt: Date.now() })
             set({ agentLoops: loops })
           }
 
