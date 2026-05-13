@@ -148,10 +148,13 @@ export interface AskUserQuestion {
 
 export interface AskUserData {
   questions: AskUserQuestion[]
-  status: 'pending' | 'answered'
+  status: 'pending' | 'answered' | 'expired'
   answers?: Record<string, unknown>
   askId?: string
   targetUserId?: string
+  targetUserIds?: string[]
+  visibility?: 'target_user' | 'target_users' | 'mentioned_users' | 'room_admins' | 'all_members'
+  expiresAt?: string
 }
 
 // ── Agent Loop ──
@@ -185,7 +188,7 @@ export interface AgentLoopState {
   agentId: string
   roomId: string
   turns: AgentLoopTurn[]
-  status: 'running' | 'completed' | 'max_turns_reached' | 'error' | 'stopped' | 'interrupted'
+  status: 'running' | 'completed' | 'max_turns_reached' | 'error' | 'stopped' | 'interrupted' | 'waiting_for_user' | 'waiting_expired'
   currentTurn: number
   startedAt: number
   completedAt?: number
@@ -405,6 +408,8 @@ export type WSEvent =
   | { type: 'agent_ack'; room_id: string; agent_id: string; turn: number; content?: string }
   | { type: 'agent_thinking'; room_id: string; agent_id: string; turn: number; content?: string }
   | { type: 'agent_progress'; room_id: string; agent_id: string; turn: number; summary: string }
+  | { type: 'agent_waiting_user'; room_id: string; agent_id: string; turn: number; summary: string }
+  | { type: 'agent_ask_user_expired'; room_id: string; agent_id: string; turn: number; summary: string }
   | { type: 'agent_done'; room_id: string; agent_id: string; turn: number; content: string }
   | { type: 'max_turns_reached'; room_id: string; agent_id: string; turn: number }
   | { type: 'agent_stopped'; room_id: string; agent_id: string; turn?: number }

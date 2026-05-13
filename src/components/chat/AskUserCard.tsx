@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react'
+import { useState, useCallback, useEffect } from 'react'
 import type { AskUserQuestion, AskUserData } from '../../core/types.js'
 import { cn } from '../../lib/cn.js'
 import { SingleSelect } from './ask-user/SingleSelect.js'
@@ -17,9 +17,19 @@ interface Props {
 
 export function AskUserCard({ data, currentUserId, onSubmit, className }: Props) {
   const questions = Array.isArray(data.questions) ? data.questions : []
+  const expiresAtMs = data.expiresAt ? Date.parse(data.expiresAt) : NaN
+  const [now, setNow] = useState(() => Date.now())
   const answered = data.status === 'answered'
-  const isTargetUser = !data.targetUserId || data.targetUserId === currentUserId
-  const readOnly = answered || !isTargetUser
+  const expired = data.status === 'expired' || (Number.isFinite(expiresAtMs) && expiresAtMs <= now)
+  const targetUserIds = data.targetUserIds || (data.targetUserId ? [data.targetUserId] : [])
+  const isSingleTarget = !data.visibility || data.visibility === 'target_user'
+  const isTargetUser = data.visibility === 'all_members' || (currentUserId ? targetUserIds.includes(currentUserId) : false) || (isSingleTarget && targetUserIds.length === 0)
+  const readOnly = answered || expired || !isTargetUser
+  const audienceLabel =
+    data.visibility === 'all_members' ? '全员可回答' :
+    data.visibility === 'room_admins' ? '管理员可回答' :
+    targetUserIds.length > 1 ? '指定成员可回答' :
+    '仅你可回答'
 
   const [currentPage, setCurrentPage] = useState(0)
   const [answers, setAnswers] = useState<Record<string, unknown>>(() => {
@@ -38,8 +48,16 @@ export function AskUserCard({ data, currentUserId, onSubmit, className }: Props)
   }, [])
 
   const handleSubmit = useCallback(() => {
+    if (readOnly) return
     onSubmit(answers)
-  }, [answers, onSubmit])
+  }, [answers, onSubmit, readOnly])
+
+  useEffect(() => {
+    if (answered || expired || !Number.isFinite(expiresAtMs)) return
+    const delay = Math.max(0, expiresAtMs - Date.now() + 250)
+    const timer = window.setTimeout(() => setNow(Date.now()), delay)
+    return () => window.clearTimeout(timer)
+  }, [answered, expired, expiresAtMs])
 
   const canSubmit = questions.every((q) => {
     if (q.required === false) return true
@@ -80,8 +98,9 @@ export function AskUserCard({ data, currentUserId, onSubmit, className }: Props)
             <span className="text-white text-xs font-bold">?</span>
           </div>
           <span className="text-sm font-medium">
-            {answered ? '已回答' : !isTargetUser ? '等待回答' : '请回答'}
+            {answered ? '已回答' : expired ? '已超时' : !isTargetUser ? '等待回答' : '请回答'}
           </span>
+          <span className="text-xs text-muted-foreground">{audienceLabel}</span>
           {questions.length > 1 && (
             <span className="text-xs text-muted-foreground ml-auto">
               {currentPage + 1}/{questions.length}
@@ -103,7 +122,10 @@ export function AskUserCard({ data, currentUserId, onSubmit, className }: Props)
         {/* Pager + Submit */}
         <div className="px-4 pb-3 space-y-2">
           <QuestionPager total={questions.length} current={currentPage} onPageChange={setCurrentPage} />
-          {!answered && isTargetUser && (
+          {expired && (
+            <div className="text-xs text-muted-foreground text-center">回答时间已过，Agent 已停止等待。</div>
+          )}
+          {!answered && !expired && isTargetUser && (
             <button
               onClick={handleSubmit}
               disabled={!canSubmit}

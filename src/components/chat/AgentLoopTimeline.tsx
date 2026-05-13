@@ -159,7 +159,7 @@ export function AgentLoopTimeline({ loop, className }: Props) {
     <div className={cn('space-y-0.5', className)}>
       {loop.turns.map((turn, i) => (
         <TurnItem
-          key={turn.turnNumber}
+          key={`${turn.turnNumber}-${i}`}
           turn={turn}
           isRunning={isRunning}
           defaultOpen={i === loop.turns.length - 1}
@@ -201,6 +201,21 @@ export function AgentLoopTimeline({ loop, className }: Props) {
         <div className="flex items-center gap-1.5 py-1 text-xs">
           <span className="w-2.5 h-2.5 rounded-full bg-amber-500" />
           <span className="font-medium text-amber-700">已中断</span>
+          {loop.error && <span className="text-muted-foreground truncate max-w-[300px]">{loop.error}</span>}
+        </div>
+      )}
+
+      {loop.status === 'waiting_for_user' && (
+        <div className="flex items-center gap-1.5 py-1 text-xs">
+          <span className="w-2.5 h-2.5 rounded-full bg-amber-500 animate-pulse" />
+          <span className="font-medium text-amber-700">等待用户回答</span>
+        </div>
+      )}
+
+      {loop.status === 'waiting_expired' && (
+        <div className="flex items-center gap-1.5 py-1 text-xs">
+          <span className="w-2.5 h-2.5 rounded-full bg-zinc-400" />
+          <span className="font-medium text-zinc-700">等待已超时</span>
           {loop.error && <span className="text-muted-foreground truncate max-w-[300px]">{loop.error}</span>}
         </div>
       )}

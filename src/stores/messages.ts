@@ -15,6 +15,14 @@ function isPersistedAgentLoopEvent(m: Message): boolean {
   return meta.source === 'agent_loop'
 }
 
+function getAskUserStatus(meta: Record<string, unknown>): 'pending' | 'answered' | 'expired' {
+  if (meta.ask_user_status === 'answered') return 'answered'
+  if (meta.ask_user_status === 'expired') return 'expired'
+  const expiresAt = typeof meta.expires_at === 'string' ? Date.parse(meta.expires_at) : NaN
+  if (Number.isFinite(expiresAt) && expiresAt <= Date.now()) return 'expired'
+  return 'pending'
+}
+
 export function parseMessage(m: Message, myUserId?: string): ChatMessage | null {
   const meta = (m.metadata ?? {}) as Record<string, unknown>
 
@@ -37,10 +45,13 @@ export function parseMessage(m: Message, myUserId?: string): ChatMessage | null 
         senderType: m.sender_type === 'agent' ? 'agent' : undefined,
         askUserData: {
           questions: meta.questions as AskUserQuestion[],
-          status: meta.ask_user_status === 'answered' ? 'answered' : 'pending',
+          status: getAskUserStatus(meta),
           answers: meta.answers as Record<string, unknown> | undefined,
           askId: (meta._ask_id as string) || undefined,
           targetUserId: (meta.target_user_id as string) || undefined,
+          targetUserIds: Array.isArray(meta.target_user_ids) ? meta.target_user_ids as string[] : undefined,
+          visibility: (meta.visibility as 'target_user' | 'target_users' | 'mentioned_users' | 'room_admins' | 'all_members') || undefined,
+          expiresAt: (meta.expires_at as string) || undefined,
         },
       }
     }
@@ -135,6 +146,7 @@ export function parseMessage(m: Message, myUserId?: string): ChatMessage | null 
 function buildAgentLoopsFromMessages(roomId: string, messages: Message[]): Map<string, AgentLoopState> {
   const loops = new Map<string, AgentLoopState>()
   const latestEventAt = new Map<string, number>()
+  const expiredAskAt = new Map<string, number>()
 
   for (const message of messages) {
     const agentId = message.sender_agent_id
@@ -145,6 +157,10 @@ function buildAgentLoopsFromMessages(roomId: string, messages: Message[]): Map<s
     const timestamp = new Date(message.created_at).getTime()
 
     if (meta.source !== 'agent_loop') {
+      if (message.msg_type === 'tool_call' && meta.name === 'ask_user' && getAskUserStatus(meta) === 'expired') {
+        const expiresAt = typeof meta.expires_at === 'string' ? Date.parse(meta.expires_at) : NaN
+        expiredAskAt.set(key, Number.isFinite(expiresAt) ? expiresAt : timestamp)
+      }
       if (message.sender_type === 'agent' && message.msg_type === 'text') {
         const loop = loops.get(key)
         if (loop && loop.status === 'running') {
@@ -285,7 +301,53 @@ function buildAgentLoopsFromMessages(roomId: string, messages: Message[]): Map<s
         completedAt: timestamp,
       }
     }
+    if (meta.event === 'agent_waiting_user') {
+      const waitingTurn = {
+        ...turn,
+        status: 'completed' as const,
+        progress: message.content || turn.progress || 'Agent 正在等待用户补充信息。',
+        completedAt: timestamp,
+      }
+      nextLoop = {
+        ...nextLoop,
+        turns: nextLoop.turns.map((t) => t.turnNumber === turnNumber ? waitingTurn : t),
+        status: 'waiting_for_user',
+        completedAt: timestamp,
+      }
+    }
+    if (meta.event === 'agent_ask_user_expired') {
+      const expiredTurn = {
+        ...turn,
+        status: 'completed' as const,
+        progress: message.content || turn.progress || '用户未在限定时间内回答，Agent 已停止等待。',
+        completedAt: timestamp,
+      }
+      nextLoop = {
+        ...nextLoop,
+        turns: nextLoop.turns.map((t) => t.turnNumber === turnNumber ? expiredTurn : t),
+        status: 'waiting_expired',
+        error: message.content || '等待用户回答已超时。',
+        completedAt: timestamp,
+      }
+    }
     loops.set(key, nextLoop)
+  }
+
+  for (const [key, expiredAt] of expiredAskAt) {
+    const loop = loops.get(key)
+    if (!loop || (loop.status !== 'waiting_for_user' && loop.status !== 'running')) continue
+    const turns = loop.turns.map((turn, index) => (
+      index === loop.turns.length - 1
+        ? { ...turn, status: 'completed' as const, progress: '用户未在限定时间内回答，Agent 已停止等待。', completedAt: expiredAt }
+        : turn
+    ))
+    loops.set(key, {
+      ...loop,
+      turns,
+      status: 'waiting_expired',
+      error: '等待用户回答已超时。',
+      completedAt: expiredAt,
+    })
   }
 
   const now = Date.now()
@@ -606,22 +668,32 @@ export function createMessagesStore(config: MessagesStoreConfig) {
           const loops = new Map(state.agentLoops)
           const loopKey = `${event.room_id}:${event.agent_id}`
           const existing = loops.get(loopKey)
+          const turnNumber = existing && event.turn <= existing.currentTurn
+            ? existing.currentTurn + 1
+            : event.turn
 
           const newTurn: AgentLoopTurn = {
-            turnNumber: event.turn,
+            turnNumber,
             toolCalls: [],
             status: 'active',
             startedAt: Date.now(),
           }
 
           const loop: AgentLoopState = existing
-            ? { ...existing, currentTurn: event.turn, turns: [...existing.turns, newTurn] }
+            ? {
+                ...existing,
+                status: 'running',
+                currentTurn: turnNumber,
+                turns: [...existing.turns, newTurn],
+                completedAt: undefined,
+                error: undefined,
+              }
             : {
                 agentId: event.agent_id,
                 roomId: event.room_id,
                 turns: [newTurn],
                 status: 'running',
-                currentTurn: event.turn,
+                currentTurn: turnNumber,
                 startedAt: Date.now(),
               }
 
@@ -698,6 +770,71 @@ export function createMessagesStore(config: MessagesStoreConfig) {
 
           const typing = new Map(state.typingStatus)
           typing.set(event.room_id, event.summary)
+          set({ typingStatus: typing })
+          break
+        }
+
+        case 'agent_waiting_user': {
+          const loopKey = `${event.room_id}:${event.agent_id}`
+          const loops = new Map(state.agentLoops)
+          const loop = loops.get(loopKey)
+          if (loop) {
+            const turns = loop.turns.map((turn, index) => (
+              index === loop.turns.length - 1
+                ? {
+                    ...turn,
+                    status: 'completed' as const,
+                    progress: event.summary || turn.progress || 'Agent 正在等待用户补充信息。',
+                    completedAt: Date.now(),
+                  }
+                : turn
+            ))
+            loops.set(loopKey, { ...loop, turns, status: 'waiting_for_user' as const, completedAt: Date.now() })
+            set({ agentLoops: loops })
+          }
+
+          const streams = new Map(state.streams)
+          streams.delete(loopKey)
+          set({ streams })
+
+          const typing = new Map(state.typingStatus)
+          typing.delete(event.room_id)
+          set({ typingStatus: typing })
+          break
+        }
+
+        case 'agent_ask_user_expired': {
+          const loopKey = `${event.room_id}:${event.agent_id}`
+
+          const streams = new Map(state.streams)
+          streams.delete(loopKey)
+          set({ streams })
+
+          const loops = new Map(state.agentLoops)
+          const loop = loops.get(loopKey)
+          if (loop) {
+            const turns = loop.turns.map((turn, index) => (
+              index === loop.turns.length - 1
+                ? {
+                    ...turn,
+                    status: 'completed' as const,
+                    progress: event.summary || turn.progress || '用户未在限定时间内回答，Agent 已停止等待。',
+                    completedAt: Date.now(),
+                  }
+                : turn
+            ))
+            loops.set(loopKey, {
+              ...loop,
+              turns,
+              status: 'waiting_expired' as const,
+              error: event.summary || '等待用户回答已超时。',
+              completedAt: Date.now(),
+            })
+            set({ agentLoops: loops })
+          }
+
+          const typing = new Map(state.typingStatus)
+          typing.delete(event.room_id)
           set({ typingStatus: typing })
           break
         }
