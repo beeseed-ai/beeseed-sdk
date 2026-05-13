@@ -56,9 +56,15 @@ export function useChat(roomId: string | null) {
   )
 
   const stopAgent = useCallback(
-    (agentId: string) => {
+    (agentId: string, reason?: string) => {
       if (!roomId || !agentId) return
-      ws.send({ type: 'stop_agent', room_id: roomId, agent_id: agentId })
+      const cleanReason = reason?.trim()
+      ws.send({
+        type: 'stop_agent',
+        room_id: roomId,
+        agent_id: agentId,
+        ...(cleanReason ? { reason: cleanReason } : {}),
+      })
     },
     [roomId, ws],
   )

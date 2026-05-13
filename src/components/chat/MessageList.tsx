@@ -30,7 +30,7 @@ interface Props {
   onMentionClick?: (name: string) => void
   currentUserId?: string
   onSubmitAnswer?: (askId: string, answers: Record<string, unknown>) => void
-  onStopAgent?: (agentId: string) => void
+  onStopAgent?: (agentId: string, reason?: string) => void
   className?: string
 }
 

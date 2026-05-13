@@ -1,7 +1,10 @@
+import { useState } from 'react'
 import type { StreamState, AgentLoopState } from '../../core/types.js'
 import { Square } from 'lucide-react'
 import { cn } from '../../lib/cn.js'
 import { Avatar, AvatarImage, AvatarFallback } from '../ui/avatar.js'
+import { Button } from '../ui/button.js'
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '../ui/dialog.js'
 import { MarkdownRenderer } from './MarkdownRenderer.js'
 import { ThinkingBlock } from './ThinkingBlock.js'
 import { AgentLoopTimeline } from './AgentLoopTimeline.js'
@@ -10,12 +13,20 @@ interface Props {
   stream: StreamState
   agentLoop?: AgentLoopState
   agentAvatarUrl?: string
-  onStop?: (agentId: string) => void
+  onStop?: (agentId: string, reason?: string) => void
   className?: string
 }
 
 export function StreamRenderer({ stream, agentLoop, agentAvatarUrl, onStop, className }: Props) {
+  const [stopOpen, setStopOpen] = useState(false)
+  const [stopReason, setStopReason] = useState('')
   const hasContent = stream.content || stream.thinking || stream.toolCall || agentLoop
+
+  const handleStop = () => {
+    onStop?.(stream.agentId, stopReason)
+    setStopOpen(false)
+    setStopReason('')
+  }
 
   return (
     <div className={cn('flex gap-2 px-4 py-1', className)}>
@@ -31,13 +42,36 @@ export function StreamRenderer({ stream, agentLoop, agentAvatarUrl, onStop, clas
               type="button"
               title="停止任务"
               aria-label="停止任务"
-              onClick={() => onStop(stream.agentId)}
+              onClick={() => setStopOpen(true)}
               className="inline-flex size-6 items-center justify-center rounded-md border border-border bg-background text-muted-foreground hover:text-foreground"
             >
               <Square className="size-3" />
             </button>
           )}
         </div>
+
+        {onStop && (
+          <Dialog open={stopOpen} onOpenChange={setStopOpen}>
+            <DialogContent onClose={() => setStopOpen(false)}>
+              <DialogHeader>
+                <DialogTitle>停止任务</DialogTitle>
+                <DialogDescription>可以补充一句原因，团队成员会在时间线里看到。</DialogDescription>
+              </DialogHeader>
+              <textarea
+                value={stopReason}
+                onChange={(event) => setStopReason(event.target.value)}
+                placeholder="例如：方向不对，先停一下"
+                maxLength={120}
+                autoFocus
+                className="mt-4 min-h-20 w-full resize-none rounded-lg border border-border bg-background px-3 py-2 text-sm outline-none transition-colors placeholder:text-muted-foreground focus:border-ring focus:ring-3 focus:ring-ring/20"
+              />
+              <DialogFooter className="mt-4">
+                <Button type="button" variant="ghost" onClick={() => setStopOpen(false)}>取消</Button>
+                <Button type="button" variant="destructive" onClick={handleStop}>停止任务</Button>
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
+        )}
 
         {/* Agent Loop timeline (replaces simple turn indicator) */}
         {agentLoop && agentLoop.turns.length > 0 && (

@@ -425,7 +425,7 @@ export type WSCommand =
   | { type: 'leave_room'; room_id: string }
   | { type: 'read_ack'; room_id: string; msg_id: number }
   | { type: 'ask_user_answer'; room_id: string; ask_id: string; answers: Record<string, unknown> }
-  | { type: 'stop_agent'; room_id: string; agent_id: string }
+  | { type: 'stop_agent'; room_id: string; agent_id: string; reason?: string }
 
 // ── Auth ──
 
