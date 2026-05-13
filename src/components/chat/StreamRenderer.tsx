@@ -1,4 +1,5 @@
 import type { StreamState, AgentLoopState } from '../../core/types.js'
+import { Square } from 'lucide-react'
 import { cn } from '../../lib/cn.js'
 import { Avatar, AvatarImage, AvatarFallback } from '../ui/avatar.js'
 import { MarkdownRenderer } from './MarkdownRenderer.js'
@@ -9,10 +10,11 @@ interface Props {
   stream: StreamState
   agentLoop?: AgentLoopState
   agentAvatarUrl?: string
+  onStop?: (agentId: string) => void
   className?: string
 }
 
-export function StreamRenderer({ stream, agentLoop, agentAvatarUrl, className }: Props) {
+export function StreamRenderer({ stream, agentLoop, agentAvatarUrl, onStop, className }: Props) {
   const hasContent = stream.content || stream.thinking || stream.toolCall || agentLoop
 
   return (
@@ -22,7 +24,20 @@ export function StreamRenderer({ stream, agentLoop, agentAvatarUrl, className }:
         <AvatarFallback className="text-xs">🤖</AvatarFallback>
       </Avatar>
       <div className="flex flex-col gap-0.5 max-w-[85%]">
-        <span className="text-xs text-muted-foreground">{stream.agentId}</span>
+        <div className="flex items-center gap-2">
+          <span className="text-xs text-muted-foreground">{stream.agentId}</span>
+          {onStop && (
+            <button
+              type="button"
+              title="停止任务"
+              aria-label="停止任务"
+              onClick={() => onStop(stream.agentId)}
+              className="inline-flex size-6 items-center justify-center rounded-md border border-border bg-background text-muted-foreground hover:text-foreground"
+            >
+              <Square className="size-3" />
+            </button>
+          )}
+        </div>
 
         {/* Agent Loop timeline (replaces simple turn indicator) */}
         {agentLoop && agentLoop.turns.length > 0 && (

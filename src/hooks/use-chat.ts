@@ -55,6 +55,14 @@ export function useChat(roomId: string | null) {
     [roomId, ws],
   )
 
+  const stopAgent = useCallback(
+    (agentId: string) => {
+      if (!roomId || !agentId) return
+      ws.send({ type: 'stop_agent', room_id: roomId, agent_id: agentId })
+    },
+    [roomId, ws],
+  )
+
   return {
     messages: roomId ? state.getMessages(roomId) : [],
     stream: roomId ? state.getStream(roomId) : undefined,
@@ -65,6 +73,7 @@ export function useChat(roomId: string | null) {
     send,
     sendWithQuote,
     submitAnswer,
+    stopAgent,
     ack,
   }
 }

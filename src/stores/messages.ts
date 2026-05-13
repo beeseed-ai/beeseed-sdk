@@ -6,10 +6,21 @@ import type {
   AskUserQuestion,
 } from '../core/types.js'
 
+const AGENT_LOOP_STALE_AFTER_MS = 30 * 60 * 1000
+
 // ── Message parsing (wire Message → display ChatMessage) ──
+
+function isPersistedAgentLoopEvent(m: Message): boolean {
+  const meta = (m.metadata ?? {}) as Record<string, unknown>
+  return meta.source === 'agent_loop'
+}
 
 export function parseMessage(m: Message, myUserId?: string): ChatMessage | null {
   const meta = (m.metadata ?? {}) as Record<string, unknown>
+
+  if (isPersistedAgentLoopEvent(m)) {
+    return null
+  }
 
   if (m.msg_type === 'tool_call') {
     if (meta.name === 'ask_user' && Array.isArray(meta.questions)) {
@@ -121,6 +132,184 @@ export function parseMessage(m: Message, myUserId?: string): ChatMessage | null 
   }
 }
 
+function buildAgentLoopsFromMessages(roomId: string, messages: Message[]): Map<string, AgentLoopState> {
+  const loops = new Map<string, AgentLoopState>()
+  const latestEventAt = new Map<string, number>()
+
+  for (const message of messages) {
+    const agentId = message.sender_agent_id
+    if (!agentId) continue
+
+    const key = `${roomId}:${agentId}`
+    const meta = (message.metadata ?? {}) as Record<string, unknown>
+    const timestamp = new Date(message.created_at).getTime()
+
+    if (meta.source !== 'agent_loop') {
+      if (message.sender_type === 'agent' && message.msg_type === 'text') {
+        const loop = loops.get(key)
+        if (loop && loop.status === 'running') {
+          const turn = loop.turns[loop.turns.length - 1]
+          const completedTurn = turn
+            ? { ...turn, status: 'completed' as const, content: message.content, completedAt: timestamp }
+            : undefined
+          loops.set(key, {
+            ...loop,
+            turns: completedTurn ? [...loop.turns.slice(0, -1), completedTurn] : loop.turns,
+            status: 'completed',
+            finalContent: message.content,
+            completedAt: timestamp,
+          })
+        }
+      }
+      continue
+    }
+    latestEventAt.set(key, timestamp)
+
+    const turnNumber = typeof meta.turn === 'number' && meta.turn > 0 ? meta.turn : 1
+    let loop = loops.get(key)
+    if (!loop || meta.event === 'agent_ack') {
+      loop = {
+        agentId,
+        roomId,
+        turns: [],
+        status: 'running',
+        currentTurn: turnNumber,
+        startedAt: timestamp,
+      }
+      loops.set(key, loop)
+    }
+
+    let turn = loop.turns.find((t) => t.turnNumber === turnNumber)
+    if (!turn) {
+      turn = {
+        turnNumber,
+        toolCalls: [],
+        status: 'active',
+        startedAt: timestamp,
+      }
+      loop = { ...loop, turns: [...loop.turns, turn], currentTurn: turnNumber }
+      loops.set(key, loop)
+    }
+
+    if (message.msg_type === 'thinking') {
+      turn = { ...turn, progress: message.content }
+    } else if (message.msg_type === 'tool_call') {
+      const tool: AgentLoopToolCall = {
+        id: `${message.id}`,
+        name: (meta.name as string) || 'unknown',
+        args: meta.args as Record<string, unknown> | undefined,
+        status: 'calling',
+        startedAt: timestamp,
+        parallel: Boolean(meta.parallel),
+        batchId: meta.batch_id as string | undefined,
+      }
+      turn = { ...turn, toolCalls: [...turn.toolCalls, tool] }
+    } else if (message.msg_type === 'tool_result') {
+      const name = (meta.name as string) || 'unknown'
+      const idx = [...turn.toolCalls].reverse().findIndex((tc) => tc.name === name && tc.status === 'calling')
+      if (idx >= 0) {
+        const realIdx = turn.toolCalls.length - 1 - idx
+        const updated = {
+          ...turn.toolCalls[realIdx]!,
+          status: meta.success !== false ? 'success' as const : 'failed' as const,
+          output: (meta.output as string) || message.content,
+          completedAt: timestamp,
+        }
+        turn = {
+          ...turn,
+          toolCalls: [
+            ...turn.toolCalls.slice(0, realIdx),
+            updated,
+            ...turn.toolCalls.slice(realIdx + 1),
+          ],
+        }
+      } else {
+        turn = {
+          ...turn,
+          toolCalls: [
+            ...turn.toolCalls,
+            {
+              id: `${message.id}`,
+              name,
+              status: meta.success !== false ? 'success' : 'failed',
+              output: (meta.output as string) || message.content,
+              startedAt: timestamp,
+              completedAt: timestamp,
+            },
+          ],
+        }
+      }
+    }
+
+    loop = loops.get(key)!
+    let nextLoop: AgentLoopState = {
+      ...loop,
+      turns: loop.turns.map((t) => t.turnNumber === turnNumber ? turn : t),
+      currentTurn: turnNumber,
+    }
+    if (meta.event === 'agent_stopped') {
+      const stoppedTurn = { ...turn, status: 'completed' as const, completedAt: timestamp }
+      nextLoop = {
+        ...nextLoop,
+        turns: nextLoop.turns.map((t) => t.turnNumber === turnNumber ? stoppedTurn : t),
+        status: 'stopped',
+        completedAt: timestamp,
+      }
+    }
+    if (meta.event === 'agent_error') {
+      const errorTurn = { ...turn, status: 'completed' as const, completedAt: timestamp }
+      nextLoop = {
+        ...nextLoop,
+        turns: nextLoop.turns.map((t) => t.turnNumber === turnNumber ? errorTurn : t),
+        status: 'error',
+        error: message.content,
+        completedAt: timestamp,
+      }
+    }
+    if (meta.event === 'max_turns_reached') {
+      const maxTurnsTurn = { ...turn, status: 'completed' as const, completedAt: timestamp }
+      nextLoop = {
+        ...nextLoop,
+        turns: nextLoop.turns.map((t) => t.turnNumber === turnNumber ? maxTurnsTurn : t),
+        status: 'max_turns_reached',
+        completedAt: timestamp,
+      }
+    }
+    if (meta.event === 'agent_interrupted') {
+      const interruptedTurn = { ...turn, status: 'completed' as const, completedAt: timestamp }
+      nextLoop = {
+        ...nextLoop,
+        turns: nextLoop.turns.map((t) => t.turnNumber === turnNumber ? interruptedTurn : t),
+        status: 'interrupted',
+        error: message.content || '任务已中断。',
+        completedAt: timestamp,
+      }
+    }
+    loops.set(key, nextLoop)
+  }
+
+  const now = Date.now()
+  for (const [key, loop] of loops) {
+    if (loop.status !== 'running') continue
+    const latestAt = latestEventAt.get(key) ?? loop.startedAt
+    if (now - latestAt <= AGENT_LOOP_STALE_AFTER_MS) continue
+    const turns = loop.turns.map((turn, index) => (
+      index === loop.turns.length - 1 && turn.status === 'active'
+        ? { ...turn, status: 'completed' as const, progress: turn.progress || '任务已中断。', completedAt: latestAt }
+        : turn
+    ))
+    loops.set(key, {
+      ...loop,
+      turns,
+      status: 'interrupted',
+      completedAt: latestAt,
+      error: '任务已中断。',
+    })
+  }
+
+  return loops
+}
+
 // ── Store ──
 
 export interface MessagesState {
@@ -170,7 +359,16 @@ export function createMessagesStore(config: MessagesStoreConfig) {
           .filter((m): m is ChatMessage => m !== null)
         const map = new Map(get().messages)
         map.set(roomId, parsed)
-        set({ messages: map, loadingRoom: null })
+        const loops = new Map(get().agentLoops)
+        for (const key of loops.keys()) {
+          if (key.startsWith(`${roomId}:`)) {
+            loops.delete(key)
+          }
+        }
+        for (const [key, loop] of buildAgentLoopsFromMessages(roomId, msgs)) {
+          loops.set(key, loop)
+        }
+        set({ messages: map, agentLoops: loops, loadingRoom: null })
       } catch {
         set({ loadingRoom: null })
       }
@@ -215,7 +413,13 @@ export function createMessagesStore(config: MessagesStoreConfig) {
           if (!parsed) break
           const map = new Map(state.messages)
           let msgs = [...(map.get(event.room_id) || [])]
-          if (msgs.some((m) => m.msgId === parsed.msgId)) break
+          const existingIdx = msgs.findIndex((m) => m.msgId === parsed.msgId)
+          if (existingIdx >= 0) {
+            msgs[existingIdx] = parsed
+            map.set(event.room_id, msgs)
+            set({ messages: map })
+            break
+          }
           const optIdx = parsed.role === 'user'
             ? msgs.findIndex((m) => m.role === 'user' && !m.msgId && m.content === parsed.content)
             : -1
@@ -543,6 +747,31 @@ export function createMessagesStore(config: MessagesStoreConfig) {
           const streams = new Map(state.streams)
           streams.delete(`${event.room_id}:${event.agent_id}`)
           set({ streams })
+
+          const typing = new Map(state.typingStatus)
+          typing.delete(event.room_id)
+          set({ typingStatus: typing })
+          break
+        }
+
+        case 'agent_stopped': {
+          const loopKey = `${event.room_id}:${event.agent_id}`
+
+          const streams = new Map(state.streams)
+          streams.delete(loopKey)
+          set({ streams })
+
+          const loops = new Map(state.agentLoops)
+          const loop = loops.get(loopKey)
+          if (loop) {
+            const turns = loop.turns.map((turn, index) => (
+              index === loop.turns.length - 1 && turn.status === 'active'
+                ? { ...turn, status: 'completed' as const, progress: turn.progress || '任务已停止。', completedAt: Date.now() }
+                : turn
+            ))
+            loops.set(loopKey, { ...loop, turns, status: 'stopped' as const, completedAt: Date.now() })
+            set({ agentLoops: loops })
+          }
 
           const typing = new Map(state.typingStatus)
           typing.delete(event.room_id)

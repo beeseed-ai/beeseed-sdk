@@ -30,10 +30,11 @@ interface Props {
   onMentionClick?: (name: string) => void
   currentUserId?: string
   onSubmitAnswer?: (askId: string, answers: Record<string, unknown>) => void
+  onStopAgent?: (agentId: string) => void
   className?: string
 }
 
-export function MessageList({ messages, stream, agentLoop, members, typing, onQuote, onMentionClick, currentUserId, onSubmitAnswer }: Props) {
+export function MessageList({ messages, stream, agentLoop, members, typing, onQuote, onMentionClick, currentUserId, onSubmitAnswer, onStopAgent }: Props) {
   const containerRef = useRef<HTMLDivElement>(null)
   const shouldAutoScroll = useRef(true)
   const grouped = useMemo(() => groupMessages(messages), [messages])
@@ -111,6 +112,7 @@ export function MessageList({ messages, stream, agentLoop, members, typing, onQu
               stream={stream}
               agentLoop={agentLoop}
               agentAvatarUrl={members?.find(m => m.agent_id === stream.agentId)?.avatar_url}
+              onStop={onStopAgent}
             />
           </div>
         )}

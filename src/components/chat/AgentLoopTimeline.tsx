@@ -189,6 +189,21 @@ export function AgentLoopTimeline({ loop, className }: Props) {
           {loop.error && <span className="text-muted-foreground truncate max-w-[300px]">{loop.error}</span>}
         </div>
       )}
+
+      {loop.status === 'stopped' && (
+        <div className="flex items-center gap-1.5 py-1 text-xs">
+          <span className="w-2.5 h-2.5 rounded-full bg-zinc-400" />
+          <span className="font-medium text-zinc-700">已停止</span>
+        </div>
+      )}
+
+      {loop.status === 'interrupted' && (
+        <div className="flex items-center gap-1.5 py-1 text-xs">
+          <span className="w-2.5 h-2.5 rounded-full bg-amber-500" />
+          <span className="font-medium text-amber-700">已中断</span>
+          {loop.error && <span className="text-muted-foreground truncate max-w-[300px]">{loop.error}</span>}
+        </div>
+      )}
     </div>
   )
 }

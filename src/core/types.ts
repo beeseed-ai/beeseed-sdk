@@ -185,7 +185,7 @@ export interface AgentLoopState {
   agentId: string
   roomId: string
   turns: AgentLoopTurn[]
-  status: 'running' | 'completed' | 'max_turns_reached' | 'error'
+  status: 'running' | 'completed' | 'max_turns_reached' | 'error' | 'stopped' | 'interrupted'
   currentTurn: number
   startedAt: number
   completedAt?: number
@@ -397,6 +397,7 @@ export type WSEvent =
   | { type: 'agent_progress'; room_id: string; agent_id: string; turn: number; summary: string }
   | { type: 'agent_done'; room_id: string; agent_id: string; turn: number; content: string }
   | { type: 'max_turns_reached'; room_id: string; agent_id: string; turn: number }
+  | { type: 'agent_stopped'; room_id: string; agent_id: string; turn?: number }
   // UI events
   | { type: 'routing_info'; room_id: string; routing_info: { routing_method: string; target_agent_ids: string[]; reason: string } }
   | { type: 'typing'; room_id: string; agent_id?: string }
@@ -409,6 +410,7 @@ export type WSCommand =
   | { type: 'leave_room'; room_id: string }
   | { type: 'read_ack'; room_id: string; msg_id: number }
   | { type: 'ask_user_answer'; room_id: string; ask_id: string; answers: Record<string, unknown> }
+  | { type: 'stop_agent'; room_id: string; agent_id: string }
 
 // ── Auth ──
 
