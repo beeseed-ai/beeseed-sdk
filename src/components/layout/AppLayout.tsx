@@ -44,6 +44,7 @@ export function AppLayout({ className }: Props) {
   return (
     <div className={cn('flex h-[100dvh] bg-background', className)}>
       <LeftNavSidebar
+        className={activeFeature === 'chat' && currentRoomId ? 'hidden md:flex' : undefined}
         activeFeature={activeFeature}
         onFeatureChange={setActiveFeature}
         rooms={rooms}
@@ -87,6 +88,7 @@ export function AppLayout({ className }: Props) {
 
       {activeFeature === 'chat' && (
         <DetailPanel
+          className="hidden lg:flex"
           roomId={currentRoomId}
           members={members}
           tasks={tasks}
