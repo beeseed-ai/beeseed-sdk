@@ -1,8 +1,9 @@
 import { useState } from 'react'
-import { Check, ChevronRight, Circle, Clock3, Loader2, Wrench } from 'lucide-react'
+import { Check, ChevronRight, Circle, Clock3, Wrench } from 'lucide-react'
 import type { AgentLoopState, AgentLoopTurn, AgentLoopToolCall } from '../../core/types.js'
 import { cn } from '../../lib/cn.js'
 import { ThinkingBlock } from './ThinkingBlock.js'
+import { MarkdownRenderer } from './MarkdownRenderer.js'
 
 interface Props {
   loop: AgentLoopState
@@ -12,7 +13,12 @@ interface Props {
 
 function TurnStatusIcon({ turn, isRunning }: { turn: AgentLoopTurn; isRunning: boolean }) {
   if (turn.status === 'active' && isRunning) {
-    return <Loader2 className="size-3.5 animate-spin text-[#181d26]" />
+    return (
+      <span className="relative flex size-3.5 shrink-0 items-center justify-center">
+        <span className="absolute inline-flex size-3 rounded-full bg-[#181d26]/15 animate-ping" />
+        <span className="relative inline-flex size-2 rounded-full bg-[#181d26]" />
+      </span>
+    )
   }
   if (turn.status === 'completed') {
     return <Check className="size-3.5 text-[#006400]" />
@@ -36,8 +42,8 @@ function ToolCallLine({ tool }: { tool: AgentLoopToolCall }) {
     <div className="py-0.5">
       <div
         className={cn(
-          'flex items-center gap-2 text-xs text-[#555]',
-          hasDetail && 'cursor-pointer hover:bg-black/[0.04] -mx-1 px-1 rounded',
+          'flex items-center gap-2 rounded-md px-1.5 py-1 text-xs text-[#555]',
+          hasDetail && 'cursor-pointer hover:bg-black/[0.04]',
         )}
         onClick={hasDetail ? () => setDetailOpen(!detailOpen) : undefined}
       >
@@ -104,7 +110,7 @@ function TurnItem({
       {/* Turn header */}
       <button
         onClick={() => setOpen(!open)}
-        className="flex items-center gap-2 w-full text-left py-1 hover:bg-black/[0.04] rounded px-1 -mx-1 transition-colors"
+        className="flex items-center gap-2 w-full text-left py-1 hover:bg-black/[0.04] rounded-md px-1 -mx-1 transition-colors"
       >
         <ChevronRight className={cn('size-3 text-[#999] transition-transform shrink-0', open && 'rotate-90')} />
         <TurnStatusIcon turn={turn} isRunning={isRunning} />
@@ -119,7 +125,7 @@ function TurnItem({
 
       {/* Turn body */}
       {open && hasContent && (
-        <div className="ml-5 pl-3 border-l border-[#dddddd]">
+        <div className="ml-[18px] pl-4 border-l border-[#dddddd]">
           {/* Thinking */}
           {turn.thinking && (
             <ThinkingBlock content={turn.thinking} isStreaming={turn.status === 'active' && isRunning} />
@@ -128,8 +134,11 @@ function TurnItem({
           {/* Assistant content for this loop turn. During streaming this lets the
               public answer and execution steps appear in the same flow. */}
           {visibleContent && (
-            <div className="my-1 rounded-md border border-[#e5e5e5] bg-white px-2.5 py-2 text-sm text-[#181d26] leading-relaxed whitespace-pre-wrap break-words">
-              {visibleContent}
+            <div className="my-1.5 rounded-md bg-white px-3 py-2 text-sm text-[#181d26] shadow-[inset_0_0_0_1px_rgba(0,0,0,0.06)]">
+              <MarkdownRenderer
+                content={visibleContent}
+                className="prose prose-sm max-w-none break-words [&_p]:my-1 [&_p:first-child]:mt-0 [&_p:last-child]:mb-0 [&_ul]:my-1 [&_ol]:my-1 [&_li]:my-0 [&_h1]:text-base [&_h2]:text-base [&_h3]:text-sm [&_h1]:font-semibold [&_h2]:font-semibold [&_h3]:font-semibold [&_code.inline-code]:rounded [&_code.inline-code]:bg-[#f5f5f5] [&_code.inline-code]:px-1 [&_code.inline-code]:py-0.5"
+              />
               {turn.status === 'active' && isRunning && (
                 <span className="inline-block w-1.5 h-4 bg-[#181d26]/50 animate-pulse ml-0.5 align-text-bottom" />
               )}
@@ -162,7 +171,7 @@ function TurnItem({
           {/* Active indicator */}
           {turn.status === 'active' && isRunning && !turn.thinking && turn.toolCalls.length === 0 && (
             <div className="flex items-center gap-1.5 py-1 text-xs text-[#777169]">
-              <Loader2 className="size-3 animate-spin" />
+              <span className="inline-flex size-2 rounded-full bg-[#181d26]/60 animate-pulse" />
               <span>等待 LLM 响应...</span>
             </div>
           )}
@@ -233,7 +242,7 @@ export function AgentLoopTimeline({ loop, showContent = 'intermediate', classNam
 
       {loop.status === 'waiting_for_user' && (
         <div className="flex items-center gap-1.5 py-1 text-xs">
-          <Loader2 className="size-3.5 animate-spin text-amber-600" />
+          <span className="inline-flex size-2 rounded-full bg-amber-500 animate-pulse" />
           <span className="font-medium text-amber-700">等待用户回答</span>
         </div>
       )}

@@ -77,7 +77,7 @@ export function StreamRenderer({ stream, agentLoop, agentAvatarUrl, agentDisplay
 
         {/* Agent Loop timeline (replaces simple turn indicator) */}
         {agentLoop && agentLoop.turns.length > 0 && (
-          <div className="rounded-lg border border-[#e5e5e5] bg-[#fafafa] px-3 py-2">
+          <div className="rounded-md border border-[#eeeeee] bg-[#fbfbfb] px-3 py-2">
             <AgentLoopTimeline loop={agentLoop} showContent="all" />
           </div>
         )}

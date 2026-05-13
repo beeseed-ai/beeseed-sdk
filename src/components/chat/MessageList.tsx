@@ -56,7 +56,7 @@ function AgentLoopBlock({ loop, members }: { loop: AgentLoopState; members?: Roo
   return (
     <div className="flex gap-2.5 py-2.5">
       <div className="w-9 shrink-0" />
-      <div className="flex-1 min-w-0 rounded-lg border border-[#e5e5e5] bg-[#fafafa] px-3 py-2">
+      <div className="flex-1 min-w-0 rounded-md border border-[#eeeeee] bg-[#fbfbfb] px-3 py-2">
         <div className="text-xs text-[#777169] mb-1">{agentName}</div>
         <AgentLoopTimeline loop={loop} />
       </div>
