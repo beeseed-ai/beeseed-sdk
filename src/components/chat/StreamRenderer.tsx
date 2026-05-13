@@ -78,7 +78,7 @@ export function StreamRenderer({ stream, agentLoop, agentAvatarUrl, agentDisplay
         {/* Agent Loop timeline (replaces simple turn indicator) */}
         {agentLoop && agentLoop.turns.length > 0 && (
           <div className="rounded-lg border border-[#e5e5e5] bg-[#fafafa] px-3 py-2">
-            <AgentLoopTimeline loop={agentLoop} />
+            <AgentLoopTimeline loop={agentLoop} showContent="all" />
           </div>
         )}
 
@@ -102,7 +102,7 @@ export function StreamRenderer({ stream, agentLoop, agentAvatarUrl, agentDisplay
         )}
 
         {/* Streaming content */}
-        {stream.content && (
+        {stream.content && !agentLoop && (
           <div className="rounded-lg px-3 py-2 text-sm bg-muted text-foreground break-words">
             <MarkdownRenderer content={stream.content} />
             <span className="inline-block w-1.5 h-4 bg-foreground/60 animate-pulse ml-0.5 align-text-bottom" />

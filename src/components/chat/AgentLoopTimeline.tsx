@@ -6,6 +6,7 @@ import { ThinkingBlock } from './ThinkingBlock.js'
 
 interface Props {
   loop: AgentLoopState
+  showContent?: 'all' | 'intermediate' | 'none'
   className?: string
 }
 
@@ -77,11 +78,25 @@ function ToolCallLine({ tool }: { tool: AgentLoopToolCall }) {
   )
 }
 
-function TurnItem({ turn, isRunning, defaultOpen }: { turn: AgentLoopTurn; isRunning: boolean; defaultOpen: boolean }) {
+function TurnItem({
+  turn,
+  isRunning,
+  defaultOpen,
+  showContent,
+  isFinalTurn,
+}: {
+  turn: AgentLoopTurn
+  isRunning: boolean
+  defaultOpen: boolean
+  showContent: 'all' | 'intermediate' | 'none'
+  isFinalTurn: boolean
+}) {
   const [open, setOpen] = useState(defaultOpen)
 
   const parallelBatches = groupParallelTools(turn.toolCalls)
-  const hasContent = turn.thinking || turn.toolCalls.length > 0 || turn.progress || turn.content
+  const shouldShowContent = showContent === 'all' || (showContent === 'intermediate' && !isFinalTurn)
+  const visibleContent = shouldShowContent ? turn.content : undefined
+  const hasContent = turn.thinking || turn.toolCalls.length > 0 || turn.progress || visibleContent
   const label = turn.turnNumber === 1 ? '开始处理' : `继续处理 ${turn.turnNumber}`
 
   return (
@@ -110,6 +125,17 @@ function TurnItem({ turn, isRunning, defaultOpen }: { turn: AgentLoopTurn; isRun
             <ThinkingBlock content={turn.thinking} isStreaming={turn.status === 'active' && isRunning} />
           )}
 
+          {/* Assistant content for this loop turn. During streaming this lets the
+              public answer and execution steps appear in the same flow. */}
+          {visibleContent && (
+            <div className="my-1 rounded-md border border-[#e5e5e5] bg-white px-2.5 py-2 text-sm text-[#181d26] leading-relaxed whitespace-pre-wrap break-words">
+              {visibleContent}
+              {turn.status === 'active' && isRunning && (
+                <span className="inline-block w-1.5 h-4 bg-[#181d26]/50 animate-pulse ml-0.5 align-text-bottom" />
+              )}
+            </div>
+          )}
+
           {/* Tool calls */}
           {parallelBatches.map((batch, bi) => (
             <div key={bi}>
@@ -133,13 +159,6 @@ function TurnItem({ turn, isRunning, defaultOpen }: { turn: AgentLoopTurn; isRun
             </div>
           )}
 
-          {/* Turn content/result */}
-          {turn.content && turn.status === 'completed' && (
-            <div className="py-1 text-xs text-[#333840] whitespace-pre-wrap line-clamp-3">
-              {turn.content.slice(0, 200)}{turn.content.length > 200 ? '...' : ''}
-            </div>
-          )}
-
           {/* Active indicator */}
           {turn.status === 'active' && isRunning && !turn.thinking && turn.toolCalls.length === 0 && (
             <div className="flex items-center gap-1.5 py-1 text-xs text-[#777169]">
@@ -153,8 +172,11 @@ function TurnItem({ turn, isRunning, defaultOpen }: { turn: AgentLoopTurn; isRun
   )
 }
 
-export function AgentLoopTimeline({ loop, className }: Props) {
+export function AgentLoopTimeline({ loop, showContent = 'intermediate', className }: Props) {
   const isRunning = loop.status === 'running'
+  const finalAnswerTurnNumber = loop.status === 'completed' && loop.finalContent
+    ? loop.turns[loop.turns.length - 1]?.turnNumber
+    : undefined
 
   return (
     <div className={cn('space-y-1', className)}>
@@ -164,6 +186,8 @@ export function AgentLoopTimeline({ loop, className }: Props) {
           turn={turn}
           isRunning={isRunning}
           defaultOpen={i === loop.turns.length - 1}
+          showContent={showContent}
+          isFinalTurn={turn.turnNumber === finalAnswerTurnNumber}
         />
       ))}
 

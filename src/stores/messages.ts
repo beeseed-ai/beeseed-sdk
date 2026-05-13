@@ -524,11 +524,29 @@ export function createMessagesStore(config: MessagesStoreConfig) {
           const streams = new Map(state.streams)
           const key = `${event.room_id}:${event.agent_id}`
           const existing = streams.get(key)
+          let agentLoop = existing?.agentLoop
+          if (agentLoop) {
+            const turn = agentLoop.turns[agentLoop.turns.length - 1]
+            if (turn && turn.status === 'active') {
+              const updatedTurn: AgentLoopTurn = {
+                ...turn,
+                content: (turn.content || '') + event.content,
+              }
+              agentLoop = {
+                ...agentLoop,
+                turns: [...agentLoop.turns.slice(0, -1), updatedTurn],
+              }
+
+              const loops = new Map(state.agentLoops)
+              loops.set(key, agentLoop)
+              set({ agentLoops: loops })
+            }
+          }
           streams.set(key, {
             agentId: event.agent_id,
             content: (existing?.content || '') + event.content,
             thinking: existing?.thinking || '',
-            agentLoop: existing?.agentLoop,
+            agentLoop,
           })
           set({ streams })
           break
