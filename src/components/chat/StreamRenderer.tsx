@@ -31,12 +31,12 @@ export function StreamRenderer({ stream, agentLoop, agentAvatarUrl, agentDisplay
   }
 
   return (
-    <div className={cn('flex gap-2 px-4 py-1', className)}>
-      <Avatar className="size-7 shrink-0 mt-0.5">
+    <div className={cn('flex gap-2.5 py-2.5', className)}>
+      <Avatar className="size-9 shrink-0 mt-0.5">
         {agentAvatarUrl ? <AvatarImage src={agentAvatarUrl} /> : null}
         <AvatarFallback className="text-xs">🤖</AvatarFallback>
       </Avatar>
-      <div className="flex flex-col gap-0.5 max-w-[85%]">
+      <div className="flex flex-col gap-0.5 flex-1 min-w-0">
         <div className="flex items-center gap-2">
           <span className="text-xs text-muted-foreground">{displayName}</span>
           {onStop && (
@@ -77,7 +77,7 @@ export function StreamRenderer({ stream, agentLoop, agentAvatarUrl, agentDisplay
 
         {/* Agent Loop timeline (replaces simple turn indicator) */}
         {agentLoop && agentLoop.turns.length > 0 && (
-          <div className="rounded-lg bg-muted px-3 py-2 min-w-[280px]">
+          <div className="rounded-lg border border-[#e5e5e5] bg-[#fafafa] px-3 py-2">
             <AgentLoopTimeline loop={agentLoop} />
           </div>
         )}

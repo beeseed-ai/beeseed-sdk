@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { ChevronRight } from 'lucide-react'
+import { Check, ChevronRight, Circle, Clock3, Loader2, Wrench } from 'lucide-react'
 import type { AgentLoopState, AgentLoopTurn, AgentLoopToolCall } from '../../core/types.js'
 import { cn } from '../../lib/cn.js'
 import { ThinkingBlock } from './ThinkingBlock.js'
@@ -11,12 +11,12 @@ interface Props {
 
 function TurnStatusIcon({ turn, isRunning }: { turn: AgentLoopTurn; isRunning: boolean }) {
   if (turn.status === 'active' && isRunning) {
-    return <span className="inline-block w-2.5 h-2.5 border-2 border-primary/30 border-t-primary rounded-full animate-spin" />
+    return <Loader2 className="size-3.5 animate-spin text-[#181d26]" />
   }
   if (turn.status === 'completed') {
-    return <span className="w-2.5 h-2.5 rounded-full bg-green-500" />
+    return <Check className="size-3.5 text-[#006400]" />
   }
-  return <span className="w-2.5 h-2.5 rounded-full bg-muted-foreground/30" />
+  return <Circle className="size-3.5 text-muted-foreground/40" />
 }
 
 function ToolCallLine({ tool }: { tool: AgentLoopToolCall }) {
@@ -35,25 +35,25 @@ function ToolCallLine({ tool }: { tool: AgentLoopToolCall }) {
     <div className="py-0.5">
       <div
         className={cn(
-          'flex items-center gap-2 text-xs text-muted-foreground',
-          hasDetail && 'cursor-pointer hover:bg-muted/50 -mx-1 px-1 rounded',
+          'flex items-center gap-2 text-xs text-[#555]',
+          hasDetail && 'cursor-pointer hover:bg-black/[0.04] -mx-1 px-1 rounded',
         )}
         onClick={hasDetail ? () => setDetailOpen(!detailOpen) : undefined}
       >
         {hasDetail ? (
-          <ChevronRight className={cn('w-3 h-3 shrink-0 transition-transform', detailOpen && 'rotate-90')} />
+          <ChevronRight className={cn('size-3 shrink-0 transition-transform text-[#999]', detailOpen && 'rotate-90')} />
         ) : (
-          <span className="w-3 h-3" />
+          <span className="size-3" />
         )}
         <span className={cn('inline-block h-1.5 w-1.5 rounded-full shrink-0', dotColor)} />
-        {tool.parallel && <span className="text-[10px] text-muted-foreground/50">∥</span>}
-        <span className="font-mono text-foreground">{tool.name}</span>
+        {tool.parallel && <span className="text-[10px] text-[#999]">并行</span>}
+        <span className="font-mono text-[#181d26]">{tool.name}</span>
         <span>{tool.status === 'calling' ? '调用中' : tool.status === 'success' ? '完成' : '失败'}</span>
-        {duration && <span className="opacity-50">{duration}s</span>}
+        {duration && <span className="text-[#999]">{duration}s</span>}
       </div>
 
       {detailOpen && (
-        <div className="ml-5 mt-1 mb-1 text-[11px] border-l-2 border-muted pl-2">
+        <div className="ml-5 mt-1 mb-1 text-[11px] border-l-2 border-[#dddddd] pl-2">
           {tool.args && (
             <div className="space-y-0.5">
               {Object.entries(tool.args).map(([k, v]) => (
@@ -82,28 +82,29 @@ function TurnItem({ turn, isRunning, defaultOpen }: { turn: AgentLoopTurn; isRun
 
   const parallelBatches = groupParallelTools(turn.toolCalls)
   const hasContent = turn.thinking || turn.toolCalls.length > 0 || turn.progress || turn.content
+  const label = turn.turnNumber === 1 ? '开始处理' : `继续处理 ${turn.turnNumber}`
 
   return (
     <div className="relative">
       {/* Turn header */}
       <button
         onClick={() => setOpen(!open)}
-        className="flex items-center gap-2 w-full text-left py-1 hover:bg-muted/30 rounded px-1 -mx-1 transition-colors"
+        className="flex items-center gap-2 w-full text-left py-1 hover:bg-black/[0.04] rounded px-1 -mx-1 transition-colors"
       >
-        <ChevronRight className={cn('w-3 h-3 text-muted-foreground transition-transform shrink-0', open && 'rotate-90')} />
+        <ChevronRight className={cn('size-3 text-[#999] transition-transform shrink-0', open && 'rotate-90')} />
         <TurnStatusIcon turn={turn} isRunning={isRunning} />
-        <span className="text-xs font-medium">Turn {turn.turnNumber}</span>
+        <span className="text-xs font-medium text-[#181d26]">{label}</span>
         {!open && turn.progress && (
-          <span className="text-[10px] text-muted-foreground truncate">{turn.progress}</span>
+          <span className="text-[10px] text-[#777169] truncate">{turn.progress}</span>
         )}
         {!open && turn.toolCalls.length > 0 && (
-          <span className="text-[10px] text-muted-foreground/50">{turn.toolCalls.length} 工具调用</span>
+          <span className="text-[10px] text-[#999]">{turn.toolCalls.length} 个工具</span>
         )}
       </button>
 
       {/* Turn body */}
       {open && hasContent && (
-        <div className="ml-5 pl-3 border-l border-muted">
+        <div className="ml-5 pl-3 border-l border-[#dddddd]">
           {/* Thinking */}
           {turn.thinking && (
             <ThinkingBlock content={turn.thinking} isStreaming={turn.status === 'active' && isRunning} />
@@ -113,7 +114,7 @@ function TurnItem({ turn, isRunning, defaultOpen }: { turn: AgentLoopTurn; isRun
           {parallelBatches.map((batch, bi) => (
             <div key={bi}>
               {batch.parallel && batch.tools.length > 1 && (
-                <div className="text-[10px] text-muted-foreground/50 flex items-center gap-1 mt-1 mb-0.5">
+                <div className="text-[10px] text-[#777169] flex items-center gap-1 mt-1 mb-0.5">
                   <span>∥</span>
                   <span>{batch.tools.length} 并行</span>
                 </div>
@@ -126,23 +127,23 @@ function TurnItem({ turn, isRunning, defaultOpen }: { turn: AgentLoopTurn; isRun
 
           {/* Progress */}
           {turn.progress && (
-            <div className="flex items-center gap-1.5 py-1 text-[11px] text-muted-foreground">
-              <span>📊</span>
+            <div className="flex items-center gap-1.5 py-1 text-[11px] text-[#555]">
+              <Clock3 className="size-3 text-[#999]" />
               <span>{turn.progress}</span>
             </div>
           )}
 
           {/* Turn content/result */}
           {turn.content && turn.status === 'completed' && (
-            <div className="py-1 text-xs text-foreground/80 whitespace-pre-wrap line-clamp-3">
+            <div className="py-1 text-xs text-[#333840] whitespace-pre-wrap line-clamp-3">
               {turn.content.slice(0, 200)}{turn.content.length > 200 ? '...' : ''}
             </div>
           )}
 
           {/* Active indicator */}
           {turn.status === 'active' && isRunning && !turn.thinking && turn.toolCalls.length === 0 && (
-            <div className="flex items-center gap-1.5 py-1 text-xs text-muted-foreground">
-              <span className="inline-block w-2 h-2 border-2 border-muted-foreground/30 border-t-muted-foreground rounded-full animate-spin" />
+            <div className="flex items-center gap-1.5 py-1 text-xs text-[#777169]">
+              <Loader2 className="size-3 animate-spin" />
               <span>等待 LLM 响应...</span>
             </div>
           )}
@@ -156,7 +157,7 @@ export function AgentLoopTimeline({ loop, className }: Props) {
   const isRunning = loop.status === 'running'
 
   return (
-    <div className={cn('space-y-0.5', className)}>
+    <div className={cn('space-y-1', className)}>
       {loop.turns.map((turn, i) => (
         <TurnItem
           key={`${turn.turnNumber}-${i}`}
@@ -169,7 +170,7 @@ export function AgentLoopTimeline({ loop, className }: Props) {
       {/* Terminal states */}
       {loop.status === 'completed' && loop.finalContent && (
         <div className="flex items-center gap-1.5 py-1 text-xs">
-          <span className="w-2.5 h-2.5 rounded-full bg-green-500" />
+          <Check className="size-3.5 text-[#006400]" />
           <span className="font-medium text-green-700">完成</span>
           <span className="text-muted-foreground truncate max-w-[300px]">{loop.finalContent.slice(0, 80)}</span>
         </div>
@@ -177,14 +178,14 @@ export function AgentLoopTimeline({ loop, className }: Props) {
 
       {loop.status === 'max_turns_reached' && (
         <div className="flex items-center gap-1.5 py-1 text-xs">
-          <span className="w-2.5 h-2.5 rounded-full bg-amber-500" />
+          <Wrench className="size-3.5 text-amber-600" />
           <span className="font-medium text-amber-700">已达到最大轮次 ({loop.currentTurn})</span>
         </div>
       )}
 
       {loop.status === 'error' && (
         <div className="flex items-center gap-1.5 py-1 text-xs">
-          <span className="w-2.5 h-2.5 rounded-full bg-red-500" />
+          <Circle className="size-3.5 text-red-600 fill-red-600" />
           <span className="font-medium text-red-700">错误</span>
           {loop.error && <span className="text-muted-foreground truncate max-w-[300px]">{loop.error}</span>}
         </div>
@@ -192,7 +193,7 @@ export function AgentLoopTimeline({ loop, className }: Props) {
 
       {loop.status === 'stopped' && (
         <div className="flex items-center gap-1.5 py-1 text-xs">
-          <span className="w-2.5 h-2.5 rounded-full bg-zinc-400" />
+          <Circle className="size-3.5 text-zinc-400 fill-zinc-400" />
           <span className="font-medium text-zinc-700">已停止</span>
           {loop.error && <span className="text-muted-foreground truncate max-w-[300px]">{loop.error}</span>}
         </div>
@@ -200,7 +201,7 @@ export function AgentLoopTimeline({ loop, className }: Props) {
 
       {loop.status === 'interrupted' && (
         <div className="flex items-center gap-1.5 py-1 text-xs">
-          <span className="w-2.5 h-2.5 rounded-full bg-amber-500" />
+          <Circle className="size-3.5 text-amber-500 fill-amber-500" />
           <span className="font-medium text-amber-700">已中断</span>
           {loop.error && <span className="text-muted-foreground truncate max-w-[300px]">{loop.error}</span>}
         </div>
@@ -208,14 +209,14 @@ export function AgentLoopTimeline({ loop, className }: Props) {
 
       {loop.status === 'waiting_for_user' && (
         <div className="flex items-center gap-1.5 py-1 text-xs">
-          <span className="w-2.5 h-2.5 rounded-full bg-amber-500 animate-pulse" />
+          <Loader2 className="size-3.5 animate-spin text-amber-600" />
           <span className="font-medium text-amber-700">等待用户回答</span>
         </div>
       )}
 
       {loop.status === 'waiting_expired' && (
         <div className="flex items-center gap-1.5 py-1 text-xs">
-          <span className="w-2.5 h-2.5 rounded-full bg-zinc-400" />
+          <Circle className="size-3.5 text-zinc-400 fill-zinc-400" />
           <span className="font-medium text-zinc-700">等待已超时</span>
           {loop.error && <span className="text-muted-foreground truncate max-w-[300px]">{loop.error}</span>}
         </div>

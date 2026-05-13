@@ -46,29 +46,18 @@ function findAgentLoopAnchorMsgId(messages: ChatMessage[], loop?: AgentLoopState
   return undefined
 }
 
-function agentDisplay(members: RoomMemberInfo[] | undefined, agentId: string) {
+function agentDisplayName(members: RoomMemberInfo[] | undefined, agentId: string) {
   const member = members?.find((m) => m.agent_id === agentId)
-  return {
-    name: member?.display_name || agentId,
-    avatarUrl: member?.avatar_url,
-  }
+  return member?.display_name || agentId
 }
 
 function AgentLoopBlock({ loop, members }: { loop: AgentLoopState; members?: RoomMemberInfo[] }) {
-  const agent = agentDisplay(members, loop.agentId)
+  const agentName = agentDisplayName(members, loop.agentId)
   return (
-    <div className="flex gap-2.5 px-4 py-2.5 mx-auto" style={{ maxWidth: CHAT_MAX_WIDTH }}>
-      <div className="shrink-0 mt-0.5">
-        {agent.avatarUrl ? (
-          <img src={agent.avatarUrl} alt="" className="w-9 h-9 rounded-full object-cover" />
-        ) : (
-          <div className="w-9 h-9 rounded-full bg-[#F59E0B] flex items-center justify-center text-white text-xs font-medium">
-            {agent.name.charAt(0)}
-          </div>
-        )}
-      </div>
-      <div className="flex-1 min-w-0">
-        <div className="text-xs text-[#777169] mb-1">{agent.name}</div>
+    <div className="flex gap-2.5 py-2.5">
+      <div className="w-9 shrink-0" />
+      <div className="flex-1 min-w-0 rounded-lg border border-[#e5e5e5] bg-[#fafafa] px-3 py-2">
+        <div className="text-xs text-[#777169] mb-1">{agentName}</div>
         <AgentLoopTimeline loop={loop} />
       </div>
     </div>
