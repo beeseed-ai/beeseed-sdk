@@ -34,10 +34,52 @@ interface Props {
   className?: string
 }
 
+function findAgentLoopAnchorMsgId(messages: ChatMessage[], loop?: AgentLoopState): number | undefined {
+  if (!loop || loop.status !== 'completed') return undefined
+  for (let i = messages.length - 1; i >= 0; i--) {
+    const message = messages[i]
+    if (!message?.msgId || message.role !== 'assistant') continue
+    if (message.senderId !== loop.agentId) continue
+    if (loop.finalContent && message.content !== loop.finalContent) continue
+    return message.msgId
+  }
+  return undefined
+}
+
+function agentDisplay(members: RoomMemberInfo[] | undefined, agentId: string) {
+  const member = members?.find((m) => m.agent_id === agentId)
+  return {
+    name: member?.display_name || agentId,
+    avatarUrl: member?.avatar_url,
+  }
+}
+
+function AgentLoopBlock({ loop, members }: { loop: AgentLoopState; members?: RoomMemberInfo[] }) {
+  const agent = agentDisplay(members, loop.agentId)
+  return (
+    <div className="flex gap-2.5 px-4 py-2.5 mx-auto" style={{ maxWidth: CHAT_MAX_WIDTH }}>
+      <div className="shrink-0 mt-0.5">
+        {agent.avatarUrl ? (
+          <img src={agent.avatarUrl} alt="" className="w-9 h-9 rounded-full object-cover" />
+        ) : (
+          <div className="w-9 h-9 rounded-full bg-[#F59E0B] flex items-center justify-center text-white text-xs font-medium">
+            {agent.name.charAt(0)}
+          </div>
+        )}
+      </div>
+      <div className="flex-1 min-w-0">
+        <div className="text-xs text-[#777169] mb-1">{agent.name}</div>
+        <AgentLoopTimeline loop={loop} />
+      </div>
+    </div>
+  )
+}
+
 export function MessageList({ messages, stream, agentLoop, members, typing, onQuote, onMentionClick, currentUserId, onSubmitAnswer, onStopAgent }: Props) {
   const containerRef = useRef<HTMLDivElement>(null)
   const shouldAutoScroll = useRef(true)
   const grouped = useMemo(() => groupMessages(messages), [messages])
+  const loopAnchorMsgId = useMemo(() => findAgentLoopAnchorMsgId(messages, agentLoop), [messages, agentLoop])
 
   const scrollToBottom = useCallback(() => {
     const el = containerRef.current
@@ -77,32 +119,28 @@ export function MessageList({ messages, stream, agentLoop, members, typing, onQu
                 return <ToolGroupBubble key={`tg-${i}`} messages={item} />
               }
               return (
-                <MessageBubble
-                  key={item.msgId ?? `m-${i}`}
-                  message={item}
-                  isOwn={item.role === 'user'}
-                  currentUserId={currentUserId}
-                  onQuote={onQuote}
-                  onMentionClick={onMentionClick}
-                  onScrollToMessage={handleScrollToMessage}
-                  onSubmitAnswer={onSubmitAnswer}
-                />
+                <div key={item.msgId ?? `m-${i}`}>
+                  {agentLoop && item.msgId === loopAnchorMsgId && (
+                    <AgentLoopBlock loop={agentLoop} members={members} />
+                  )}
+                  <MessageBubble
+                    message={item}
+                    isOwn={item.role === 'user'}
+                    currentUserId={currentUserId}
+                    onQuote={onQuote}
+                    onMentionClick={onMentionClick}
+                    onScrollToMessage={handleScrollToMessage}
+                    onSubmitAnswer={onSubmitAnswer}
+                  />
+                </div>
               )
             })}
           </div>
         )}
 
         {/* Completed Agent Loop */}
-        {agentLoop && agentLoop.status !== 'running' && !stream && (
-          <div className="flex gap-2.5 px-4 py-2.5 mx-auto" style={{ maxWidth: CHAT_MAX_WIDTH }}>
-            <div className="shrink-0 mt-0.5">
-              <div className="w-9 h-9 rounded-full bg-[#F59E0B] flex items-center justify-center text-white text-xs font-medium">A</div>
-            </div>
-            <div className="flex-1 min-w-0">
-              <div className="text-xs text-[#777169] mb-1">{agentLoop.agentId}</div>
-              <AgentLoopTimeline loop={agentLoop} />
-            </div>
-          </div>
+        {agentLoop && agentLoop.status !== 'running' && !stream && !loopAnchorMsgId && (
+          <AgentLoopBlock loop={agentLoop} members={members} />
         )}
 
         {/* Streaming */}
@@ -112,6 +150,7 @@ export function MessageList({ messages, stream, agentLoop, members, typing, onQu
               stream={stream}
               agentLoop={agentLoop}
               agentAvatarUrl={members?.find(m => m.agent_id === stream.agentId)?.avatar_url}
+              agentDisplayName={members?.find(m => m.agent_id === stream.agentId)?.display_name}
               onStop={onStopAgent}
             />
           </div>

@@ -13,14 +13,16 @@ interface Props {
   stream: StreamState
   agentLoop?: AgentLoopState
   agentAvatarUrl?: string
+  agentDisplayName?: string
   onStop?: (agentId: string, reason?: string) => void
   className?: string
 }
 
-export function StreamRenderer({ stream, agentLoop, agentAvatarUrl, onStop, className }: Props) {
+export function StreamRenderer({ stream, agentLoop, agentAvatarUrl, agentDisplayName, onStop, className }: Props) {
   const [stopOpen, setStopOpen] = useState(false)
   const [stopReason, setStopReason] = useState('')
   const hasContent = stream.content || stream.thinking || stream.toolCall || agentLoop
+  const displayName = agentDisplayName || stream.agentId
 
   const handleStop = () => {
     onStop?.(stream.agentId, stopReason)
@@ -36,7 +38,7 @@ export function StreamRenderer({ stream, agentLoop, agentAvatarUrl, onStop, clas
       </Avatar>
       <div className="flex flex-col gap-0.5 max-w-[85%]">
         <div className="flex items-center gap-2">
-          <span className="text-xs text-muted-foreground">{stream.agentId}</span>
+          <span className="text-xs text-muted-foreground">{displayName}</span>
           {onStop && (
             <button
               type="button"
