@@ -7,6 +7,7 @@ import type {
 } from '../core/types.js'
 
 const AGENT_LOOP_STALE_AFTER_MS = 30 * 60 * 1000
+const AGENT_LOOP_STALE_MESSAGE = '长时间没有收到 Agent 进度，任务可能已中断。'
 
 // ── Message parsing (wire Message → display ChatMessage) ──
 
@@ -358,7 +359,7 @@ function buildAgentLoopsFromMessages(roomId: string, messages: Message[]): Map<s
     if (now - latestAt <= AGENT_LOOP_STALE_AFTER_MS) continue
     const turns = loop.turns.map((turn, index) => (
       index === loop.turns.length - 1 && turn.status === 'active'
-        ? { ...turn, status: 'completed' as const, progress: turn.progress || '任务已中断。', completedAt: latestAt }
+        ? { ...turn, status: 'completed' as const, progress: turn.progress || AGENT_LOOP_STALE_MESSAGE, completedAt: latestAt }
         : turn
     ))
     loops.set(key, {
@@ -366,7 +367,7 @@ function buildAgentLoopsFromMessages(roomId: string, messages: Message[]): Map<s
       turns,
       status: 'interrupted',
       completedAt: latestAt,
-      error: '任务已中断。',
+      error: AGENT_LOOP_STALE_MESSAGE,
     })
   }
 
