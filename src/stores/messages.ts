@@ -670,7 +670,8 @@ export function createMessagesStore(config: MessagesStoreConfig) {
           const loops = new Map(state.agentLoops)
           const loopKey = `${event.room_id}:${event.agent_id}`
           const existing = loops.get(loopKey)
-          const turnNumber = existing && event.turn <= existing.currentTurn
+          const shouldContinueExisting = existing?.status === 'running' || existing?.status === 'waiting_for_user'
+          const turnNumber = shouldContinueExisting && existing && event.turn <= existing.currentTurn
             ? existing.currentTurn + 1
             : event.turn
 
@@ -681,7 +682,7 @@ export function createMessagesStore(config: MessagesStoreConfig) {
             startedAt: Date.now(),
           }
 
-          const loop: AgentLoopState = existing
+          const loop: AgentLoopState = shouldContinueExisting && existing
             ? {
                 ...existing,
                 status: 'running',
