@@ -1,8 +1,8 @@
 import { useEffect, useMemo, useState } from 'react'
-import { CalendarClock, CheckCircle2, ChevronDown, ChevronLeft, ChevronRight, Hash, PauseCircle, PlayCircle, Repeat2, Trash2 } from 'lucide-react'
+import { Activity, AlertTriangle, CalendarClock, CheckCircle2, ChevronDown, ChevronLeft, ChevronRight, Hash, PauseCircle, PlayCircle, Repeat2, Timer, Trash2 } from 'lucide-react'
 import { useTasks } from '../../hooks/use-tasks.js'
 import { useChannels } from '../../hooks/use-channels.js'
-import type { CalendarEvent, ChannelMemberInfo, Task } from '../../core/types.js'
+import type { CalendarEvent, ChannelMemberInfo, Task, TaskSchedulerMetrics } from '../../core/types.js'
 import { TaskItem } from './TaskItem.js'
 import { CreateTaskDialog } from './CreateTaskDialog.js'
 import { CreateScheduledTaskDialog } from './CreateScheduledTaskDialog.js'
@@ -24,8 +24,8 @@ const WEEKDAYS = ['一', '二', '三', '四', '五', '六', '日']
 export function TaskPanel({ channelId, members = [], createTaskRequest = 0 }: Props) {
   const { channels, joinChannel } = useChannels()
   const {
-    projects, tasks, scheduledTasks, calendarEvents, loading, schedulesLoading,
-    getTask, createTask, createScheduledTask, updateScheduledTask, deleteScheduledTask, deleteTask, fetchScheduledTasks, fetchCalendar,
+    projects, tasks, scheduledTasks, calendarEvents, metrics, loading, schedulesLoading, metricsLoading,
+    getTask, createTask, createScheduledTask, updateScheduledTask, deleteScheduledTask, deleteTask, fetchScheduledTasks, fetchCalendar, fetchMetrics,
   } = useTasks(channelId)
   const [calendarMonth, setCalendarMonth] = useState(() => startOfMonth(new Date()))
   const [selectedDate, setSelectedDate] = useState(() => startOfDay(new Date()))
@@ -83,6 +83,7 @@ export function TaskPanel({ channelId, members = [], createTaskRequest = 0 }: Pr
     if (task?.due_at || task?.scheduled_start_at) {
       await refreshCalendarRange()
     }
+    await fetchMetrics()
   }
   const handleCreateScheduledTask = async (data: Parameters<typeof createScheduledTask>[0]) => {
     const created = await createScheduledTask(data)
@@ -90,16 +91,19 @@ export function TaskPanel({ channelId, members = [], createTaskRequest = 0 }: Pr
       setActiveTab('schedules')
       await fetchScheduledTasks()
       await refreshCalendarRange()
+      await fetchMetrics()
     }
   }
   const handleToggleSchedule = async (scheduleId: string, enabled: boolean) => {
     await updateScheduledTask(scheduleId, { enabled })
     await fetchScheduledTasks()
     await refreshCalendarRange()
+    await fetchMetrics()
   }
   const handleDeleteSchedule = async (scheduleId: string) => {
     await deleteScheduledTask(scheduleId)
     await refreshCalendarRange()
+    await fetchMetrics()
   }
 
   return (
@@ -120,6 +124,7 @@ export function TaskPanel({ channelId, members = [], createTaskRequest = 0 }: Pr
       </div>
       <Tabs defaultValue="tasks" value={activeTab} onValueChange={setActiveTab} className="flex-1 flex flex-col overflow-hidden">
         <div className="px-3 py-2 border-b border-border">
+          <TaskMetricsStrip metrics={metrics} loading={metricsLoading} />
           <TabsList className="w-full">
             <TabsTrigger value="tasks" className="flex-1 gap-1.5"><CheckCircle2 className="w-3.5 h-3.5" />任务清单</TabsTrigger>
             <TabsTrigger value="calendar" className="flex-1 gap-1.5"><CalendarClock className="w-3.5 h-3.5" />日历</TabsTrigger>
@@ -238,8 +243,40 @@ export function TaskPanel({ channelId, members = [], createTaskRequest = 0 }: Pr
         channelName={currentChannel?.name || undefined}
         open={!!selectedTask}
         onClose={() => setSelectedTaskId(null)}
-        onTaskChanged={refreshCalendarRange}
+        onTaskChanged={() => {
+          void refreshCalendarRange()
+          void fetchMetrics()
+        }}
       />
+    </div>
+  )
+}
+
+function TaskMetricsStrip({ metrics, loading }: { metrics: TaskSchedulerMetrics | null; loading: boolean }) {
+  const items = [
+    { key: 'open', label: '打开', value: metrics?.open ?? 0, icon: Activity },
+    { key: 'ready', label: '待派发', value: metrics?.ready ?? 0, icon: Timer },
+    { key: 'dispatched', label: '执行中', value: metrics?.dispatched ?? 0, icon: PlayCircle },
+    { key: 'verify', label: '待验收', value: metrics?.awaiting_verify ?? 0, icon: CheckCircle2 },
+    { key: 'risk', label: '异常', value: (metrics?.overdue ?? 0) + (metrics?.failed_24h ?? 0), icon: AlertTriangle },
+  ]
+
+  return (
+    <div className="mb-2 grid grid-cols-5 gap-1">
+      {items.map((item) => {
+        const Icon = item.icon
+        return (
+          <div key={item.key} className="min-w-0 rounded-md border border-border bg-background px-2 py-1.5">
+            <div className="flex items-center gap-1 text-[10px] text-muted-foreground">
+              <Icon className="h-3 w-3 shrink-0" />
+              <span className="truncate">{item.label}</span>
+            </div>
+            <div className="mt-0.5 text-sm font-medium tabular-nums text-foreground">
+              {loading ? '...' : item.value}
+            </div>
+          </div>
+        )
+      })}
     </div>
   )
 }

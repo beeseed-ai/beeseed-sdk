@@ -10,6 +10,7 @@ export function useTasks(channelId: string | null) {
     if (!channelId) return
     void state.fetchProjects(channelId)
     void state.fetchTasks(channelId)
+    void state.fetchMetrics(channelId)
     void state.fetchScheduledTasks(channelId)
     void state.fetchCalendar(channelId)
   }, [channelId])
@@ -19,9 +20,12 @@ export function useTasks(channelId: string | null) {
     tasks: state.tasks,
     scheduledTasks: state.scheduledTasks,
     calendarEvents: state.calendarEvents,
+    metrics: state.metrics,
     loading: state.loading,
     schedulesLoading: state.schedulesLoading,
+    metricsLoading: state.metricsLoading,
     getTask: (taskId: string) => channelId ? state.getTask(channelId, taskId) : Promise.resolve(null),
+    fetchMetrics: () => channelId ? state.fetchMetrics(channelId) : Promise.resolve(),
     createTask: (data: Parameters<typeof state.createTask>[1]) => channelId ? state.createTask(channelId, data) : Promise.resolve(null),
     updateTask: (taskId: string, patch: Parameters<typeof state.updateTask>[2]) => channelId ? state.updateTask(channelId, taskId, patch) : Promise.resolve(),
     deleteTask: (taskId: string) => channelId ? state.deleteTask(channelId, taskId) : Promise.resolve(),

@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { MessageSquare, Save, X } from 'lucide-react'
+import { CheckCircle2, MessageSquare, RotateCcw, Save, X } from 'lucide-react'
 import type { ChannelMemberInfo, Task, TaskComment } from '../../core/types.js'
 import { useTasks } from '../../hooks/use-tasks.js'
 import { Button } from '../ui/button.js'
@@ -63,6 +63,7 @@ export function TaskDetailSheet({ channelId, task, members, channelName, open, o
   }
 
   const assignedAgent = agents.find((agent) => agent.agent_id === task.assigned_agent_id)
+  const awaitingVerification = task.verification_status === 'pending' || task.scheduler_state === 'awaiting_verify'
 
   async function submitComment() {
     const content = commentText.trim()
@@ -90,6 +91,18 @@ export function TaskDetailSheet({ channelId, task, members, channelName, open, o
     }
   }
 
+  async function acceptTask() {
+    if (!task) return
+    await updateTask(task.id, { verification_status: 'accepted' })
+    onTaskChanged?.()
+  }
+
+  async function rejectTask() {
+    if (!task) return
+    await updateTask(task.id, { verification_status: 'rejected' })
+    onTaskChanged?.()
+  }
+
   return (
     <Sheet open={open} onClose={onClose} className="w-full max-w-[440px]">
       <SheetHeader>
@@ -102,6 +115,9 @@ export function TaskDetailSheet({ channelId, task, members, channelName, open, o
             {task.scheduler_state && (
               <span className="text-[10px] text-muted-foreground">{task.scheduler_state}</span>
             )}
+            {awaitingVerification && (
+              <Badge variant="warning" className="text-[10px]">待验收</Badge>
+            )}
           </div>
         </div>
         <Button size="icon-sm" variant="ghost" onClick={onClose} title="关闭">
@@ -111,6 +127,23 @@ export function TaskDetailSheet({ channelId, task, members, channelName, open, o
 
       <SheetContent className="px-4 py-4">
         <div className="space-y-5">
+          {awaitingVerification && (
+            <section className="rounded-md border border-amber-200 bg-amber-50 px-3 py-3">
+              <div className="text-sm font-medium text-amber-950">Agent 已回报完成，等待验收</div>
+              {task.result && <div className="mt-1 whitespace-pre-wrap text-sm text-amber-950/80">{task.result}</div>}
+              <div className="mt-3 flex gap-2">
+                <Button size="sm" onClick={acceptTask}>
+                  <CheckCircle2 className="mr-1.5 h-3.5 w-3.5" />
+                  验收通过
+                </Button>
+                <Button size="sm" variant="outline" onClick={rejectTask}>
+                  <RotateCcw className="mr-1.5 h-3.5 w-3.5" />
+                  退回重做
+                </Button>
+              </div>
+            </section>
+          )}
+
           <section className="space-y-3">
             <div className="grid grid-cols-[72px_1fr] items-center gap-2">
               <label className="text-xs text-muted-foreground">标题</label>
@@ -171,6 +204,9 @@ export function TaskDetailSheet({ channelId, task, members, channelName, open, o
               />
             </div>
             {task.scheduled_start_at && <ReadOnlyRow label="计划开始" value={formatDateTime(task.scheduled_start_at)} />}
+            {task.agent_completed_at && <ReadOnlyRow label="Agent完成" value={formatDateTime(task.agent_completed_at)} />}
+            {task.verified_at && <ReadOnlyRow label="验收时间" value={formatDateTime(task.verified_at)} />}
+            {task.failure_code && <ReadOnlyRow label="失败类型" value={task.failure_code} />}
             {assignedAgent?.ext_info && (
               <ReadOnlyRow label="执行人信息" value={formatExtInfo(assignedAgent.ext_info)} />
             )}
@@ -197,6 +233,13 @@ export function TaskDetailSheet({ channelId, task, members, channelName, open, o
             <section>
               <div className="mb-2 text-xs font-medium text-muted-foreground">结果</div>
               <div className="whitespace-pre-wrap rounded-md bg-muted/40 px-3 py-2 text-sm">{task.result}</div>
+            </section>
+          )}
+
+          {task.failure_detail && (
+            <section>
+              <div className="mb-2 text-xs font-medium text-muted-foreground">失败详情</div>
+              <div className="whitespace-pre-wrap rounded-md bg-destructive/5 px-3 py-2 text-sm text-destructive">{task.failure_detail}</div>
             </section>
           )}
 

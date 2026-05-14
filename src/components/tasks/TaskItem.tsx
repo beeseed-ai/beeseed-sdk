@@ -23,6 +23,7 @@ interface Props {
 export function TaskItem({ task, onClick, onDelete, assignedLabel, className }: Props) {
   const config = STATUS_CONFIG[task.status] || STATUS_CONFIG.pending
   const Icon = config.icon
+  const awaitingVerification = task.verification_status === 'pending' || task.scheduler_state === 'awaiting_verify'
 
   return (
     <div className={cn('group flex items-start gap-2 rounded-md px-2 py-1.5 hover:bg-muted/50 transition-colors', className)}>
@@ -38,6 +39,12 @@ export function TaskItem({ task, onClick, onDelete, assignedLabel, className }: 
           <Badge variant={config.variant} className="text-[10px] px-1.5 py-0">{config.label}</Badge>
           {task.scheduler_state === 'pending_deps' && (
             <Badge variant="outline" className="text-[10px] px-1.5 py-0">等待依赖</Badge>
+          )}
+          {awaitingVerification && (
+            <Badge variant="warning" className="text-[10px] px-1.5 py-0">待验收</Badge>
+          )}
+          {task.failure_code && (
+            <span className="max-w-[120px] truncate text-[10px] text-destructive">{task.failure_code}</span>
           )}
           {task.depends_on_task_ids && task.depends_on_task_ids.length > 0 && (
             <span className="text-[10px] text-muted-foreground">依赖 {task.depends_on_task_ids.length}</span>

@@ -257,6 +257,12 @@ export interface Task {
   result?: string
   started_at?: string
   completed_at?: string
+  failure_code?: string
+  failure_detail?: string
+  verification_status?: 'none' | 'pending' | 'accepted' | 'rejected'
+  verified_by?: string
+  verified_at?: string
+  agent_completed_at?: string
   scheduler_state?: 'manual' | 'template' | 'waiting_time' | 'pending_deps' | 'ready' | 'dispatched' | 'awaiting_verify' | 'verified' | 'failed' | 'cancelled'
   scheduled_start_at?: string
   deadline_at?: string
@@ -269,6 +275,30 @@ export interface Task {
   depends_on_task_ids?: string[]
   created_by?: string
   created_at: string
+  updated_at: string
+}
+
+export interface TaskSchedulerMetrics {
+  total: number
+  open: number
+  ready: number
+  dispatched: number
+  awaiting_verify: number
+  overdue: number
+  pending_deps: number
+  waiting_time: number
+  failed: number
+  failed_24h: number
+  blocked: number
+  retried: number
+  schedules_enabled: number
+  schedules_due: number
+  avg_dispatch_seconds?: number
+  failure_codes: Record<string, number>
+  by_scheduler_state: Record<string, number>
+  by_status: Record<string, number>
+  agent_busy_count: number
+  busy_agent_keys?: string[]
   updated_at: string
 }
 

@@ -1,6 +1,6 @@
 import { createStore } from 'zustand/vanilla'
 import type { KyInstance } from 'ky'
-import type { CalendarEvent, Project, Task, TaskComment, TaskSchedule } from '../core/types.js'
+import type { CalendarEvent, Project, Task, TaskComment, TaskSchedule, TaskSchedulerMetrics } from '../core/types.js'
 import { MOCK_CALENDAR_EVENTS, MOCK_PROJECTS, MOCK_TASK_SCHEDULES, MOCK_TASKS, MOCK_COMMENTS } from '../mocks/tasks.js'
 
 export type CreateScheduledTaskInput = {
@@ -30,11 +30,14 @@ export interface TasksState {
   tasks: Task[]
   scheduledTasks: TaskSchedule[]
   calendarEvents: CalendarEvent[]
+  metrics: TaskSchedulerMetrics | null
   loading: boolean
   schedulesLoading: boolean
+  metricsLoading: boolean
 
   fetchProjects: (channelId: string) => Promise<void>
   fetchTasks: (channelId: string) => Promise<void>
+  fetchMetrics: (channelId: string) => Promise<void>
   getTask: (channelId: string, taskId: string) => Promise<Task | null>
   createTask: (channelId: string, data: Partial<Task>) => Promise<Task | null>
   updateTask: (channelId: string, taskId: string, patch: UpdateTaskInput) => Promise<void>
@@ -60,8 +63,10 @@ export function createTasksStore(config: TasksStoreConfig) {
     tasks: [],
     scheduledTasks: [],
     calendarEvents: [],
+    metrics: null,
     loading: false,
     schedulesLoading: false,
+    metricsLoading: false,
 
     fetchProjects: async (channelId) => {
       if (config.useMock) { set({ projects: MOCK_PROJECTS }); return }
@@ -80,6 +85,18 @@ export function createTasksStore(config: TasksStoreConfig) {
       } catch { set({ loading: false }) }
     },
 
+    fetchMetrics: async (channelId) => {
+      set({ metricsLoading: true })
+      if (config.useMock) {
+        set({ metrics: createMockMetrics(get().tasks, get().scheduledTasks), metricsLoading: false })
+        return
+      }
+      try {
+        const metrics = await config.api.get(`channels/${channelId}/task-metrics`).json<TaskSchedulerMetrics>()
+        set({ metrics, metricsLoading: false })
+      } catch { set({ metricsLoading: false }) }
+    },
+
     createTask: async (channelId, data) => {
       if (config.useMock) {
         const task: Task = { id: `task-${Date.now()}`, channel_id: channelId, title: data.title || '', status: 'pending', priority: data.priority ?? 3, created_at: new Date().toISOString(), updated_at: new Date().toISOString(), ...data }
@@ -89,6 +106,7 @@ export function createTasksStore(config: TasksStoreConfig) {
       try {
         const task = await config.api.post(`channels/${channelId}/tasks`, { json: data }).json<Task>()
         set({ tasks: [...get().tasks, task] })
+        void get().fetchMetrics(channelId)
         return task
       } catch { return null }
     },
@@ -118,6 +136,7 @@ export function createTasksStore(config: TasksStoreConfig) {
       try {
         const updated = await config.api.patch(`channels/${channelId}/tasks/${taskId}`, { json: patch }).json<Task>()
         set({ tasks: get().tasks.map((t) => t.id === taskId ? updated : t) })
+        void get().fetchMetrics(channelId)
       } catch { /* */ }
     },
 
@@ -137,6 +156,7 @@ export function createTasksStore(config: TasksStoreConfig) {
           scheduledTasks: get().scheduledTasks.filter((s) => s.task_template_id !== taskId),
           calendarEvents: get().calendarEvents.filter((event) => event.task_id !== taskId),
         })
+        void get().fetchMetrics(channelId)
       } catch { /* */ }
     },
 
@@ -172,6 +192,7 @@ export function createTasksStore(config: TasksStoreConfig) {
         const result = await config.api.post(`channels/${channelId}/scheduled-tasks`, { json: data }).json<{ task?: Task; template?: Task; schedule: TaskSchedule }>()
         const schedule = { ...result.schedule, template_title: result.template?.title || result.task?.title || result.schedule.template_title }
         set({ scheduledTasks: [...get().scheduledTasks, schedule] })
+        void get().fetchMetrics(channelId)
         return { ...result, schedule }
       } catch { return null }
     },
@@ -194,6 +215,7 @@ export function createTasksStore(config: TasksStoreConfig) {
               }
             : s),
         })
+        void get().fetchMetrics(channelId)
       } catch { /* */ }
     },
 
@@ -213,6 +235,7 @@ export function createTasksStore(config: TasksStoreConfig) {
           tasks: get().tasks.filter((task) => task.schedule_id !== scheduleId),
           calendarEvents: get().calendarEvents.filter((event) => event.schedule_id !== scheduleId),
         })
+        void get().fetchMetrics(channelId)
       } catch { /* */ }
     },
 
@@ -252,7 +275,7 @@ export function createTasksStore(config: TasksStoreConfig) {
       } catch { return null }
     },
 
-    reset: () => set({ projects: [], tasks: [], scheduledTasks: [], calendarEvents: [], loading: false, schedulesLoading: false }),
+    reset: () => set({ projects: [], tasks: [], scheduledTasks: [], calendarEvents: [], metrics: null, loading: false, schedulesLoading: false, metricsLoading: false }),
   }))
 }
 
@@ -263,4 +286,37 @@ function applyTaskPatch(task: Task, patch: UpdateTaskInput): Task {
   if (patch.due_at === null) delete next.due_at
   if (patch.scheduled_start_at === null) delete next.scheduled_start_at
   return next
+}
+
+function createMockMetrics(tasks: Task[], schedules: TaskSchedule[]): TaskSchedulerMetrics {
+  const byStatus = tasks.reduce<Record<string, number>>((acc, task) => {
+    acc[task.status] = (acc[task.status] || 0) + 1
+    return acc
+  }, {})
+  const bySchedulerState = tasks.reduce<Record<string, number>>((acc, task) => {
+    const state = task.scheduler_state || 'manual'
+    acc[state] = (acc[state] || 0) + 1
+    return acc
+  }, {})
+  return {
+    total: tasks.length,
+    open: tasks.filter((task) => task.status !== 'done' && task.status !== 'failed').length,
+    ready: bySchedulerState.ready || 0,
+    dispatched: bySchedulerState.dispatched || 0,
+    awaiting_verify: bySchedulerState.awaiting_verify || 0,
+    overdue: 0,
+    pending_deps: bySchedulerState.pending_deps || 0,
+    waiting_time: bySchedulerState.waiting_time || 0,
+    failed: byStatus.failed || 0,
+    failed_24h: byStatus.failed || 0,
+    blocked: byStatus.blocked || 0,
+    retried: tasks.filter((task) => (task.retry_count || 0) > 0).length,
+    schedules_enabled: schedules.filter((schedule) => schedule.enabled).length,
+    schedules_due: 0,
+    failure_codes: {},
+    by_scheduler_state: bySchedulerState,
+    by_status: byStatus,
+    agent_busy_count: 0,
+    updated_at: new Date().toISOString(),
+  }
 }

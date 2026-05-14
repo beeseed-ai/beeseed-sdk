@@ -119,6 +119,7 @@ function createBeeSeedContext(config: BeeSeedConfig): BeeSeedContextValue {
     }
     if (event.type === 'task_updated') {
       void tasksStore.getState().fetchTasks(event.channel_id)
+      void tasksStore.getState().fetchMetrics(event.channel_id)
     }
   }
 
