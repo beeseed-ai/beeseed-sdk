@@ -27,7 +27,7 @@ export function AskUserCard({ data, currentUserId, onSubmit, className }: Props)
   const readOnly = answered || expired || !isTargetUser
   const audienceLabel =
     data.visibility === 'all_members' ? '全员可回答' :
-    data.visibility === 'room_admins' ? '管理员可回答' :
+    data.visibility === 'channel_admins' ? '管理员可回答' :
     targetUserIds.length > 1 ? '指定成员可回答' :
     '仅你可回答'
 

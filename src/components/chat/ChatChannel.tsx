@@ -10,14 +10,14 @@ import { MessageInput } from './MessageInput.js'
 const CHAT_MAX_WIDTH = 820
 
 interface Props {
-  roomId: string
+  channelId: string
   className?: string
   header?: React.ReactNode
 }
 
-export function ChatRoom({ roomId, className, header }: Props) {
+export function ChatChannel({ channelId, className, header }: Props) {
   const { user } = useAuth()
-  const { messages, streams, agentLoops, members, typings, send, sendWithQuote, submitAnswer, stopAgent, loading } = useChat(roomId)
+  const { messages, streams, agentLoops, members, typings, send, sendWithQuote, submitAnswer, stopAgent, loading } = useChat(channelId)
   const { composerInsertText, consumeComposerInsert } = useDetailPanel()
   const [quotedMessage, setQuotedMessage] = useState<ChatMessage | null>(null)
 
@@ -40,7 +40,7 @@ export function ChatRoom({ roomId, className, header }: Props) {
         </div>
       ) : (
         <MessageList
-          roomId={roomId}
+          channelId={channelId}
           messages={messages}
           streams={streams}
           agentLoops={agentLoops}
@@ -56,7 +56,7 @@ export function ChatRoom({ roomId, className, header }: Props) {
       {/* Input area — centered at max-width */}
       <div className="shrink-0 mx-auto w-full" style={{ maxWidth: CHAT_MAX_WIDTH }}>
         <MessageInput
-          roomId={roomId}
+          channelId={channelId}
           onSend={handleSend}
           members={members}
           quotedMessage={quotedMessage}

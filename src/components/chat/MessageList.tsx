@@ -1,5 +1,5 @@
 import { useEffect, useRef, useMemo, useCallback } from 'react'
-import type { ChatMessage, StreamState, AgentLoopState, RoomMemberInfo } from '../../core/types.js'
+import type { ChatMessage, StreamState, AgentLoopState, ChannelMemberInfo } from '../../core/types.js'
 import { MessageBubble } from './MessageBubble.js'
 import { ToolGroupBubble } from './ToolGroupBubble.js'
 import { StreamRenderer } from './StreamRenderer.js'
@@ -21,13 +21,13 @@ function groupMessages(messages: ChatMessage[]): GroupedItem[] {
 }
 
 interface Props {
-  roomId: string
+  channelId: string
   messages: ChatMessage[]
   stream?: StreamState
   streams?: StreamState[]
   agentLoop?: AgentLoopState
   agentLoops?: AgentLoopState[]
-  members?: RoomMemberInfo[]
+  members?: ChannelMemberInfo[]
   typing?: string
   typings?: string[]
   onQuote?: (message: ChatMessage) => void
@@ -74,12 +74,12 @@ function agentLoopKey(loop: AgentLoopState): string {
   return `${loop.agentId}:${loop.startedAt}`
 }
 
-function agentDisplayName(members: RoomMemberInfo[] | undefined, agentId: string) {
+function agentDisplayName(members: ChannelMemberInfo[] | undefined, agentId: string) {
   const member = members?.find((m) => m.agent_id === agentId)
   return member?.display_name || agentId
 }
 
-function AgentLoopBlock({ loop, members }: { loop: AgentLoopState; members?: RoomMemberInfo[] }) {
+function AgentLoopBlock({ loop, members }: { loop: AgentLoopState; members?: ChannelMemberInfo[] }) {
   const agentName = agentDisplayName(members, loop.agentId)
   return (
     <div className="flex gap-2.5 py-2.5">
@@ -93,7 +93,7 @@ function AgentLoopBlock({ loop, members }: { loop: AgentLoopState; members?: Roo
 }
 
 export function MessageList({
-  roomId,
+  channelId,
   messages,
   stream,
   streams,
@@ -190,7 +190,7 @@ export function MessageList({
                   <MessageBubble
                     message={item}
                     isOwn={item.role === 'user'}
-                    roomId={roomId}
+                    channelId={channelId}
                     currentUserId={currentUserId}
                     onQuote={onQuote}
                     onMentionClick={onMentionClick}

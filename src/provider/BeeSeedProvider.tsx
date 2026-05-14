@@ -5,7 +5,7 @@ import { createApiClient } from '../core/client.js'
 import { WSClient } from '../core/ws.js'
 import { createAuthStore, type AuthStore } from '../stores/auth.js'
 import { createConnectionStore, type ConnectionStore } from '../stores/connection.js'
-import { createRoomsStore, type RoomsStore } from '../stores/rooms.js'
+import { createChannelsStore, type ChannelsStore } from '../stores/channels.js'
 import { createMessagesStore, type MessagesStore } from '../stores/messages.js'
 import { createDetailPanelStore, type DetailPanelStore } from '../stores/detail-panel.js'
 import { createTasksStore, type TasksStore } from '../stores/tasks.js'
@@ -23,7 +23,7 @@ export interface BeeSeedContextValue {
   ws: WSClient
   authStore: AuthStore
   connectionStore: ConnectionStore
-  roomsStore: RoomsStore
+  channelsStore: ChannelsStore
   messagesStore: MessagesStore
   detailPanelStore: DetailPanelStore
   tasksStore: TasksStore
@@ -60,13 +60,13 @@ function createBeeSeedContext(config: BeeSeedConfig): BeeSeedContextValue {
 
   const connectionStore = createConnectionStore()
   const api = createApiClient({ workerUrl: config.workerUrl, getToken })
-  const roomsStore = createRoomsStore({ api })
+  const channelsStore = createChannelsStore({ api })
 
   let wsSendRef: (cmd: unknown) => void = () => {}
 
   const messagesStore = createMessagesStore({
     api,
-    getCurrentRoomId: () => roomsStore.getState().currentRoomId,
+    getCurrentChannelId: () => channelsStore.getState().currentChannelId,
     getCurrentUserId: () => authStore.getState().user?.id,
     sendWsCommand: (cmd) => wsSendRef(cmd),
   })
@@ -90,11 +90,11 @@ function createBeeSeedContext(config: BeeSeedConfig): BeeSeedContextValue {
     onSignIn: () => {
       console.log('[Auth] onSignIn, wsRef exists:', !!wsRef)
       wsRef?.connect()
-      void roomsStore.getState().fetchRooms()
+      void channelsStore.getState().fetchChannels()
     },
     onSignOut: () => {
       wsRef?.disconnect()
-      roomsStore.getState().reset()
+      channelsStore.getState().reset()
       messagesStore.getState().reset()
       detailPanelStore.getState().reset()
       tasksStore.getState().reset()
@@ -110,12 +110,15 @@ function createBeeSeedContext(config: BeeSeedConfig): BeeSeedContextValue {
   const handleEvent = (event: WSEvent) => {
     console.log('[Provider] handleEvent', event.type)
     if (event.type === 'auth_ok') {
-      roomsStore.getState().setRooms(event.rooms ?? [])
+      channelsStore.getState().setChannels(event.channels ?? [])
     }
     messagesStore.getState().handleEvent(event)
 
     if (event.type === 'message' || event.type === 'message_end') {
-      void roomsStore.getState().fetchRooms()
+      void channelsStore.getState().fetchChannels()
+    }
+    if (event.type === 'task_updated') {
+      void tasksStore.getState().fetchTasks(event.channel_id)
     }
   }
 
@@ -129,7 +132,7 @@ function createBeeSeedContext(config: BeeSeedConfig): BeeSeedContextValue {
   wsSendRef = (cmd) => ws.send(cmd as Parameters<typeof ws.send>[0])
 
   return {
-    api, ws, authStore, connectionStore, roomsStore, messagesStore,
+    api, ws, authStore, connectionStore, channelsStore, messagesStore,
     detailPanelStore, tasksStore, knowledgeStore, storageStore,
     notificationsStore, cronStore, agentsStore, appUsersStore, invitesStore, appSettingsStore, config,
   }

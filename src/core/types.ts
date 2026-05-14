@@ -41,9 +41,9 @@ export interface Invite {
   revoked_by?: string | null
 }
 
-// ── Room ──
+// ── Channel ──
 
-export interface Room {
+export interface Channel {
   id: string
   name: string | null
   avatar_url?: string
@@ -53,28 +53,29 @@ export interface Room {
   updated_at: string
 }
 
-export interface RoomWithMeta extends Room {
+export interface ChannelWithMeta extends Channel {
   member_count: number
   last_message?: string
   last_msg_at?: string
   unread_count: number
 }
 
-// ── Room Member ──
+// ── Channel Member ──
 
-export interface RoomMember {
+export interface ChannelMember {
   id: string
-  room_id: string
+  channel_id: string
   member_type: 'user' | 'agent' | 'system'
   user_id?: string
   agent_id?: string
   nickname?: string
   role: 'owner' | 'member' | 'coordinator'
   is_coordinator: boolean
+  ext_info?: Record<string, unknown> | string
   joined_at: string
 }
 
-export interface RoomMemberInfo extends RoomMember {
+export interface ChannelMemberInfo extends ChannelMember {
   display_name: string
   chinese_name?: string
   avatar_url?: string
@@ -84,7 +85,7 @@ export interface RoomMemberInfo extends RoomMember {
 
 export interface Message {
   id: number
-  room_id: string
+  channel_id: string
   sender_type: 'user' | 'agent' | 'system'
   sender_user_id?: string
   sender_agent_id?: string
@@ -154,7 +155,7 @@ export interface AskUserData {
   askId?: string
   targetUserId?: string
   targetUserIds?: string[]
-  visibility?: 'target_user' | 'target_users' | 'mentioned_users' | 'room_admins' | 'all_members'
+  visibility?: 'target_user' | 'target_users' | 'mentioned_users' | 'channel_admins' | 'all_members'
   expiresAt?: string
 }
 
@@ -194,7 +195,7 @@ export interface AgentLoopTurn {
 
 export interface AgentLoopState {
   agentId: string
-  roomId: string
+  channelId: string
   turns: AgentLoopTurn[]
   status: 'running' | 'completed' | 'max_turns_reached' | 'error' | 'stopped' | 'interrupted' | 'waiting_for_user' | 'waiting_expired'
   currentTurn: number
@@ -229,7 +230,7 @@ export interface AgentConfig {
 
 export interface Project {
   id: string
-  room_id: string
+  channel_id: string
   title: string
   description?: string
   status: 'active' | 'completed' | 'archived'
@@ -242,7 +243,7 @@ export interface Project {
 
 export interface Task {
   id: string
-  room_id: string
+  channel_id: string
   project_id?: string
   title: string
   description?: string
@@ -265,6 +266,7 @@ export interface Task {
   schedule_id?: string
   parent_task_id?: string
   occurrence_at?: string
+  depends_on_task_ids?: string[]
   created_by?: string
   created_at: string
   updated_at: string
@@ -272,7 +274,7 @@ export interface Task {
 
 export interface TaskSchedule {
   id: string
-  room_id: string
+  channel_id: string
   task_template_id?: string
   kind: 'once' | 'recurring'
   timezone: string
@@ -385,7 +387,7 @@ export interface StorageObject {
 
 export interface StoragePolicy {
   enabled: boolean
-  visibility: 'room' | 'shared'
+  visibility: 'channel' | 'shared'
   members_can_upload: boolean
   members_can_delete_own: boolean
 }
@@ -412,7 +414,7 @@ export interface AppNotification {
 
 export interface CronJob {
   id: string
-  room_id: string
+  channel_id: string
   cron_expr: string
   message: string
   timezone: string
@@ -422,11 +424,11 @@ export interface CronJob {
   created_at: string
 }
 
-// ── Room Memory ──
+// ── Channel Memory ──
 
-export interface RoomMemory {
+export interface ChannelMemory {
   id: number
-  room_id: string
+  channel_id: string
   content: string
   category: string
   priority: string
@@ -439,7 +441,7 @@ export interface RoomMemory {
 
 // ── Detail Panel ──
 
-export type FeatureView = 'chat' | 'tasks' | 'knowledge' | 'storage' | 'agents' | 'cron' | 'settings' | 'admin'
+export type FeatureView = 'chat' | 'tasks' | 'knowledge' | 'storage' | 'cron' | 'settings' | 'admin'
 
 // ── Streaming state per agent ──
 
@@ -454,38 +456,39 @@ export interface StreamState {
 // ── WebSocket Events — Server to Client ──
 
 export type WSEvent =
-  | { type: 'auth_ok'; user: User; rooms: RoomWithMeta[] }
-  | { type: 'message'; room_id: string; message: Message }
-  | { type: 'chunk'; room_id: string; agent_id: string; content: string; turn?: number }
-  | { type: 'message_end'; room_id: string; agent_id: string; message: Message }
-  | { type: 'thinking'; room_id: string; agent_id: string; content: string }
-  | { type: 'thinking_content'; room_id: string; agent_id: string; content: string }
-  | { type: 'tool_call'; room_id: string; agent_id: string; name: string; args?: unknown; batch_id?: string; parallel?: boolean; turn?: number }
-  | { type: 'tool_result'; room_id: string; agent_id: string; name: string; success?: boolean; output?: string; duration_secs?: number; turn?: number }
-  | { type: 'error'; room_id?: string; agent_id?: string; error: string; turn?: number }
+  | { type: 'auth_ok'; user: User; channels: ChannelWithMeta[] }
+  | { type: 'message'; channel_id: string; message: Message }
+  | { type: 'chunk'; channel_id: string; agent_id: string; content: string; turn?: number }
+  | { type: 'message_end'; channel_id: string; agent_id: string; message: Message }
+  | { type: 'thinking'; channel_id: string; agent_id: string; content: string }
+  | { type: 'thinking_content'; channel_id: string; agent_id: string; content: string }
+  | { type: 'tool_call'; channel_id: string; agent_id: string; name: string; args?: unknown; batch_id?: string; parallel?: boolean; turn?: number }
+  | { type: 'tool_result'; channel_id: string; agent_id: string; name: string; success?: boolean; output?: string; duration_secs?: number; turn?: number }
+  | { type: 'error'; channel_id?: string; agent_id?: string; error: string; turn?: number }
   // Agent Loop events
-  | { type: 'agent_ack'; room_id: string; agent_id: string; turn: number; content?: string }
-  | { type: 'agent_turn_start'; room_id: string; agent_id: string; turn: number }
-  | { type: 'agent_thinking'; room_id: string; agent_id: string; turn: number; content?: string }
-  | { type: 'agent_progress'; room_id: string; agent_id: string; turn: number; summary: string }
-  | { type: 'agent_waiting_user'; room_id: string; agent_id: string; turn: number; summary: string }
-  | { type: 'agent_ask_user_expired'; room_id: string; agent_id: string; turn: number; summary: string }
-  | { type: 'agent_done'; room_id: string; agent_id: string; turn: number; content: string }
-  | { type: 'max_turns_reached'; room_id: string; agent_id: string; turn: number }
-  | { type: 'agent_stopped'; room_id: string; agent_id: string; turn?: number; summary?: string }
+  | { type: 'agent_ack'; channel_id: string; agent_id: string; turn: number; content?: string }
+  | { type: 'agent_turn_start'; channel_id: string; agent_id: string; turn: number }
+  | { type: 'agent_thinking'; channel_id: string; agent_id: string; turn: number; content?: string }
+  | { type: 'agent_progress'; channel_id: string; agent_id: string; turn: number; summary: string }
+  | { type: 'agent_waiting_user'; channel_id: string; agent_id: string; turn: number; summary: string }
+  | { type: 'agent_ask_user_expired'; channel_id: string; agent_id: string; turn: number; summary: string }
+  | { type: 'agent_done'; channel_id: string; agent_id: string; turn: number; content: string }
+  | { type: 'max_turns_reached'; channel_id: string; agent_id: string; turn: number }
+  | { type: 'agent_stopped'; channel_id: string; agent_id: string; turn?: number; summary?: string }
   // UI events
-  | { type: 'routing_info'; room_id: string; routing_info: { routing_method: string; target_agent_ids: string[]; reason: string } }
-  | { type: 'typing'; room_id: string; agent_id?: string }
+  | { type: 'routing_info'; channel_id: string; routing_info: { routing_method: string; target_agent_ids: string[]; reason: string } }
+  | { type: 'typing'; channel_id: string; agent_id?: string }
+  | { type: 'task_updated'; channel_id: string; task: Task }
 
 // ── WebSocket Commands — Client to Server ──
 
 export type WSCommand =
-  | { type: 'message'; room_id: string; content: string; msg_type?: string; metadata?: Record<string, unknown> }
-  | { type: 'join_room'; room_id: string }
-  | { type: 'leave_room'; room_id: string }
-  | { type: 'read_ack'; room_id: string; msg_id: number }
-  | { type: 'ask_user_answer'; room_id: string; ask_id: string; answers: Record<string, unknown> }
-  | { type: 'stop_agent'; room_id: string; agent_id: string; reason?: string }
+	| { type: 'message'; channel_id: string; content: string; msg_type?: string; metadata?: Record<string, unknown> }
+	| { type: 'join_channel'; channel_id: string }
+	| { type: 'leave_channel'; channel_id: string }
+	| { type: 'read_ack'; channel_id: string; msg_id: number }
+	| { type: 'ask_user_answer'; channel_id: string; ask_id: string; answers: Record<string, unknown> }
+	| { type: 'stop_agent'; channel_id: string; agent_id: string; reason?: string }
 
 // ── Auth ──
 

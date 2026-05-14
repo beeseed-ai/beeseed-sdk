@@ -3,9 +3,20 @@ import { cn } from '../../lib/cn.js'
 
 const TabsContext = createContext<{ value: string; onChange: (v: string) => void }>({ value: '', onChange: () => {} })
 
-interface TabsProps { defaultValue: string; children: ReactNode; className?: string }
-export function Tabs({ defaultValue, children, className }: TabsProps) {
-  const [value, setValue] = useState(defaultValue)
+interface TabsProps {
+  defaultValue: string
+  value?: string
+  onValueChange?: (value: string) => void
+  children: ReactNode
+  className?: string
+}
+export function Tabs({ defaultValue, value: controlledValue, onValueChange, children, className }: TabsProps) {
+  const [internalValue, setInternalValue] = useState(defaultValue)
+  const value = controlledValue ?? internalValue
+  const setValue = (next: string) => {
+    setInternalValue(next)
+    onValueChange?.(next)
+  }
   return <TabsContext.Provider value={{ value, onChange: setValue }}><div className={className}>{children}</div></TabsContext.Provider>
 }
 

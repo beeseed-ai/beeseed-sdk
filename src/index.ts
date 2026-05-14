@@ -3,7 +3,7 @@ export { BeeSeedProvider, useBeeSeedContext, type BeeSeedContextValue } from './
 
 // Core types
 export type {
-  User, Room, RoomWithMeta, RoomMember, RoomMemberInfo,
+  User, Channel, ChannelWithMeta, ChannelMember, ChannelMemberInfo,
   Message, ChatMessage, AgentMeta, AgentConfig,
   WSEvent, WSCommand, AuthResponse, BeeSeedConfig, StreamState,
   // Ask-User
@@ -20,8 +20,8 @@ export type {
   AppNotification,
   // Cron
   CronJob,
-  // Room Memory
-  RoomMemory,
+  // Channel Memory
+  ChannelMemory,
   // Detail Panel
   FeatureView,
 } from './core/types.js'
@@ -31,7 +31,7 @@ export { ApiError } from './core/errors.js'
 // Hooks
 export { useAuth } from './hooks/use-auth.js'
 export { useConnection } from './hooks/use-connection.js'
-export { useRooms } from './hooks/use-rooms.js'
+export { useChannels } from './hooks/use-channels.js'
 export { useChat } from './hooks/use-chat.js'
 export { useDetailPanel } from './hooks/use-detail-panel.js'
 export { useTasks } from './hooks/use-tasks.js'
@@ -47,7 +47,7 @@ export { RegisterForm } from './components/auth/index.js'
 export { AuthGuard } from './components/auth/index.js'
 
 // Components — Chat
-export { ChatRoom } from './components/chat/index.js'
+export { ChatChannel } from './components/chat/index.js'
 export { MessageList } from './components/chat/index.js'
 export { MessageBubble } from './components/chat/index.js'
 export { MessageInput } from './components/chat/index.js'
@@ -62,11 +62,11 @@ export { AskUserCard } from './components/chat/index.js'
 export { MentionMenu } from './components/chat/index.js'
 export { AgentLoopTimeline } from './components/chat/index.js'
 
-// Components — Rooms
-export { RoomList } from './components/rooms/index.js'
-export { RoomItem } from './components/rooms/index.js'
-export { RoomHeader } from './components/rooms/index.js'
-export { CreateRoomDialog } from './components/rooms/index.js'
+// Components — Channels
+export { ChannelList } from './components/channels/index.js'
+export { ChannelItem } from './components/channels/index.js'
+export { ChannelHeader } from './components/channels/index.js'
+export { CreateChannelDialog } from './components/channels/index.js'
 
 // Components — Layout
 export { ChatLayout } from './components/layout/index.js'

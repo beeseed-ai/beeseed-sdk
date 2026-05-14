@@ -1,6 +1,6 @@
 export { useAuth } from './use-auth.js'
 export { useConnection } from './use-connection.js'
-export { useRooms } from './use-rooms.js'
+export { useChannels } from './use-channels.js'
 export { useChat } from './use-chat.js'
 export { useDetailPanel } from './use-detail-panel.js'
 export { useTasks } from './use-tasks.js'

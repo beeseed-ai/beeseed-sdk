@@ -1,6 +1,6 @@
 import { useRef, useCallback, useEffect, useState, type KeyboardEvent, type ChangeEvent } from 'react'
 import { X, Plus, AtSign, Zap, ListChecks, Workflow, ArrowUp } from 'lucide-react'
-import type { ChatMessage, RoomMemberInfo } from '../../core/types.js'
+import type { ChatMessage, ChannelMemberInfo } from '../../core/types.js'
 import { cn } from '../../lib/cn.js'
 import { fileNameFromStorageRef, storageRefFromKey } from '../../lib/storage-ref.js'
 import { useStorage } from '../../hooks/use-storage.js'
@@ -9,12 +9,12 @@ import { MentionMenu, getFilteredCount, getFilteredMember } from './MentionMenu.
 const CHAT_UPLOAD_PREFIX = '__chat_uploads/'
 
 interface Props {
-  roomId: string
+  channelId: string
   onSend: (content: string, metadata?: Record<string, unknown>) => void
   disabled?: boolean
   placeholder?: string
   className?: string
-  members?: RoomMemberInfo[]
+  members?: ChannelMemberInfo[]
   quotedMessage?: ChatMessage | null
   onClearQuote?: () => void
   insertText?: string | null
@@ -22,7 +22,7 @@ interface Props {
 }
 
 export function MessageInput({
-  roomId,
+  channelId,
   onSend,
   disabled,
   placeholder = '输入消息...',
@@ -35,7 +35,7 @@ export function MessageInput({
 }: Props) {
   const ref = useRef<HTMLTextAreaElement>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
-  const { uploadFile, uploading, uploadProgress } = useStorage(roomId)
+  const { uploadFile, uploading, uploadProgress } = useStorage(channelId)
 
   // Mention state
   const [mentionOpen, setMentionOpen] = useState(false)
@@ -77,7 +77,7 @@ export function MessageInput({
     onInsertTextConsumed?.()
   }, [insertText, onInsertTextConsumed, autoResize])
 
-  const insertMention = useCallback((member: RoomMemberInfo) => {
+  const insertMention = useCallback((member: ChannelMemberInfo) => {
     const el = ref.current
     if (!el || mentionStart < 0) return
     const before = el.value.slice(0, mentionStart)

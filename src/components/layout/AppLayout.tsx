@@ -1,18 +1,18 @@
-import { lazy, Suspense } from 'react'
+import { lazy, Suspense, useEffect, useState } from 'react'
 import { PanelRight } from 'lucide-react'
 import { cn } from '../../lib/cn.js'
-import { useRooms } from '../../hooks/use-rooms.js'
+import { useChannels } from '../../hooks/use-channels.js'
 import { useChat } from '../../hooks/use-chat.js'
 import { useDetailPanel } from '../../hooks/use-detail-panel.js'
 import { useTasks } from '../../hooks/use-tasks.js'
-import { ChatRoom } from '../chat/ChatRoom.js'
-import { RoomHeader } from '../rooms/RoomHeader.js'
+import { useAuth } from '../../hooks/use-auth.js'
+import { ChatChannel } from '../chat/ChatChannel.js'
+import { ChannelHeader } from '../channels/ChannelHeader.js'
 import { LeftNavSidebar } from './LeftNavSidebar.js'
 import { DetailPanel } from './DetailPanel.js'
 
 const TaskPanel = lazy(() => import('../tasks/TaskPanel.js').then((m) => ({ default: m.TaskPanel })))
 const KnowledgePanel = lazy(() => import('../knowledge/KnowledgePanel.js').then((m) => ({ default: m.KnowledgePanel })))
-const AgentManagePanel = lazy(() => import('../agents/AgentManagePanel.js').then((m) => ({ default: m.AgentManagePanel })))
 const CronPanel = lazy(() => import('../cron/CronPanel.js').then((m) => ({ default: m.CronPanel })))
 const AdminPanel = lazy(() => import('../admin/AdminPanel.js').then((m) => ({ default: m.AdminPanel })))
 
@@ -23,42 +23,51 @@ function FeatureLoading() {
 }
 
 export function AppLayout({ className }: Props) {
-  const { rooms, currentRoomId, setCurrentRoom, createRoom } = useRooms()
+  const { channels, currentChannelId, setCurrentChannel } = useChannels()
+  const { user } = useAuth()
   const { activeFeature, setActiveFeature, panelVisible, togglePanel, setPanel } = useDetailPanel()
-  const { members } = useChat(currentRoomId)
-  const { tasks } = useTasks(currentRoomId)
+  const { members, refreshMembers } = useChat(currentChannelId)
+  const { tasks } = useTasks(currentChannelId)
+  const [createTaskRequest, setCreateTaskRequest] = useState(0)
+  const isAdmin = user?.role === 'owner' || user?.role === 'admin' || user?.role === 'super_admin'
 
-  const handleRoomSelect = (roomId: string) => {
-    setCurrentRoom(roomId)
+  useEffect(() => {
+    if (activeFeature === 'admin' && !isAdmin) {
+      setActiveFeature('chat')
+    }
+  }, [activeFeature, isAdmin, setActiveFeature])
+
+  const handleChannelSelect = (channelId: string) => {
+    setCurrentChannel(channelId)
     setActiveFeature('chat')
     setPanel(true)
   }
 
-  const handleCreateRoom = (name: string, agentIds: string[]) => {
-    void createRoom(name, agentIds)
-  }
+  const currentChannel = channels.find((r) => r.id === currentChannelId)
 
-  const currentRoom = rooms.find((r) => r.id === currentRoomId)
+  const openTaskCreator = () => {
+    setActiveFeature('tasks')
+    setCreateTaskRequest((value) => value + 1)
+  }
 
   return (
     <div className={cn('flex h-[100dvh] bg-background', className)}>
       <LeftNavSidebar
-        className={activeFeature === 'chat' && currentRoomId ? 'hidden md:flex' : undefined}
+        className={activeFeature === 'chat' && currentChannelId ? 'hidden md:flex' : undefined}
         activeFeature={activeFeature}
         onFeatureChange={setActiveFeature}
-        rooms={rooms}
-        currentRoomId={currentRoomId}
-        onRoomSelect={handleRoomSelect}
-        onCreateRoom={handleCreateRoom}
+        channels={channels}
+        currentChannelId={currentChannelId}
+        onChannelSelect={handleChannelSelect}
       />
 
       <div className="flex-1 flex flex-col min-w-0">
-        {activeFeature === 'chat' && currentRoomId ? (
-          <ChatRoom
-            roomId={currentRoomId}
+        {activeFeature === 'chat' && currentChannelId ? (
+          <ChatChannel
+            channelId={currentChannelId}
             header={
-              <RoomHeader
-                room={currentRoom ?? null}
+              <ChannelHeader
+                channel={currentChannel ?? null}
                 trailing={
                   <button
                     onClick={togglePanel}
@@ -75,11 +84,10 @@ export function AppLayout({ className }: Props) {
           <div className="flex-1 flex items-center justify-center text-muted-foreground">选择一个对话开始聊天</div>
         ) : (
           <Suspense fallback={<FeatureLoading />}>
-            {activeFeature === 'tasks' && <TaskPanel roomId={currentRoomId} />}
+            {activeFeature === 'tasks' && <TaskPanel channelId={currentChannelId} members={members} createTaskRequest={createTaskRequest} />}
             {activeFeature === 'knowledge' && <KnowledgePanel />}
-            {activeFeature === 'agents' && <AgentManagePanel />}
-            {activeFeature === 'cron' && <CronPanel roomId={currentRoomId} />}
-            {activeFeature === 'admin' && <AdminPanel />}
+            {activeFeature === 'cron' && <CronPanel channelId={currentChannelId} />}
+            {activeFeature === 'admin' && isAdmin && <AdminPanel />}
           </Suspense>
         )}
       </div>
@@ -87,9 +95,11 @@ export function AppLayout({ className }: Props) {
       {activeFeature === 'chat' && (
         <DetailPanel
           className="hidden lg:flex"
-          roomId={currentRoomId}
+          channelId={currentChannelId}
           members={members}
           tasks={tasks}
+          onCreateTask={openTaskCreator}
+          onMembersChanged={refreshMembers}
         />
       )}
     </div>

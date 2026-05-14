@@ -11,12 +11,12 @@ import { Button } from '../ui/button.js'
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '../ui/dialog.js'
 
 interface Props {
-  roomId: string | null
+  channelId: string | null
   className?: string
   onReference?: () => void
 }
 
-export function CloudStoragePanel({ roomId, className, onReference }: Props) {
+export function CloudStoragePanel({ channelId, className, onReference }: Props) {
   const { insertIntoComposer, setActiveFeature, setPanel } = useDetailPanel()
   const {
     objects,
@@ -38,13 +38,13 @@ export function CloudStoragePanel({ roomId, className, onReference }: Props) {
     deleteFile,
     clearUploadError,
     setSearchQuery,
-  } = useStorage(roomId)
+  } = useStorage(channelId)
   const fileRef = useRef<HTMLInputElement>(null)
   const [createOpen, setCreateOpen] = useState(false)
   const [directoryName, setDirectoryName] = useState('')
   const [creatingDirectory, setCreatingDirectory] = useState(false)
 
-  if (!roomId) {
+  if (!channelId) {
     return <div className="flex-1 flex items-center justify-center text-muted-foreground text-sm">选择一个对话查看文件</div>
   }
 

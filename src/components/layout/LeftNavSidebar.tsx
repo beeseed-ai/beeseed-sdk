@@ -1,38 +1,37 @@
 import { useState } from 'react'
-import { MessageSquareText, Bot, BookOpen, ListChecks, Plus, MoreHorizontal, LogOut, Bell, Hash, Shield, User } from 'lucide-react'
-import type { FeatureView, RoomWithMeta } from '../../core/types.js'
+import { MessageSquareText, BookOpen, ListChecks, Plus, MoreHorizontal, LogOut, Bell, Hash, Shield, User } from 'lucide-react'
+import type { FeatureView, ChannelWithMeta } from '../../core/types.js'
 import { cn } from '../../lib/cn.js'
 import { useAuth } from '../../hooks/use-auth.js'
 import { useNotifications } from '../../hooks/use-notifications.js'
-import { CreateRoomDialog } from '../rooms/CreateRoomDialog.js'
+import { CreateChannelDialog } from '../channels/CreateChannelDialog.js'
 import { ProfileModal } from '../user/ProfileModal.js'
 import { Avatar, AvatarFallback, AvatarImage } from '../ui/avatar.js'
 
 interface NavItem { id: FeatureView; label: string; icon: React.ElementType }
 
-const NAV_ITEMS: NavItem[] = [
+const BASE_NAV_ITEMS: NavItem[] = [
   { id: 'knowledge', label: '知识库', icon: BookOpen },
   { id: 'tasks', label: '任务', icon: ListChecks },
-  { id: 'agents', label: 'Agent 员工', icon: Bot },
 ]
 
 interface Props {
   activeFeature: FeatureView
   onFeatureChange: (feature: FeatureView) => void
-  rooms: RoomWithMeta[]
-  currentRoomId: string | null
-  onRoomSelect: (roomId: string) => void
-  onCreateRoom: (name: string, agentIds: string[]) => void
+  channels: ChannelWithMeta[]
+  currentChannelId: string | null
+  onChannelSelect: (channelId: string) => void
   className?: string
 }
 
-export function LeftNavSidebar({ activeFeature, onFeatureChange, rooms, currentRoomId, onRoomSelect, className }: Props) {
+export function LeftNavSidebar({ activeFeature, onFeatureChange, channels, currentChannelId, onChannelSelect, className }: Props) {
   const { user, signOut } = useAuth()
   const { unreadCount } = useNotifications()
   const [createDialogOpen, setCreateDialogOpen] = useState(false)
   const [menuOpen, setMenuOpen] = useState(false)
   const [profileOpen, setProfileOpen] = useState(false)
-  const isAdmin = user?.role === 'admin' || user?.role === 'super_admin'
+  const isAdmin = user?.role === 'owner' || user?.role === 'admin' || user?.role === 'super_admin'
+  const navItems = isAdmin ? [...BASE_NAV_ITEMS, { id: 'admin' as const, label: '管理后台', icon: Shield }] : BASE_NAV_ITEMS
 
   return (
     <div className={cn('w-[200px] shrink-0 border-r border-border bg-[#fafaf8] flex flex-col', className)}>
@@ -46,7 +45,7 @@ export function LeftNavSidebar({ activeFeature, onFeatureChange, rooms, currentR
           <span>新建频道</span>
         </button>
 
-        {NAV_ITEMS.map((item) => {
+        {navItems.map((item) => {
           const Icon = item.icon
           const active = activeFeature === item.id
           return (
@@ -65,7 +64,7 @@ export function LeftNavSidebar({ activeFeature, onFeatureChange, rooms, currentR
         })}
       </div>
 
-      {/* Room list section */}
+      {/* Channel list section */}
       <div className="flex-1 flex flex-col overflow-hidden">
         <div className="flex items-center justify-between px-3 pt-3 pb-1.5">
           <span className="text-xs font-medium text-muted-foreground/70 uppercase tracking-wider">频道</span>
@@ -83,22 +82,22 @@ export function LeftNavSidebar({ activeFeature, onFeatureChange, rooms, currentR
         </div>
 
         <div className="flex-1 overflow-y-auto px-2 space-y-px">
-          {rooms.map((room) => {
-            const active = room.id === currentRoomId
+          {channels.map((channel) => {
+            const active = channel.id === currentChannelId
             return (
               <button
-                key={room.id}
-                onClick={() => { onRoomSelect(room.id); onFeatureChange('chat') }}
+                key={channel.id}
+                onClick={() => { onChannelSelect(channel.id); onFeatureChange('chat') }}
                 className={cn(
                   'flex items-center gap-2 w-full rounded-md px-2 py-1.5 text-sm transition-colors group',
                   active ? 'bg-black/[0.07] text-foreground font-medium' : 'text-foreground/70 hover:bg-black/[0.04]',
                 )}
               >
                 <Hash className="w-3.5 h-3.5 shrink-0 text-muted-foreground/50" />
-                <span className="flex-1 truncate text-left">{room.name || '对话'}</span>
-                {room.unread_count > 0 && (
+                <span className="flex-1 truncate text-left">{channel.name || '对话'}</span>
+                {channel.unread_count > 0 && (
                   <span className="w-5 h-5 rounded-full bg-primary text-primary-foreground text-[10px] flex items-center justify-center font-medium shrink-0">
-                    {room.unread_count > 99 ? '99' : room.unread_count}
+                    {channel.unread_count > 99 ? '99' : channel.unread_count}
                   </span>
                 )}
               </button>
@@ -107,7 +106,7 @@ export function LeftNavSidebar({ activeFeature, onFeatureChange, rooms, currentR
         </div>
       </div>
 
-      <CreateRoomDialog open={createDialogOpen} onOpenChange={setCreateDialogOpen} />
+      <CreateChannelDialog open={createDialogOpen} onOpenChange={setCreateDialogOpen} />
       <ProfileModal open={profileOpen} onOpenChange={setProfileOpen} />
 
       {/* Footer */}
@@ -148,13 +147,15 @@ export function LeftNavSidebar({ activeFeature, onFeatureChange, rooms, currentR
                 <User className="w-4 h-4" />
                 个人中心
               </button>
-              <button
-                onClick={() => { setMenuOpen(false); onFeatureChange(isAdmin ? 'admin' : 'agents') }}
-                className="flex w-full items-center gap-2.5 px-3 py-2 text-sm text-[#555] hover:bg-[#f5f5f5] hover:text-[#1a1a1a] transition-colors"
-              >
-                {isAdmin ? <Shield className="w-4 h-4" /> : <Bot className="w-4 h-4" />}
-                {isAdmin ? '管理面板' : 'Agent 管理'}
-              </button>
+              {isAdmin && (
+                <button
+                  onClick={() => { setMenuOpen(false); onFeatureChange('admin') }}
+                  className="flex w-full items-center gap-2.5 px-3 py-2 text-sm text-[#555] hover:bg-[#f5f5f5] hover:text-[#1a1a1a] transition-colors"
+                >
+                  <Shield className="w-4 h-4" />
+                  管理后台
+                </button>
+              )}
               <div className="my-1 border-t border-border" />
               <button
                 onClick={() => { setMenuOpen(false); signOut() }}

@@ -1,14 +1,14 @@
-import type { RoomWithMeta } from '../../core/types.js'
+import type { ChannelWithMeta } from '../../core/types.js'
 import { cn } from '../../lib/cn.js'
 import { Avatar, AvatarFallback } from '../ui/avatar.js'
 
 interface Props {
-  room: RoomWithMeta
+  channel: ChannelWithMeta
   active: boolean
   onClick: () => void
 }
 
-export function RoomItem({ room, active, onClick }: Props) {
+export function ChannelItem({ channel, active, onClick }: Props) {
   return (
     <button
       type="button"
@@ -20,21 +20,21 @@ export function RoomItem({ room, active, onClick }: Props) {
     >
       <Avatar className="size-9">
         <AvatarFallback className="text-sm">
-          {(room.name || '?')[0]}
+          {(channel.name || '?')[0]}
         </AvatarFallback>
       </Avatar>
 
       <div className="flex-1 overflow-hidden">
         <div className="flex items-center justify-between">
-          <span className="text-sm font-medium truncate">{room.name || '未命名'}</span>
-          {room.unread_count > 0 && (
+          <span className="text-sm font-medium truncate">{channel.name || '未命名'}</span>
+          {channel.unread_count > 0 && (
             <span className="ml-2 flex h-5 min-w-5 items-center justify-center rounded-full bg-primary px-1.5 text-[10px] font-medium text-primary-foreground">
-              {room.unread_count}
+              {channel.unread_count}
             </span>
           )}
         </div>
         <p className="text-xs text-muted-foreground truncate">
-          {room.last_message || `${room.member_count} 位成员`}
+          {channel.last_message || `${channel.member_count} 位成员`}
         </p>
       </div>
     </button>

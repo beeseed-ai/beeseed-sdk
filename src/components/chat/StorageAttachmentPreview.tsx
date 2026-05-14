@@ -6,7 +6,7 @@ import { useBeeSeedContext } from '../../provider/BeeSeedProvider.js'
 import { MarkdownRenderer } from './MarkdownRenderer.js'
 
 interface Props {
-  roomId: string
+  channelId: string
   refs: string[]
   compact?: boolean
 }
@@ -74,7 +74,7 @@ function canPreview(kind: FileKind) {
   return kind === 'image' || kind === 'pdf' || kind === 'text' || kind === 'code' || kind === 'audio' || kind === 'video'
 }
 
-function StoragePreviewDialog({ roomId, refText, onClose }: { roomId: string; refText: string; onClose: () => void }) {
+function StoragePreviewDialog({ channelId, refText, onClose }: { channelId: string; refText: string; onClose: () => void }) {
   const { api, config } = useBeeSeedContext()
   const name = fileNameFromStorageRef(refText)
   const kind = kindOf(refText)
@@ -98,7 +98,7 @@ function StoragePreviewDialog({ roomId, refText, onClose }: { roomId: string; re
       return
     }
 
-    void api.post(`rooms/${roomId}/storage/presign-download`, {
+    void api.post(`channels/${channelId}/storage/presign-download`, {
       json: { key: keyFromStorageRef(refText) },
     }).json<{ url: string }>()
       .then(async (data) => {
@@ -119,7 +119,7 @@ function StoragePreviewDialog({ roomId, refText, onClose }: { roomId: string; re
       })
 
     return () => { cancelled = true }
-  }, [api, config.useMockData, ext, kind, refText, roomId])
+  }, [api, config.useMockData, ext, kind, refText, channelId])
 
   const download = () => {
     if (url) window.open(url, '_blank', 'noopener,noreferrer')
@@ -197,7 +197,7 @@ function StoragePreviewDialog({ roomId, refText, onClose }: { roomId: string; re
   )
 }
 
-function StorageImageAttachment({ roomId, refText }: { roomId: string; refText: string }) {
+function StorageImageAttachment({ channelId, refText }: { channelId: string; refText: string }) {
   const { api, config } = useBeeSeedContext()
   const [url, setUrl] = useState<string | null>(null)
   const [failed, setFailed] = useState(false)
@@ -209,16 +209,16 @@ function StorageImageAttachment({ roomId, refText }: { roomId: string; refText: 
     setUrl(null)
     setFailed(false)
     if (config.useMockData) return
-    void api.post(`rooms/${roomId}/storage/presign-download`, {
+    void api.post(`channels/${channelId}/storage/presign-download`, {
       json: { key: keyFromStorageRef(refText) },
     }).json<{ url: string }>()
       .then((data) => { if (!cancelled) setUrl(data.url) })
       .catch(() => { if (!cancelled) setFailed(true) })
     return () => { cancelled = true }
-  }, [api, config.useMockData, refText, roomId])
+  }, [api, config.useMockData, refText, channelId])
 
   if (failed) {
-    return <StorageFileAttachment roomId={roomId} refText={refText} />
+    return <StorageFileAttachment channelId={channelId} refText={refText} />
   }
 
   return (
@@ -247,12 +247,12 @@ function StorageImageAttachment({ roomId, refText }: { roomId: string; refText: 
           <ExternalLink className="ml-auto h-3.5 w-3.5 shrink-0 text-[#888] opacity-0 transition-opacity group-hover:opacity-100" />
         </div>
       </button>
-      {previewOpen && <StoragePreviewDialog roomId={roomId} refText={refText} onClose={() => setPreviewOpen(false)} />}
+      {previewOpen && <StoragePreviewDialog channelId={channelId} refText={refText} onClose={() => setPreviewOpen(false)} />}
     </>
   )
 }
 
-function StorageFileAttachment({ roomId, refText }: { roomId: string; refText: string }) {
+function StorageFileAttachment({ channelId, refText }: { channelId: string; refText: string }) {
   const [previewOpen, setPreviewOpen] = useState(false)
   const name = fileNameFromStorageRef(refText)
   const kind = kindOf(refText)
@@ -278,12 +278,12 @@ function StorageFileAttachment({ roomId, refText }: { roomId: string; refText: s
         </span>
         <ExternalLink className="h-4 w-4 shrink-0 text-[#888]" />
       </button>
-      {previewOpen && <StoragePreviewDialog roomId={roomId} refText={refText} onClose={() => setPreviewOpen(false)} />}
+      {previewOpen && <StoragePreviewDialog channelId={channelId} refText={refText} onClose={() => setPreviewOpen(false)} />}
     </>
   )
 }
 
-export function StorageAttachmentPreview({ roomId, refs, compact }: Props) {
+export function StorageAttachmentPreview({ channelId, refs, compact }: Props) {
   const items = useMemo(() => uniqueRefs(refs), [refs])
   if (items.length === 0) return null
 
@@ -291,8 +291,8 @@ export function StorageAttachmentPreview({ roomId, refs, compact }: Props) {
     <div className={cn('flex flex-col gap-2', compact ? 'mt-1' : 'mt-2')}>
       {items.map((refText) => (
         kindOf(refText) === 'image'
-          ? <StorageImageAttachment key={refText} roomId={roomId} refText={refText} />
-          : <StorageFileAttachment key={refText} roomId={roomId} refText={refText} />
+          ? <StorageImageAttachment key={refText} channelId={channelId} refText={refText} />
+          : <StorageFileAttachment key={refText} channelId={channelId} refText={refText} />
       ))}
     </div>
   )

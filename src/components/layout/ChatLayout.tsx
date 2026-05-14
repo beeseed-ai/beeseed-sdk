@@ -2,13 +2,13 @@ import { useState } from 'react'
 import { Plus, LogOut, ArrowLeft } from 'lucide-react'
 import { cn } from '../../lib/cn.js'
 import { useAuth } from '../../hooks/use-auth.js'
-import { useRooms } from '../../hooks/use-rooms.js'
+import { useChannels } from '../../hooks/use-channels.js'
 import { useConnection } from '../../hooks/use-connection.js'
-import type { RoomWithMeta } from '../../core/types.js'
-import { RoomList } from '../rooms/RoomList.js'
-import { RoomHeader } from '../rooms/RoomHeader.js'
-import { CreateRoomDialog } from '../rooms/CreateRoomDialog.js'
-import { ChatRoom } from '../chat/ChatRoom.js'
+import type { ChannelWithMeta } from '../../core/types.js'
+import { ChannelList } from '../channels/ChannelList.js'
+import { ChannelHeader } from '../channels/ChannelHeader.js'
+import { CreateChannelDialog } from '../channels/CreateChannelDialog.js'
+import { ChatChannel } from '../chat/ChatChannel.js'
 import { Button } from '../ui/button.js'
 
 interface Props {
@@ -17,24 +17,24 @@ interface Props {
 
 export function ChatLayout({ className }: Props) {
   const { user, signOut } = useAuth()
-  const { rooms, currentRoomId, joinRoom } = useRooms()
+  const { channels, currentChannelId, joinChannel } = useChannels()
   const { state: connState } = useConnection()
-  const [showCreateRoom, setShowCreateRoom] = useState(false)
+  const [showCreateChannel, setShowCreateChannel] = useState(false)
 
-  const currentRoom = rooms?.find((r) => r.id === currentRoomId) ?? null
+  const currentChannel = channels?.find((r) => r.id === currentChannelId) ?? null
 
-  function handleSelectRoom(room: RoomWithMeta) {
-    joinRoom(room.id)
+  function handleSelectChannel(channel: ChannelWithMeta) {
+    joinChannel(channel.id)
   }
 
   function handleBack() {
-    joinRoom(null as unknown as string)
+    joinChannel(null as unknown as string)
   }
 
   const sidebarHeader = (
     <div className="flex items-center justify-between border-b px-4 py-3">
       <h2 className="text-sm font-bold">对话</h2>
-      <Button variant="ghost" size="icon-sm" onClick={() => setShowCreateRoom(true)}>
+      <Button variant="ghost" size="icon-sm" onClick={() => setShowCreateChannel(true)}>
         <Plus className="size-4" />
       </Button>
     </div>
@@ -51,11 +51,11 @@ export function ChatLayout({ className }: Props) {
 
   return (
     <div className={cn('flex h-screen bg-background', className)}>
-      {/* Sidebar — hidden on mobile when a room is selected */}
+      {/* Sidebar — hidden on mobile when a channel is selected */}
       <div
         className={cn(
           'flex w-full flex-col border-r sm:w-72 sm:flex',
-          currentRoomId ? 'hidden sm:flex' : 'flex',
+          currentChannelId ? 'hidden sm:flex' : 'flex',
         )}
       >
         {connState === 'reconnecting' && (
@@ -63,29 +63,29 @@ export function ChatLayout({ className }: Props) {
             重新连接中...
           </div>
         )}
-        <RoomList
-          rooms={rooms}
-          currentRoomId={currentRoomId}
-          onSelectRoom={handleSelectRoom}
+        <ChannelList
+          channels={channels}
+          currentChannelId={currentChannelId}
+          onSelectChannel={handleSelectChannel}
           header={sidebarHeader}
           className="flex-1"
         />
         {sidebarFooter}
       </div>
 
-      {/* Chat area — hidden on mobile when no room selected */}
+      {/* Chat area — hidden on mobile when no channel selected */}
       <div
         className={cn(
           'flex-1 flex-col',
-          currentRoomId ? 'flex' : 'hidden sm:flex',
+          currentChannelId ? 'flex' : 'hidden sm:flex',
         )}
       >
-        {currentRoom ? (
-          <ChatRoom
-            roomId={currentRoom.id}
+        {currentChannel ? (
+          <ChatChannel
+            channelId={currentChannel.id}
             header={
-              <RoomHeader
-                room={currentRoom}
+              <ChannelHeader
+                channel={currentChannel}
                 leading={
                   <Button
                     variant="ghost"
@@ -106,7 +106,7 @@ export function ChatLayout({ className }: Props) {
         )}
       </div>
 
-      <CreateRoomDialog open={showCreateRoom} onOpenChange={setShowCreateRoom} />
+      <CreateChannelDialog open={showCreateChannel} onOpenChange={setShowCreateChannel} />
     </div>
   )
 }

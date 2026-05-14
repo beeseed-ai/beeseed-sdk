@@ -17,11 +17,11 @@ export interface StorageState {
   searchQuery: string
   previewObj: StorageObject | null
 
-  browse: (roomId: string, prefix?: string) => Promise<void>
-  createDirectory: (roomId: string, name: string, prefix?: string) => Promise<void>
-  uploadFile: (roomId: string, file: File, prefix?: string) => Promise<StorageObject | null>
-  downloadFile: (roomId: string, key: string) => Promise<string | null>
-  deleteFile: (roomId: string, key: string) => Promise<void>
+  browse: (channelId: string, prefix?: string) => Promise<void>
+  createDirectory: (channelId: string, name: string, prefix?: string) => Promise<void>
+  uploadFile: (channelId: string, file: File, prefix?: string) => Promise<StorageObject | null>
+  downloadFile: (channelId: string, key: string) => Promise<string | null>
+  deleteFile: (channelId: string, key: string) => Promise<void>
   clearUploadError: () => void
   setSearchQuery: (q: string) => void
   setPreviewObj: (obj: StorageObject | null) => void
@@ -44,13 +44,13 @@ export function createStorageStore(config: StorageStoreConfig) {
     uploading: false,
     uploadProgress: 0,
     uploadError: null,
-    policy: { enabled: true, visibility: 'room', members_can_upload: true, members_can_delete_own: true },
+    policy: { enabled: true, visibility: 'channel', members_can_upload: true, members_can_delete_own: true },
     usage: { objects: 0, bytes: 0 },
     canUpload: true,
     searchQuery: '',
     previewObj: null,
 
-    browse: async (roomId, prefix = '') => {
+    browse: async (channelId, prefix = '') => {
       set({ loading: true, currentPrefix: prefix })
       if (config.useMock) {
         const pfx = prefix
@@ -62,12 +62,12 @@ export function createStorageStore(config: StorageStoreConfig) {
         return
       }
       try {
-        const data = await config.api.get(`rooms/${roomId}/storage`, { searchParams: prefix ? { prefix } : {} }).json<{ objects: StorageObject[]; common_prefixes: string[]; policy?: StoragePolicy; usage?: StorageUsage; capabilities?: { can_upload?: boolean } }>()
+        const data = await config.api.get(`channels/${channelId}/storage`, { searchParams: prefix ? { prefix } : {} }).json<{ objects: StorageObject[]; common_prefixes: string[]; policy?: StoragePolicy; usage?: StorageUsage; capabilities?: { can_upload?: boolean } }>()
         set({ objects: data.objects || [], directories: data.common_prefixes || [], policy: data.policy || get().policy, usage: data.usage || get().usage, canUpload: data.capabilities?.can_upload ?? get().canUpload, loading: false })
       } catch { set({ loading: false }) }
     },
 
-    uploadFile: async (roomId, file, prefix = get().currentPrefix) => {
+    uploadFile: async (channelId, file, prefix = get().currentPrefix) => {
       const visiblePrefix = get().currentPrefix
       set({ uploading: true, uploadProgress: 0, uploadError: null })
       if (config.useMock) {
@@ -78,7 +78,7 @@ export function createStorageStore(config: StorageStoreConfig) {
         return obj
       }
       try {
-        const presign = await config.api.post(`rooms/${roomId}/storage/presign-upload`, {
+        const presign = await config.api.post(`channels/${channelId}/storage/presign-upload`, {
           json: { file_name: file.name, content_type: file.type || 'application/octet-stream', size: file.size, prefix },
         }).json<{ object: StorageObject; upload_url: string; method: string; headers?: Record<string, string> }>()
 
@@ -88,11 +88,11 @@ export function createStorageStore(config: StorageStoreConfig) {
           set({ uploadProgress: progress })
         })
 
-        const completed = await config.api.post(`rooms/${roomId}/storage/complete-upload`, {
+        const completed = await config.api.post(`channels/${channelId}/storage/complete-upload`, {
           json: { object_id: presign.object.id },
         }).json<StorageObject>()
         set({ uploadProgress: 100 })
-        await get().browse(roomId, visiblePrefix)
+        await get().browse(channelId, visiblePrefix)
         return completed
       } catch (err) {
         const message = err instanceof Error ? err.message : '上传失败'
@@ -103,7 +103,7 @@ export function createStorageStore(config: StorageStoreConfig) {
       }
     },
 
-    createDirectory: async (roomId, name, prefix = get().currentPrefix) => {
+    createDirectory: async (channelId, name, prefix = get().currentPrefix) => {
       const safeName = name.trim()
       if (!safeName) return
       if (config.useMock) {
@@ -111,24 +111,24 @@ export function createStorageStore(config: StorageStoreConfig) {
         set({ directories: [...get().directories, dir].filter((v, i, a) => a.indexOf(v) === i) })
         return
       }
-      await config.api.post(`rooms/${roomId}/storage/directory`, {
+      await config.api.post(`channels/${channelId}/storage/directory`, {
         json: { name: safeName, prefix },
       })
-      await get().browse(roomId, prefix)
+      await get().browse(channelId, prefix)
     },
 
-    downloadFile: async (roomId, key) => {
+    downloadFile: async (channelId, key) => {
       if (config.useMock) return null
-      const data = await config.api.post(`rooms/${roomId}/storage/presign-download`, {
+      const data = await config.api.post(`channels/${channelId}/storage/presign-download`, {
         json: { key },
       }).json<{ url: string }>()
       return data.url
     },
 
-    deleteFile: async (roomId, key) => {
+    deleteFile: async (channelId, key) => {
       if (config.useMock) { set({ objects: get().objects.filter((o) => o.key !== key) }); return }
       try {
-        await config.api.delete(`rooms/${roomId}/storage/file/${encodeURIComponent(key)}`)
+        await config.api.delete(`channels/${channelId}/storage/file/${encodeURIComponent(key)}`)
         set({ objects: get().objects.filter((o) => o.key !== key) })
       } catch { /* */ }
     },
@@ -151,7 +151,7 @@ export function createStorageStore(config: StorageStoreConfig) {
       return crumbs
     },
 
-    reset: () => set({ objects: [], directories: [], currentPrefix: '', loading: false, uploading: false, uploadProgress: 0, uploadError: null, policy: { enabled: true, visibility: 'room', members_can_upload: true, members_can_delete_own: true }, usage: { objects: 0, bytes: 0 }, canUpload: true, searchQuery: '', previewObj: null }),
+    reset: () => set({ objects: [], directories: [], currentPrefix: '', loading: false, uploading: false, uploadProgress: 0, uploadError: null, policy: { enabled: true, visibility: 'channel', members_can_upload: true, members_can_delete_own: true }, usage: { objects: 0, bytes: 0 }, canUpload: true, searchQuery: '', previewObj: null }),
   }))
 }
 

@@ -1,9 +1,9 @@
-import { useState, useEffect, useCallback, useMemo } from 'react'
-import { Bot, Save, Hash } from 'lucide-react'
+import { useState, useEffect, useCallback } from 'react'
+import { Bot, Save } from 'lucide-react'
 import { cn } from '../../lib/cn.js'
 import { useBeeSeedContext } from '../../provider/BeeSeedProvider.js'
 
-interface AgentInfo { id: string; room_id: string; room_name?: string; name: string; model: string; provider: string; avatar_url?: string }
+interface AgentTemplateInfo { id: string; name: string; role: string; model: string; provider: string; avatar_url?: string }
 interface IdentityData { name: string; personality: string; content: string }
 interface AgentConfig {
   provider: string
@@ -13,8 +13,6 @@ interface AgentConfig {
   tools: string[]
   avatar_preset: string
 }
-
-interface Selection { roomId: string; agentId: string; key: string }
 
 const ALL_TOOLS = [
   'http_request',
@@ -29,9 +27,9 @@ const sanitizeTools = (tools: string[] = []) => tools.filter((tool) => ALL_TOOL_
 
 export function AgentManageTab() {
   const { api } = useBeeSeedContext()
-  const [agents, setAgents] = useState<AgentInfo[]>([])
+  const [templates, setTemplates] = useState<AgentTemplateInfo[]>([])
   const [loading, setLoading] = useState(true)
-  const [selected, setSelected] = useState<Selection | null>(null)
+  const [selectedId, setSelectedId] = useState<string | null>(null)
   const [identity, setIdentity] = useState<IdentityData | null>(null)
   const [agentConfig, setAgentConfig] = useState<AgentConfig | null>(null)
   const [models, setModels] = useState<{ id: string; label: string; provider: string }[]>([])
@@ -41,36 +39,25 @@ export function AgentManageTab() {
   const [presets, setPresets] = useState<string[]>([])
 
   useEffect(() => {
-    api.get('agents').json<AgentInfo[]>().then((data) => { setAgents(data ?? []); setLoading(false) }).catch(() => setLoading(false))
+    api.get('admin/agent-templates').json<AgentTemplateInfo[]>().then((data) => { setTemplates(data ?? []); setLoading(false) }).catch(() => setLoading(false))
     api.get('models').json<{ id: string; label: string; provider: string }[]>().then((d) => setModels(d ?? [])).catch(() => {})
     api.get('providers').json<{ id: string; label: string }[]>().then((d) => setProviders(d ?? [])).catch(() => {})
     api.get('agents/presets').json<string[]>().then((d) => setPresets(d ?? [])).catch(() => {})
   }, [api])
 
   useEffect(() => {
-    if (agents.length > 0 && !selected) {
-      const a = agents[0]
-      setSelected({ roomId: a.room_id, agentId: a.id, key: `${a.room_id}:${a.id}` })
+    if (templates.length > 0 && (!selectedId || !templates.some((template) => template.id === selectedId))) {
+      setSelectedId(templates[0].id)
+      return
     }
-  }, [agents, selected])
-
-  const roomGroups = useMemo(() => {
-    const map = new Map<string, { roomId: string; roomName: string; agents: AgentInfo[] }>()
-    for (const agent of agents) {
-      const rId = agent.room_id || ''
-      let group = map.get(rId)
-      if (!group) {
-        group = { roomId: rId, roomName: agent.room_name || '未分配', agents: [] }
-        map.set(rId, group)
-      }
-      group.agents.push(agent)
+    if (templates.length === 0 && selectedId) {
+      setSelectedId(null)
     }
-    return [...map.values()]
-  }, [agents])
+  }, [selectedId, templates])
 
-  const loadAgent = useCallback(async (roomId: string, agentId: string) => {
+  const loadTemplate = useCallback(async (agentId: string) => {
     try {
-      const basePath = roomId ? `rooms/${roomId}/agents/${agentId}` : `agents/${agentId}`
+      const basePath = `admin/agent-templates/${agentId}`
       const [id, cfg] = await Promise.all([
         api.get(`${basePath}/identity`).json<IdentityData>(),
         api.get(`${basePath}/config`).json<AgentConfig>(),
@@ -85,22 +72,22 @@ export function AgentManageTab() {
   }, [api])
 
   useEffect(() => {
-    if (selected) void loadAgent(selected.roomId, selected.agentId)
-  }, [selected, loadAgent])
+    if (selectedId) void loadTemplate(selectedId)
+  }, [selectedId, loadTemplate])
 
   const handleSave = async () => {
-    if (!selected || !identity) return
+    if (!selectedId || !identity) return
     setSaving(true)
     try {
-      const basePath = selected.roomId ? `rooms/${selected.roomId}/agents/${selected.agentId}` : `agents/${selected.agentId}`
+      const basePath = `admin/agent-templates/${selectedId}`
       await api.put(`${basePath}/identity`, { json: identity })
       if (agentConfig) {
         await api.put(`${basePath}/config`, { json: agentConfig })
       }
       setDirty(false)
-      const updated = await api.get('agents').json<AgentInfo[]>()
-      setAgents(updated)
-      void loadAgent(selected.roomId, selected.agentId)
+      const updated = await api.get('admin/agent-templates').json<AgentTemplateInfo[]>()
+      setTemplates(updated)
+      void loadTemplate(selectedId)
     } catch (e) {
       console.error('save failed', e)
     } finally {
@@ -122,50 +109,47 @@ export function AgentManageTab() {
 
   return (
     <div className="flex h-full">
-      {/* Left: Agent list grouped by Room */}
+      {/* Left: Agent list grouped by Channel */}
       <div className="w-56 border-r border-border flex flex-col bg-[#fafaf8] overflow-y-auto">
-        {roomGroups.map((group) => (
-          <div key={group.roomId || '_none'}>
-            <div className="flex items-center gap-1.5 px-3 pt-3 pb-1">
-              <Hash className="w-3 h-3 text-[#bbb]" />
-              <span className="text-[11px] font-medium text-[#999] truncate">{group.roomName}</span>
-            </div>
-            {group.agents.map((agent) => {
-              const itemKey = `${agent.room_id}:${agent.id}`
-              return (
-                <button
-                  key={itemKey}
-                  onClick={() => setSelected({ roomId: agent.room_id, agentId: agent.id, key: itemKey })}
-                  className={cn(
-                    'w-full flex items-center gap-2.5 px-3 py-2 text-left transition-colors',
-                    selected?.key === itemKey ? 'bg-white border-r-2 border-[#1a1a1a]' : 'hover:bg-white/60',
-                  )}
-                >
-                  <div className="w-7 h-7 rounded-full bg-[#F59E0B]/10 flex items-center justify-center shrink-0 overflow-hidden">
-                    {agent.avatar_url ? (
-                      <img src={agent.avatar_url} alt="" className="w-7 h-7 rounded-full object-cover" />
-                    ) : (
-                      <Bot className="w-3.5 h-3.5 text-[#F59E0B]" />
-                    )}
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <div className="text-sm font-medium truncate">{agent.name || agent.id}</div>
-                    <div className="text-[10px] text-[#999] truncate">{agent.model}</div>
-                  </div>
-                </button>
-              )
-            })}
+        <div className="border-b border-border px-3 py-2">
+          <div className="text-xs font-medium text-[#555]">Agent 模板</div>
+          <div className="mt-0.5 text-[10px] text-[#999]">{templates.length} 个模板</div>
+        </div>
+        {templates.length === 0 ? (
+          <div className="px-3 py-4 text-xs leading-5 text-[#999]">
+            暂无 Agent 模板。模板用于决定频道 Agent 的默认能力边界。
           </div>
+        ) : templates.map((template) => (
+          <button
+            key={template.id}
+            onClick={() => setSelectedId(template.id)}
+            className={cn(
+              'w-full flex items-center gap-2.5 px-3 py-2 text-left transition-colors',
+              selectedId === template.id ? 'bg-white border-r-2 border-[#1a1a1a]' : 'hover:bg-white/60',
+            )}
+          >
+            <div className="w-7 h-7 rounded-full bg-[#F59E0B]/10 flex items-center justify-center shrink-0 overflow-hidden">
+              {template.avatar_url ? (
+                <img src={template.avatar_url} alt="" className="w-7 h-7 rounded-full object-cover" />
+              ) : (
+                <Bot className="w-3.5 h-3.5 text-[#F59E0B]" />
+              )}
+            </div>
+            <div className="flex-1 min-w-0">
+              <div className="text-sm font-medium truncate">{template.name || template.id}</div>
+              <div className="text-[10px] text-[#999] truncate">{template.model}</div>
+            </div>
+          </button>
         ))}
       </div>
 
       {/* Right: Editor */}
-      {selected && identity ? (
+      {selectedId && identity ? (
         <div className="flex-1 flex flex-col overflow-hidden">
           <div className="flex items-center justify-between px-6 py-3 border-b border-border">
             <div>
               <h3 className="text-sm font-semibold">{identity.name}</h3>
-              <span className="text-[11px] text-[#999]">ID: {selected.agentId}</span>
+              <span className="text-[11px] text-[#999]">模板 ID: {selectedId}</span>
             </div>
             <button
               onClick={handleSave}
@@ -212,7 +196,7 @@ export function AgentManageTab() {
               <label className="block text-xs font-medium text-[#555] mb-1.5">名字</label>
               <input
                 type="text"
-                value={identity.name === selected.agentId ? '' : identity.name}
+                value={identity.name === selectedId ? '' : identity.name}
                 onChange={(e) => { setIdentity({ ...identity, name: e.target.value }); setDirty(true) }}
                 placeholder="给 Agent 起个名字"
                 className="w-full px-3 py-2 text-sm border border-border rounded-lg bg-white focus:outline-none focus:border-[#999] transition-colors"
@@ -320,7 +304,7 @@ export function AgentManageTab() {
         </div>
       ) : (
         <div className="flex-1 flex items-center justify-center text-sm text-[#999]">
-          选择一个 Agent 查看详情
+          选择一个 Agent 模板进行编辑
         </div>
       )}
     </div>

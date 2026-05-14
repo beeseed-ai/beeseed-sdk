@@ -1,4 +1,4 @@
-export { ChatRoom } from './ChatRoom.js'
+export { ChatChannel } from './ChatChannel.js'
 export { MessageList } from './MessageList.js'
 export { MessageBubble } from './MessageBubble.js'
 export { MessageInput } from './MessageInput.js'

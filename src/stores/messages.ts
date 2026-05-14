@@ -2,7 +2,7 @@ import { createStore } from 'zustand/vanilla'
 import type { KyInstance } from 'ky'
 import type {
   Message, ChatMessage, StreamState, WSEvent,
-  RoomMemberInfo, AgentLoopState, AgentLoopTurn, AgentLoopToolCall,
+  ChannelMemberInfo, AgentLoopState, AgentLoopTurn, AgentLoopToolCall,
   AskUserQuestion,
 } from '../core/types.js'
 
@@ -51,7 +51,7 @@ export function parseMessage(m: Message, myUserId?: string): ChatMessage | null 
           askId: (meta._ask_id as string) || undefined,
           targetUserId: (meta.target_user_id as string) || undefined,
           targetUserIds: Array.isArray(meta.target_user_ids) ? meta.target_user_ids as string[] : undefined,
-          visibility: (meta.visibility as 'target_user' | 'target_users' | 'mentioned_users' | 'room_admins' | 'all_members') || undefined,
+          visibility: (meta.visibility as 'target_user' | 'target_users' | 'mentioned_users' | 'channel_admins' | 'all_members') || undefined,
           expiresAt: (meta.expires_at as string) || undefined,
         },
       }
@@ -171,7 +171,7 @@ export function parseMessage(m: Message, myUserId?: string): ChatMessage | null 
   }
 }
 
-function buildAgentLoopsFromMessages(roomId: string, messages: Message[]): Map<string, AgentLoopState> {
+function buildAgentLoopsFromMessages(channelId: string, messages: Message[]): Map<string, AgentLoopState> {
   const loops = new Map<string, AgentLoopState>()
   const latestEventAt = new Map<string, number>()
   const expiredAskAt = new Map<string, number>()
@@ -180,7 +180,7 @@ function buildAgentLoopsFromMessages(roomId: string, messages: Message[]): Map<s
     const agentId = message.sender_agent_id
     if (!agentId) continue
 
-    const key = `${roomId}:${agentId}`
+    const key = `${channelId}:${agentId}`
     const meta = (message.metadata ?? {}) as Record<string, unknown>
     const timestamp = new Date(message.created_at).getTime()
 
@@ -214,7 +214,7 @@ function buildAgentLoopsFromMessages(roomId: string, messages: Message[]): Map<s
     if (!loop || meta.event === 'agent_ack') {
       loop = {
         agentId,
-        roomId,
+        channelId,
         turns: [],
         status: 'running',
         currentTurn: turnNumber,
@@ -409,14 +409,14 @@ function eventTurnNumber(event: { turn?: number }, loop?: AgentLoopState): numbe
 
 function ensureLoopTurn(
   loop: AgentLoopState | undefined,
-  roomId: string,
+  channelId: string,
   agentId: string,
   turnNumber: number,
 ): AgentLoopState {
   const now = Date.now()
   const base: AgentLoopState = loop ?? {
     agentId,
-    roomId,
+    channelId,
     turns: [],
     status: 'running',
     currentTurn: turnNumber,
@@ -479,18 +479,18 @@ function streamActivityAt(stream: StreamState): number {
   return stream.agentLoop ? agentLoopActivityAt(stream.agentLoop) : 0
 }
 
-function typingKey(roomId: string, agentId?: string): string {
-  return `${roomId}:${agentId || '_'}`
+function typingKey(channelId: string, agentId?: string): string {
+  return `${channelId}:${agentId || '_'}`
 }
 
-function clearTypingForRoom(typing: Map<string, string>, roomId: string, agentId?: string) {
+function clearTypingForChannel(typing: Map<string, string>, channelId: string, agentId?: string) {
   if (agentId) {
-    typing.delete(typingKey(roomId, agentId))
+    typing.delete(typingKey(channelId, agentId))
     return
   }
-  typing.delete(roomId)
+  typing.delete(channelId)
   for (const key of [...typing.keys()]) {
-    if (key.startsWith(`${roomId}:`)) {
+    if (key.startsWith(`${channelId}:`)) {
       typing.delete(key)
     }
   }
@@ -502,29 +502,29 @@ export interface MessagesState {
   messages: Map<string, ChatMessage[]>
   streams: Map<string, StreamState>
   agentLoops: Map<string, AgentLoopState>
-  members: Map<string, RoomMemberInfo[]>
+  members: Map<string, ChannelMemberInfo[]>
   typingStatus: Map<string, string>
-  loadingRoom: string | null
+  loadingChannel: string | null
 
-  fetchMessages: (roomId: string) => Promise<void>
-  fetchMembers: (roomId: string) => Promise<void>
+  fetchMessages: (channelId: string) => Promise<void>
+  fetchMembers: (channelId: string) => Promise<void>
   handleEvent: (event: WSEvent) => void
-  addOptimisticMessage: (roomId: string, content: string) => void
-  submitAskUserAnswer: (roomId: string, askId: string, answers: Record<string, unknown>) => void
-  getMessages: (roomId: string) => ChatMessage[]
-  getStream: (roomId: string) => StreamState | undefined
-  getStreams: (roomId: string) => StreamState[]
-  getAgentLoop: (roomId: string) => AgentLoopState | undefined
-  getAgentLoops: (roomId: string) => AgentLoopState[]
-  getMembers: (roomId: string) => RoomMemberInfo[]
-  getTyping: (roomId: string) => string
-  getTypings: (roomId: string) => string[]
+  addOptimisticMessage: (channelId: string, content: string) => void
+  submitAskUserAnswer: (channelId: string, askId: string, answers: Record<string, unknown>) => void
+  getMessages: (channelId: string) => ChatMessage[]
+  getStream: (channelId: string) => StreamState | undefined
+  getStreams: (channelId: string) => StreamState[]
+  getAgentLoop: (channelId: string) => AgentLoopState | undefined
+  getAgentLoops: (channelId: string) => AgentLoopState[]
+  getMembers: (channelId: string) => ChannelMemberInfo[]
+  getTyping: (channelId: string) => string
+  getTypings: (channelId: string) => string[]
   reset: () => void
 }
 
 export interface MessagesStoreConfig {
   api: KyInstance
-  getCurrentRoomId: () => string | null
+  getCurrentChannelId: () => string | null
   getCurrentUserId: () => string | undefined
   sendWsCommand: (cmd: unknown) => void
 }
@@ -536,59 +536,59 @@ export function createMessagesStore(config: MessagesStoreConfig) {
     agentLoops: new Map(),
     members: new Map(),
     typingStatus: new Map(),
-    loadingRoom: null,
+    loadingChannel: null,
 
-    fetchMessages: async (roomId) => {
-      set({ loadingRoom: roomId })
+    fetchMessages: async (channelId) => {
+      set({ loadingChannel: channelId })
       try {
-        const msgs = await config.api.get(`rooms/${roomId}/messages`).json<Message[]>()
+        const msgs = await config.api.get(`channels/${channelId}/messages`).json<Message[]>()
         const userId = config.getCurrentUserId()
         const parsed = msgs
           .map((m) => parseMessage(m, userId))
           .filter((m): m is ChatMessage => m !== null)
         const map = new Map(get().messages)
-        map.set(roomId, parsed)
+        map.set(channelId, parsed)
         const loops = new Map(get().agentLoops)
         for (const key of loops.keys()) {
-          if (key.startsWith(`${roomId}:`)) {
+          if (key.startsWith(`${channelId}:`)) {
             loops.delete(key)
           }
         }
-        for (const [key, loop] of buildAgentLoopsFromMessages(roomId, msgs)) {
+        for (const [key, loop] of buildAgentLoopsFromMessages(channelId, msgs)) {
           loops.set(key, loop)
         }
-        set({ messages: map, agentLoops: loops, loadingRoom: null })
+        set({ messages: map, agentLoops: loops, loadingChannel: null })
       } catch {
-        set({ loadingRoom: null })
+        set({ loadingChannel: null })
       }
     },
 
-    fetchMembers: async (roomId) => {
+    fetchMembers: async (channelId) => {
       try {
-        const raw = await config.api.get(`rooms/${roomId}/members`).json<RoomMemberInfo[]>()
+        const raw = await config.api.get(`channels/${channelId}/members`).json<ChannelMemberInfo[]>()
         const data = raw
           .map((m) => ({
             ...m,
             display_name: m.display_name || m.nickname || m.agent_id || m.user_id || 'unknown',
           }))
         const map = new Map(get().members)
-        map.set(roomId, data)
+        map.set(channelId, data)
         set({ members: map })
       } catch {
         // ignore
       }
     },
 
-    addOptimisticMessage: (roomId, content) => {
+    addOptimisticMessage: (channelId, content) => {
       const map = new Map(get().messages)
-      const msgs = [...(map.get(roomId) || [])]
+      const msgs = [...(map.get(channelId) || [])]
       msgs.push({
         role: 'user',
         content,
         timestamp: Date.now(),
         senderType: 'user',
       })
-      map.set(roomId, msgs)
+      map.set(channelId, msgs)
       set({ messages: map })
     },
 
@@ -601,11 +601,11 @@ export function createMessagesStore(config: MessagesStoreConfig) {
           const parsed = parseMessage(event.message, userId)
           if (!parsed) break
           const map = new Map(state.messages)
-          let msgs = [...(map.get(event.room_id) || [])]
+          let msgs = [...(map.get(event.channel_id) || [])]
           const existingIdx = msgs.findIndex((m) => m.msgId === parsed.msgId)
           if (existingIdx >= 0) {
             msgs[existingIdx] = parsed
-            map.set(event.room_id, msgs)
+            map.set(event.channel_id, msgs)
             set({ messages: map })
             break
           }
@@ -617,7 +617,7 @@ export function createMessagesStore(config: MessagesStoreConfig) {
           } else {
             msgs.push(parsed)
           }
-          map.set(event.room_id, msgs)
+          map.set(event.channel_id, msgs)
           set({ messages: map })
           break
         }
@@ -626,32 +626,32 @@ export function createMessagesStore(config: MessagesStoreConfig) {
           if (!event.routing_info) break
           const ri = event.routing_info as { routing_method: string; target_agent_ids: string[]; reason: string }
           const map = new Map(state.messages)
-          const msgs = [...(map.get(event.room_id) || [])]
+          const msgs = [...(map.get(event.channel_id) || [])]
           for (let i = msgs.length - 1; i >= 0; i--) {
             if (msgs[i].role === 'user') {
               msgs[i] = { ...msgs[i], routingInfo: { targets: ri.target_agent_ids, method: ri.routing_method } }
               break
             }
           }
-          map.set(event.room_id, msgs)
+          map.set(event.channel_id, msgs)
           set({ messages: map })
           break
         }
 
         case 'typing': {
           const typing = new Map(state.typingStatus)
-          typing.set(typingKey(event.room_id, event.agent_id), `${event.agent_id || 'Agent'} 正在输入...`)
+          typing.set(typingKey(event.channel_id, event.agent_id), `${event.agent_id || 'Agent'} 正在输入...`)
           set({ typingStatus: typing })
           break
         }
 
         case 'chunk': {
           const streams = new Map(state.streams)
-          const key = `${event.room_id}:${event.agent_id}`
+          const key = `${event.channel_id}:${event.agent_id}`
           const existing = streams.get(key)
           const loops = new Map(state.agentLoops)
           const turnNumber = eventTurnNumber(event, existing?.agentLoop ?? loops.get(key))
-          let agentLoop = ensureLoopTurn(existing?.agentLoop ?? loops.get(key), event.room_id, event.agent_id, turnNumber)
+          let agentLoop = ensureLoopTurn(existing?.agentLoop ?? loops.get(key), event.channel_id, event.agent_id, turnNumber)
           agentLoop = updateLoopTurn(agentLoop, turnNumber, (turn) => ({
             ...turn,
             content: (turn.content || '') + event.content,
@@ -670,7 +670,7 @@ export function createMessagesStore(config: MessagesStoreConfig) {
 
         case 'thinking': {
           const streams = new Map(state.streams)
-          const key = `${event.room_id}:${event.agent_id}`
+          const key = `${event.channel_id}:${event.agent_id}`
           const existing = streams.get(key)
           streams.set(key, {
             agentId: event.agent_id,
@@ -684,7 +684,7 @@ export function createMessagesStore(config: MessagesStoreConfig) {
 
         case 'thinking_content': {
           const streams = new Map(state.streams)
-          const key = `${event.room_id}:${event.agent_id}`
+          const key = `${event.channel_id}:${event.agent_id}`
           const existing = streams.get(key)
           streams.set(key, {
             agentId: event.agent_id,
@@ -698,7 +698,7 @@ export function createMessagesStore(config: MessagesStoreConfig) {
 
         case 'message_end': {
           const streams = new Map(state.streams)
-          const streamKey = `${event.room_id}:${event.agent_id}`
+          const streamKey = `${event.channel_id}:${event.agent_id}`
           streams.delete(streamKey)
           set({ streams })
 
@@ -706,28 +706,28 @@ export function createMessagesStore(config: MessagesStoreConfig) {
             const parsed = parseMessage(event.message, userId)
             if (parsed) {
               const map = new Map(state.messages)
-              const msgs = [...(map.get(event.room_id) || [])]
+              const msgs = [...(map.get(event.channel_id) || [])]
               if (!msgs.some((m) => m.msgId === parsed.msgId)) {
                 msgs.push(parsed)
-                map.set(event.room_id, msgs)
+                map.set(event.channel_id, msgs)
                 set({ messages: map })
               }
             }
           }
 
           const typing = new Map(state.typingStatus)
-          clearTypingForRoom(typing, event.room_id, event.agent_id)
+          clearTypingForChannel(typing, event.channel_id, event.agent_id)
           set({ typingStatus: typing })
           break
         }
 
         case 'tool_call': {
           const streams = new Map(state.streams)
-          const key = `${event.room_id}:${event.agent_id}`
+          const key = `${event.channel_id}:${event.agent_id}`
           const existing = streams.get(key)
           const loops = new Map(state.agentLoops)
           const turnNumber = eventTurnNumber(event, existing?.agentLoop ?? loops.get(key))
-          let agentLoop = ensureLoopTurn(existing?.agentLoop ?? loops.get(key), event.room_id, event.agent_id, turnNumber)
+          let agentLoop = ensureLoopTurn(existing?.agentLoop ?? loops.get(key), event.channel_id, event.agent_id, turnNumber)
           const toolCall: AgentLoopToolCall = {
             id: `${event.name}-${Date.now()}`,
             name: event.name,
@@ -756,18 +756,18 @@ export function createMessagesStore(config: MessagesStoreConfig) {
           set({ streams })
 
           const typing = new Map(state.typingStatus)
-          typing.set(typingKey(event.room_id, event.agent_id), `${event.agent_id} 调用工具 ${event.name}...`)
+          typing.set(typingKey(event.channel_id, event.agent_id), `${event.agent_id} 调用工具 ${event.name}...`)
           set({ typingStatus: typing })
           break
         }
 
         case 'tool_result': {
           const streams = new Map(state.streams)
-          const key = `${event.room_id}:${event.agent_id}`
+          const key = `${event.channel_id}:${event.agent_id}`
           const existing = streams.get(key)
           const loops = new Map(state.agentLoops)
           const turnNumber = eventTurnNumber(event, existing?.agentLoop ?? loops.get(key))
-          let agentLoop = ensureLoopTurn(existing?.agentLoop ?? loops.get(key), event.room_id, event.agent_id, turnNumber)
+          let agentLoop = ensureLoopTurn(existing?.agentLoop ?? loops.get(key), event.channel_id, event.agent_id, turnNumber)
           agentLoop = updateLoopTurn(agentLoop, turnNumber, (turn) => {
             let nextTurn = turn
             if (nextTurn) {
@@ -820,7 +820,7 @@ export function createMessagesStore(config: MessagesStoreConfig) {
           set({ streams })
 
           const typing = new Map(state.typingStatus)
-          typing.set(typingKey(event.room_id, event.agent_id), `${event.agent_id} 正在思考...`)
+          typing.set(typingKey(event.channel_id, event.agent_id), `${event.agent_id} 正在思考...`)
           set({ typingStatus: typing })
           break
         }
@@ -829,7 +829,7 @@ export function createMessagesStore(config: MessagesStoreConfig) {
 
         case 'agent_ack': {
           const loops = new Map(state.agentLoops)
-          const loopKey = `${event.room_id}:${event.agent_id}`
+          const loopKey = `${event.channel_id}:${event.agent_id}`
           const existing = loops.get(loopKey)
           const shouldContinueExisting = existing?.status === 'running' || existing?.status === 'waiting_for_user'
           const turnNumber = shouldContinueExisting && existing && event.turn <= existing.currentTurn
@@ -854,7 +854,7 @@ export function createMessagesStore(config: MessagesStoreConfig) {
               }
             : {
                 agentId: event.agent_id,
-                roomId: event.room_id,
+                channelId: event.channel_id,
                 turns: [newTurn],
                 status: 'running',
                 currentTurn: turnNumber,
@@ -866,7 +866,7 @@ export function createMessagesStore(config: MessagesStoreConfig) {
 
           // Attach to stream
           const streams = new Map(state.streams)
-          const streamKey = `${event.room_id}:${event.agent_id}`
+          const streamKey = `${event.channel_id}:${event.agent_id}`
           const stream = streams.get(streamKey)
           streams.set(streamKey, {
             agentId: event.agent_id,
@@ -878,16 +878,16 @@ export function createMessagesStore(config: MessagesStoreConfig) {
           set({ streams })
 
           const typing = new Map(state.typingStatus)
-          typing.set(typingKey(event.room_id, event.agent_id), `${event.agent_id} 开始第 ${event.turn} 轮...`)
+          typing.set(typingKey(event.channel_id, event.agent_id), `${event.agent_id} 开始第 ${event.turn} 轮...`)
           set({ typingStatus: typing })
           break
         }
 
         case 'agent_thinking': {
           const loops = new Map(state.agentLoops)
-          const loopKey = `${event.room_id}:${event.agent_id}`
+          const loopKey = `${event.channel_id}:${event.agent_id}`
           const turnNumber = eventTurnNumber(event, loops.get(loopKey))
-          let updated = ensureLoopTurn(loops.get(loopKey), event.room_id, event.agent_id, turnNumber)
+          let updated = ensureLoopTurn(loops.get(loopKey), event.channel_id, event.agent_id, turnNumber)
           updated = updateLoopTurn(updated, turnNumber, (turn) => ({
             ...turn,
             thinking: (turn.thinking || '') + (event.content || ''),
@@ -897,7 +897,7 @@ export function createMessagesStore(config: MessagesStoreConfig) {
 
           // Sync to stream
           const streams = new Map(state.streams)
-          const streamKey = `${event.room_id}:${event.agent_id}`
+          const streamKey = `${event.channel_id}:${event.agent_id}`
           const stream = streams.get(streamKey)
           if (stream) {
             streams.set(streamKey, { ...stream, agentLoop: updated })
@@ -908,8 +908,8 @@ export function createMessagesStore(config: MessagesStoreConfig) {
 
         case 'agent_turn_start': {
           const loops = new Map(state.agentLoops)
-          const loopKey = `${event.room_id}:${event.agent_id}`
-          const loop = ensureLoopTurn(loops.get(loopKey), event.room_id, event.agent_id, event.turn)
+          const loopKey = `${event.channel_id}:${event.agent_id}`
+          const loop = ensureLoopTurn(loops.get(loopKey), event.channel_id, event.agent_id, event.turn)
           loops.set(loopKey, loop)
           set({ agentLoops: loops })
 
@@ -928,9 +928,9 @@ export function createMessagesStore(config: MessagesStoreConfig) {
 
         case 'agent_progress': {
           const loops = new Map(state.agentLoops)
-          const loopKey = `${event.room_id}:${event.agent_id}`
+          const loopKey = `${event.channel_id}:${event.agent_id}`
           const turnNumber = eventTurnNumber(event, loops.get(loopKey))
-          let updated = ensureLoopTurn(loops.get(loopKey), event.room_id, event.agent_id, turnNumber)
+          let updated = ensureLoopTurn(loops.get(loopKey), event.channel_id, event.agent_id, turnNumber)
           updated = updateLoopTurn(updated, turnNumber, (turn) => ({
             ...turn,
             progress: event.summary,
@@ -939,7 +939,7 @@ export function createMessagesStore(config: MessagesStoreConfig) {
           set({ agentLoops: loops })
 
           const streams = new Map(state.streams)
-          const streamKey = `${event.room_id}:${event.agent_id}`
+          const streamKey = `${event.channel_id}:${event.agent_id}`
           const stream = streams.get(streamKey)
           if (stream) {
             streams.set(streamKey, { ...stream, agentLoop: updated })
@@ -947,16 +947,16 @@ export function createMessagesStore(config: MessagesStoreConfig) {
           }
 
           const typing = new Map(state.typingStatus)
-          typing.set(typingKey(event.room_id, event.agent_id), event.summary)
+          typing.set(typingKey(event.channel_id, event.agent_id), event.summary)
           set({ typingStatus: typing })
           break
         }
 
         case 'agent_waiting_user': {
-          const loopKey = `${event.room_id}:${event.agent_id}`
+          const loopKey = `${event.channel_id}:${event.agent_id}`
           const loops = new Map(state.agentLoops)
           const turnNumber = eventTurnNumber(event, loops.get(loopKey))
-          let updated = ensureLoopTurn(loops.get(loopKey), event.room_id, event.agent_id, turnNumber)
+          let updated = ensureLoopTurn(loops.get(loopKey), event.channel_id, event.agent_id, turnNumber)
           updated = updateLoopTurn(updated, turnNumber, (turn) => ({
             ...turn,
             status: 'completed',
@@ -971,13 +971,13 @@ export function createMessagesStore(config: MessagesStoreConfig) {
           set({ streams })
 
           const typing = new Map(state.typingStatus)
-          clearTypingForRoom(typing, event.room_id, event.agent_id)
+          clearTypingForChannel(typing, event.channel_id, event.agent_id)
           set({ typingStatus: typing })
           break
         }
 
         case 'agent_ask_user_expired': {
-          const loopKey = `${event.room_id}:${event.agent_id}`
+          const loopKey = `${event.channel_id}:${event.agent_id}`
 
           const streams = new Map(state.streams)
           streams.delete(loopKey)
@@ -985,7 +985,7 @@ export function createMessagesStore(config: MessagesStoreConfig) {
 
           const loops = new Map(state.agentLoops)
           const turnNumber = eventTurnNumber(event, loops.get(loopKey))
-          let updated = ensureLoopTurn(loops.get(loopKey), event.room_id, event.agent_id, turnNumber)
+          let updated = ensureLoopTurn(loops.get(loopKey), event.channel_id, event.agent_id, turnNumber)
           updated = updateLoopTurn(updated, turnNumber, (turn) => ({
             ...turn,
             status: 'completed',
@@ -1001,16 +1001,16 @@ export function createMessagesStore(config: MessagesStoreConfig) {
           set({ agentLoops: loops })
 
           const typing = new Map(state.typingStatus)
-          clearTypingForRoom(typing, event.room_id, event.agent_id)
+          clearTypingForChannel(typing, event.channel_id, event.agent_id)
           set({ typingStatus: typing })
           break
         }
 
         case 'agent_done': {
           const loops = new Map(state.agentLoops)
-          const loopKey = `${event.room_id}:${event.agent_id}`
+          const loopKey = `${event.channel_id}:${event.agent_id}`
           const turnNumber = eventTurnNumber(event, loops.get(loopKey))
-          let updated = ensureLoopTurn(loops.get(loopKey), event.room_id, event.agent_id, turnNumber)
+          let updated = ensureLoopTurn(loops.get(loopKey), event.channel_id, event.agent_id, turnNumber)
           updated = updateLoopTurn(updated, turnNumber, (turn) => ({
             ...turn,
             status: 'completed',
@@ -1028,21 +1028,21 @@ export function createMessagesStore(config: MessagesStoreConfig) {
 
           // Clean up stream's agentLoop reference
           const streams = new Map(state.streams)
-          const streamKey = `${event.room_id}:${event.agent_id}`
+          const streamKey = `${event.channel_id}:${event.agent_id}`
           streams.delete(streamKey)
           set({ streams })
 
           const typing = new Map(state.typingStatus)
-          clearTypingForRoom(typing, event.room_id, event.agent_id)
+          clearTypingForChannel(typing, event.channel_id, event.agent_id)
           set({ typingStatus: typing })
           break
         }
 
         case 'max_turns_reached': {
           const loops = new Map(state.agentLoops)
-          const loopKey = `${event.room_id}:${event.agent_id}`
+          const loopKey = `${event.channel_id}:${event.agent_id}`
           const turnNumber = eventTurnNumber(event, loops.get(loopKey))
-          let updated = ensureLoopTurn(loops.get(loopKey), event.room_id, event.agent_id, turnNumber)
+          let updated = ensureLoopTurn(loops.get(loopKey), event.channel_id, event.agent_id, turnNumber)
           updated = updateLoopTurn(updated, turnNumber, (turn) => ({
             ...turn,
             status: 'completed',
@@ -1052,17 +1052,17 @@ export function createMessagesStore(config: MessagesStoreConfig) {
           set({ agentLoops: loops })
 
           const streams = new Map(state.streams)
-          streams.delete(`${event.room_id}:${event.agent_id}`)
+          streams.delete(`${event.channel_id}:${event.agent_id}`)
           set({ streams })
 
           const typing = new Map(state.typingStatus)
-          clearTypingForRoom(typing, event.room_id, event.agent_id)
+          clearTypingForChannel(typing, event.channel_id, event.agent_id)
           set({ typingStatus: typing })
           break
         }
 
         case 'agent_stopped': {
-          const loopKey = `${event.room_id}:${event.agent_id}`
+          const loopKey = `${event.channel_id}:${event.agent_id}`
 
           const streams = new Map(state.streams)
           streams.delete(loopKey)
@@ -1082,19 +1082,19 @@ export function createMessagesStore(config: MessagesStoreConfig) {
           }
 
           const typing = new Map(state.typingStatus)
-          clearTypingForRoom(typing, event.room_id, event.agent_id)
+          clearTypingForChannel(typing, event.channel_id, event.agent_id)
           set({ typingStatus: typing })
           break
         }
 
         case 'error': {
-          if (event.room_id) {
+          if (event.channel_id) {
             const typing = new Map(state.typingStatus)
-            clearTypingForRoom(typing, event.room_id, event.agent_id)
+            clearTypingForChannel(typing, event.channel_id, event.agent_id)
             set({ typingStatus: typing })
 
             if (event.agent_id) {
-              const loopKey = `${event.room_id}:${event.agent_id}`
+              const loopKey = `${event.channel_id}:${event.agent_id}`
               const loops = new Map(state.agentLoops)
               const loop = loops.get(loopKey)
               if (loop && loop.status === 'running') {
@@ -1109,7 +1109,7 @@ export function createMessagesStore(config: MessagesStoreConfig) {
               }
 
               const streams = new Map(state.streams)
-              streams.delete(`${event.room_id}:${event.agent_id}`)
+              streams.delete(`${event.channel_id}:${event.agent_id}`)
               set({ streams })
             }
           }
@@ -1118,17 +1118,17 @@ export function createMessagesStore(config: MessagesStoreConfig) {
       }
     },
 
-    submitAskUserAnswer: (roomId, askId, answers) => {
+    submitAskUserAnswer: (channelId, askId, answers) => {
       config.sendWsCommand({
         type: 'ask_user_answer',
-        room_id: roomId,
+        channel_id: channelId,
         ask_id: askId,
         answers,
       })
 
       // Mark message as answered locally
       const map = new Map(get().messages)
-      const msgs = map.get(roomId)
+      const msgs = map.get(channelId)
       if (msgs) {
         const updated = msgs.map((m) => {
           if (m.askUserData?.askId === askId) {
@@ -1136,29 +1136,29 @@ export function createMessagesStore(config: MessagesStoreConfig) {
           }
           return m
         })
-        map.set(roomId, updated)
+        map.set(channelId, updated)
         set({ messages: map })
       }
     },
 
-    getMessages: (roomId) => get().messages.get(roomId) || [],
+    getMessages: (channelId) => get().messages.get(channelId) || [],
 
-    getStreams: (roomId) => {
+    getStreams: (channelId) => {
       const streams = [...get().streams.entries()]
-        .filter(([key]) => key.startsWith(`${roomId}:`))
+        .filter(([key]) => key.startsWith(`${channelId}:`))
         .map(([, stream]) => stream)
       streams.sort((a, b) => streamActivityAt(a) - streamActivityAt(b))
       return streams
     },
 
-    getStream: (roomId) => {
-      const streams = get().getStreams(roomId)
+    getStream: (channelId) => {
+      const streams = get().getStreams(channelId)
       return streams[streams.length - 1]
     },
 
-    getAgentLoops: (roomId) => {
+    getAgentLoops: (channelId) => {
       const loops = [...get().agentLoops.entries()]
-        .filter(([key]) => key.startsWith(`${roomId}:`))
+        .filter(([key]) => key.startsWith(`${channelId}:`))
         .map(([, loop]) => loop)
       loops.sort((a, b) => {
         return agentLoopActivityAt(b) - agentLoopActivityAt(a)
@@ -1166,8 +1166,8 @@ export function createMessagesStore(config: MessagesStoreConfig) {
       return loops
     },
 
-    getAgentLoop: (roomId) => {
-      const loops = get().getAgentLoops(roomId)
+    getAgentLoop: (channelId) => {
+      const loops = get().getAgentLoops(channelId)
       loops.sort((a, b) => {
         const aRunning = a.status === 'running' || a.status === 'waiting_for_user'
         const bRunning = b.status === 'running' || b.status === 'waiting_for_user'
@@ -1177,17 +1177,17 @@ export function createMessagesStore(config: MessagesStoreConfig) {
       return loops[0]
     },
 
-    getMembers: (roomId) => get().members.get(roomId) || [],
+    getMembers: (channelId) => get().members.get(channelId) || [],
 
-    getTypings: (roomId) => {
-      const direct = get().typingStatus.get(roomId)
+    getTypings: (channelId) => {
+      const direct = get().typingStatus.get(channelId)
       const values = [...get().typingStatus.entries()]
-        .filter(([key]) => key.startsWith(`${roomId}:`))
+        .filter(([key]) => key.startsWith(`${channelId}:`))
         .map(([, value]) => value)
       return direct ? [direct, ...values] : values
     },
 
-    getTyping: (roomId) => get().getTypings(roomId)[0] || '',
+    getTyping: (channelId) => get().getTypings(channelId)[0] || '',
 
     reset: () => set({
       messages: new Map(),
@@ -1195,7 +1195,7 @@ export function createMessagesStore(config: MessagesStoreConfig) {
       agentLoops: new Map(),
       members: new Map(),
       typingStatus: new Map(),
-      loadingRoom: null,
+      loadingChannel: null,
     }),
   }))
 }

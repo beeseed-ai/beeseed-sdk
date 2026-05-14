@@ -80,15 +80,15 @@ export class WSClient {
   send(command: WSCommand) {
     const cmd = command as Record<string, unknown>
     const cmdType = cmd.type as string
-    const cmdRoom = (cmd.room_id as string) || ''
+    const cmdChannel = (cmd.channel_id as string) || ''
     if (this.ws?.readyState === WebSocket.OPEN) {
       this.ws.send(JSON.stringify(command))
     } else {
-      if (cmdType === 'join_room' || cmdType === 'leave_room') {
+      if (cmdType === 'join_channel' || cmdType === 'leave_channel') {
         this.queue = this.queue.filter(q => {
           const qt = (q as Record<string, unknown>).type
-          const qr = (q as Record<string, unknown>).room_id
-          return !(qt === 'join_room' || qt === 'leave_room') || qr !== cmdRoom
+          const qr = (q as Record<string, unknown>).channel_id as string
+          return !(qt === 'join_channel' || qt === 'leave_channel') || qr !== cmdChannel
         })
       }
       if (this.queue.length < 50) this.queue.push(command)

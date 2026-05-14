@@ -27,8 +27,15 @@ const DEFAULT_PANEL_VISIBLE = true
 
 function initialFeature(): FeatureView {
   if (typeof sessionStorage === 'undefined') return 'chat'
-  const saved = sessionStorage.getItem('beeseed-feature') as FeatureView | null
-  return saved === 'storage' || !saved ? 'chat' : saved
+  const saved = sessionStorage.getItem('beeseed-feature')
+  if (saved === 'agents') {
+    sessionStorage.setItem('beeseed-feature', 'admin')
+    return 'admin'
+  }
+  if (saved === 'tasks' || saved === 'knowledge' || saved === 'cron' || saved === 'settings' || saved === 'admin') {
+    return saved
+  }
+  return 'chat'
 }
 
 export function createDetailPanelStore() {

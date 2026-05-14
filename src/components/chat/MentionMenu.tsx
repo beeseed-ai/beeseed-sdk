@@ -1,17 +1,17 @@
 import { useEffect, useRef } from 'react'
-import type { RoomMemberInfo } from '../../core/types.js'
+import type { ChannelMemberInfo } from '../../core/types.js'
 import { cn } from '../../lib/cn.js'
 import { Avatar, AvatarFallback, AvatarImage } from '../ui/avatar.js'
 
 interface Props {
-  members: RoomMemberInfo[]
+  members: ChannelMemberInfo[]
   query: string
   selectedIndex: number
-  onSelect: (member: RoomMemberInfo) => void
+  onSelect: (member: ChannelMemberInfo) => void
   onClose: () => void
 }
 
-function filterMembers(members: RoomMemberInfo[], query: string): RoomMemberInfo[] {
+function filterMembers(members: ChannelMemberInfo[], query: string): ChannelMemberInfo[] {
   const q = query.toLowerCase()
   return members.filter((m) => {
     const name = m.display_name || m.nickname || m.agent_id || m.user_id || ''
@@ -19,11 +19,11 @@ function filterMembers(members: RoomMemberInfo[], query: string): RoomMemberInfo
   })
 }
 
-export function getFilteredCount(members: RoomMemberInfo[], query: string): number {
+export function getFilteredCount(members: ChannelMemberInfo[], query: string): number {
   return filterMembers(members, query).length
 }
 
-export function getFilteredMember(members: RoomMemberInfo[], query: string, index: number): RoomMemberInfo | undefined {
+export function getFilteredMember(members: ChannelMemberInfo[], query: string, index: number): ChannelMemberInfo | undefined {
   return filterMembers(members, query)[index]
 }
 

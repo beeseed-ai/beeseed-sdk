@@ -11,18 +11,18 @@ export { RegisterForm } from './auth/index.js'
 export { AuthGuard } from './auth/index.js'
 
 // Chat
-export { ChatRoom } from './chat/index.js'
+export { ChatChannel } from './chat/index.js'
 export { MessageList } from './chat/index.js'
 export { MessageBubble } from './chat/index.js'
 export { MessageInput } from './chat/index.js'
 export { StreamRenderer } from './chat/index.js'
 export { TypingIndicator } from './chat/index.js'
 
-// Rooms
-export { RoomList } from './rooms/index.js'
-export { RoomItem } from './rooms/index.js'
-export { RoomHeader } from './rooms/index.js'
-export { CreateRoomDialog } from './rooms/index.js'
+// Channels
+export { ChannelList } from './channels/index.js'
+export { ChannelItem } from './channels/index.js'
+export { ChannelHeader } from './channels/index.js'
+export { CreateChannelDialog } from './channels/index.js'
 
 // Layout
 export { ChatLayout } from './layout/index.js'

@@ -6,13 +6,13 @@ import { Button } from '../ui/button.js'
 import { Input } from '../ui/input.js'
 import { Dialog, DialogHeader, DialogTitle, DialogFooter } from '../ui/dialog.js'
 
-export function CronPanel({ roomId }: { roomId: string | null }) {
-  const { jobs, loading, createJob, updateJob, deleteJob } = useCron(roomId)
+export function CronPanel({ channelId }: { channelId: string | null }) {
+  const { jobs, loading, createJob, updateJob, deleteJob } = useCron(channelId)
   const [createOpen, setCreateOpen] = useState(false)
   const [cronExpr, setCronExpr] = useState('0 9 * * *')
   const [message, setMessage] = useState('')
 
-  if (!roomId) {
+  if (!channelId) {
     return <div className="flex-1 flex items-center justify-center text-muted-foreground text-sm">选择一个对话管理定时任务</div>
   }
 

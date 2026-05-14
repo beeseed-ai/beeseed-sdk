@@ -11,7 +11,7 @@ import { StorageAttachmentPreview } from './StorageAttachmentPreview.js'
 interface Props {
   message: ChatMessage
   isOwn: boolean
-  roomId: string
+  channelId: string
   currentUserId?: string
   onQuote?: (message: ChatMessage) => void
   onMentionClick?: (name: string) => void
@@ -28,7 +28,7 @@ function avatarColor(name: string): string {
 }
 
 const SYSTEM_COLORS: Record<string, string> = {
-  task_scheduler: 'text-[#6d28d9] bg-[#ede9fe]',
+  task_scheduler: 'text-[#41454d] bg-[#f8fafc] border border-[#dddddd]',
   task_plan_created: 'text-[#6d28d9] bg-[#ede9fe]',
   agent_offline: 'text-[#b45309] bg-[#fef3c7]',
   agent_timeout: 'text-[#b45309] bg-[#fef3c7]',
@@ -44,8 +44,25 @@ function formatAskUserAnswerSummary(message: ChatMessage): string {
   return `已回答 ${target} 的补充问题 · ${method}`
 }
 
+function extractTaskTitle(content: string): string {
+  return content.match(/任务[「"]([^」"]+)[」"]/)?.[1]?.trim() || ''
+}
+
+function compactTaskSchedulerMessage(content: string): string {
+  const title = extractTaskTitle(content)
+  const subject = title ? `任务「${title}」` : '任务'
+  if (content.includes('开始执行')) return `开始执行 ${subject}`
+  if (content.includes('仍未标记完成') || content.includes('等待 Agent 回报状态')) return `${subject} 等待状态回报`
+  if (content.includes('即将截止')) return `${subject} 即将截止`
+  if (content.includes('重试耗尽') || content.includes('执行失败')) return `${subject} 失败`
+  if (content.includes('需要确认')) return `${subject} 需要确认`
+  if (content.includes('已完成')) return `${subject} 已完成`
+  if (content.length > 48) return `${content.slice(0, 48)}...`
+  return content
+}
+
 export function MessageBubble({
-  message, roomId, currentUserId, onQuote, onMentionClick, onScrollToMessage, onSubmitAnswer, className,
+  message, channelId, currentUserId, onQuote, onMentionClick, onScrollToMessage, onSubmitAnswer, className,
 }: Props) {
   const [copied, setCopied] = useState(false)
   const [previewImage, setPreviewImage] = useState<string | null>(null)
@@ -102,7 +119,9 @@ export function MessageBubble({
     const colorClass = message.systemSource ? (SYSTEM_COLORS[message.systemSource] ?? 'text-[#777169] bg-[#f0f0f0]') : 'text-[#777169] bg-[#f0f0f0]'
     const content = message.systemSource === 'ask_user_answer'
       ? formatAskUserAnswerSummary(message)
-      : message.content
+      : message.systemSource === 'task_scheduler'
+        ? compactTaskSchedulerMessage(message.content)
+        : message.content
     return (
       <div className={cn('flex justify-center py-1.5', className)} id={message.msgId ? `msg-${message.msgId}` : undefined}>
         <span className={cn('px-3 py-1 text-xs rounded-full text-center break-words max-w-full', colorClass)}>
@@ -223,7 +242,7 @@ export function MessageBubble({
                     onMentionClick={onMentionClick}
                   />
                 )}
-                {storageRefs.length > 0 && <StorageAttachmentPreview roomId={roomId} refs={storageRefs} compact={!visibleContent} />}
+                {storageRefs.length > 0 && <StorageAttachmentPreview channelId={channelId} refs={storageRefs} compact={!visibleContent} />}
               </>
             ) : (
               <>
@@ -234,7 +253,7 @@ export function MessageBubble({
                     onMentionClick={onMentionClick}
                   />
                 )}
-                {storageRefs.length > 0 && <StorageAttachmentPreview roomId={roomId} refs={storageRefs} compact={!visibleContent} />}
+                {storageRefs.length > 0 && <StorageAttachmentPreview channelId={channelId} refs={storageRefs} compact={!visibleContent} />}
               </>
             )}
           </div>

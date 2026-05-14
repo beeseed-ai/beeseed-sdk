@@ -1,98 +1,104 @@
 import { useCallback, useEffect } from 'react'
 import { useStore } from 'zustand'
 import { useBeeSeedContext } from '../provider/BeeSeedProvider.js'
-import type { ChatMessage, RoomMemberInfo } from '../core/types.js'
+import type { ChatMessage, ChannelMemberInfo } from '../core/types.js'
 
-export function useChat(roomId: string | null) {
+export function useChat(channelId: string | null) {
   const { messagesStore, ws } = useBeeSeedContext()
   const state = useStore(messagesStore)
 
   useEffect(() => {
-    if (!roomId) return
+    if (!channelId) return
     const s = messagesStore.getState()
-    void s.fetchMessages(roomId)
-    void s.fetchMembers(roomId)
-    ws.send({ type: 'join_room', room_id: roomId })
+    void s.fetchMessages(channelId)
+    void s.fetchMembers(channelId)
+    ws.send({ type: 'join_channel', channel_id: channelId })
     return () => {
-      ws.send({ type: 'leave_room', room_id: roomId })
+      ws.send({ type: 'leave_channel', channel_id: channelId })
     }
-  }, [roomId])
+  }, [channelId])
 
   const send = useCallback(
     (content: string, metadata?: Record<string, unknown>) => {
-      if (!roomId || !content.trim()) return
-      messagesStore.getState().addOptimisticMessage(roomId, content.trim())
-      ws.send({ type: 'message', room_id: roomId, content: content.trim(), metadata })
+      if (!channelId || !content.trim()) return
+      messagesStore.getState().addOptimisticMessage(channelId, content.trim())
+      ws.send({ type: 'message', channel_id: channelId, content: content.trim(), metadata })
     },
-    [roomId, ws, messagesStore],
+    [channelId, ws, messagesStore],
   )
 
   const sendWithQuote = useCallback(
     (content: string, quoted: ChatMessage) => {
-      if (!roomId || !content.trim()) return
+      if (!channelId || !content.trim()) return
       const prefix = quoted.senderName
         ? `> ${quoted.senderName}: ${quoted.content.slice(0, 100)}\n\n`
         : ''
-      messagesStore.getState().addOptimisticMessage(roomId, prefix + content.trim())
-      ws.send({ type: 'message', room_id: roomId, content: prefix + content.trim() })
+      messagesStore.getState().addOptimisticMessage(channelId, prefix + content.trim())
+      ws.send({ type: 'message', channel_id: channelId, content: prefix + content.trim() })
     },
-    [roomId, ws, messagesStore],
+    [channelId, ws, messagesStore],
   )
 
   const submitAnswer = useCallback(
     (askId: string, answers: Record<string, unknown>) => {
-      if (!roomId) return
-      messagesStore.getState().submitAskUserAnswer(roomId, askId, answers)
+      if (!channelId) return
+      messagesStore.getState().submitAskUserAnswer(channelId, askId, answers)
     },
-    [roomId, messagesStore],
+    [channelId, messagesStore],
   )
 
   const ack = useCallback(
     (msgId: number) => {
-      if (!roomId) return
-      ws.send({ type: 'read_ack', room_id: roomId, msg_id: msgId })
+      if (!channelId) return
+      ws.send({ type: 'read_ack', channel_id: channelId, msg_id: msgId })
     },
-    [roomId, ws],
+    [channelId, ws],
   )
 
   const stopAgent = useCallback(
     (agentId: string, reason?: string) => {
-      if (!roomId || !agentId) return
+      if (!channelId || !agentId) return
       const cleanReason = reason?.trim()
       ws.send({
         type: 'stop_agent',
-        room_id: roomId,
+        channel_id: channelId,
         agent_id: agentId,
         ...(cleanReason ? { reason: cleanReason } : {}),
       })
     },
-    [roomId, ws],
+    [channelId, ws],
   )
 
-  const streams = roomId ? state.getStreams(roomId) : []
-  const agentLoops = roomId ? state.getAgentLoops(roomId) : []
-  const typings = roomId ? state.getTypings(roomId) : []
+  const refreshMembers = useCallback(() => {
+    if (!channelId) return
+    void messagesStore.getState().fetchMembers(channelId)
+  }, [channelId, messagesStore])
+
+  const streams = channelId ? state.getStreams(channelId) : []
+  const agentLoops = channelId ? state.getAgentLoops(channelId) : []
+  const typings = channelId ? state.getTypings(channelId) : []
   const stream = streams[streams.length - 1]
-  const agentLoop = roomId
+  const agentLoop = channelId
     ? stream?.agentLoop
-      ?? (stream?.agentId ? state.agentLoops.get(`${roomId}:${stream.agentId}`) : undefined)
-      ?? state.getAgentLoop(roomId)
+      ?? (stream?.agentId ? state.agentLoops.get(`${channelId}:${stream.agentId}`) : undefined)
+      ?? state.getAgentLoop(channelId)
     : undefined
 
   return {
-    messages: roomId ? state.getMessages(roomId) : [],
+    messages: channelId ? state.getMessages(channelId) : [],
     stream,
     streams,
     agentLoop,
     agentLoops,
-    members: roomId ? state.getMembers(roomId) : ([] as RoomMemberInfo[]),
-    typing: roomId ? state.getTyping(roomId) : '',
+    members: channelId ? state.getMembers(channelId) : ([] as ChannelMemberInfo[]),
+    typing: channelId ? state.getTyping(channelId) : '',
     typings,
-    loading: state.loadingRoom === roomId,
+    loading: state.loadingChannel === channelId,
     send,
     sendWithQuote,
     submitAnswer,
     stopAgent,
     ack,
+    refreshMembers,
   }
 }
