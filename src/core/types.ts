@@ -253,9 +253,54 @@ export interface Task {
   assigned_name?: string
   priority: number
   due_at?: string
+  result?: string
+  started_at?: string
+  completed_at?: string
+  scheduler_state?: 'manual' | 'template' | 'waiting_time' | 'pending_deps' | 'ready' | 'dispatched' | 'awaiting_verify' | 'verified' | 'failed' | 'cancelled'
+  scheduled_start_at?: string
+  deadline_at?: string
+  dispatched_at?: string
+  retry_count?: number
+  max_retries?: number
+  schedule_id?: string
+  parent_task_id?: string
+  occurrence_at?: string
   created_by?: string
   created_at: string
   updated_at: string
+}
+
+export interface TaskSchedule {
+  id: string
+  room_id: string
+  task_template_id?: string
+  kind: 'once' | 'recurring'
+  timezone: string
+  run_at?: string
+  recurrence_rule?: string
+  next_fire_at?: string
+  last_fire_at?: string
+  enabled: boolean
+  overlap_policy: 'skip' | 'queue' | 'parallel'
+  catch_up_policy: 'none' | 'latest' | 'all'
+  template_title?: string
+  template_description?: string
+  assigned_agent_id?: string
+  created_by?: string
+  created_at: string
+  updated_at: string
+}
+
+export interface CalendarEvent {
+  id: string
+  type: 'task' | 'projected_occurrence'
+  title: string
+  start_at: string
+  status: string
+  task_id?: string
+  schedule_id?: string
+  occurrence_at?: string
+  is_recurring: boolean
 }
 
 export interface TaskComment {

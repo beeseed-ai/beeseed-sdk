@@ -1,4 +1,4 @@
-import type { Project, Task, TaskComment } from '../core/types.js'
+import type { CalendarEvent, Project, Task, TaskComment, TaskSchedule } from '../core/types.js'
 
 export const MOCK_PROJECTS: Project[] = [
   { id: 'proj-1', room_id: 'room-1', title: '产品 v2.0 开发', status: 'active', created_at: '2026-05-01T00:00:00Z', updated_at: '2026-05-09T00:00:00Z', task_count: 4, done_count: 1 },
@@ -17,4 +17,35 @@ export const MOCK_TASKS: Task[] = [
 export const MOCK_COMMENTS: TaskComment[] = [
   { id: 1, task_id: 'task-2', author_type: 'user', content: '已完成 Google OAuth，下一步接入 GitHub', comment_type: 'progress', created_at: '2026-05-08T10:00:00Z' },
   { id: 2, task_id: 'task-2', author_type: 'agent', content: '建议同时考虑 SAML SSO 方案', comment_type: 'comment', created_at: '2026-05-08T10:05:00Z' },
+]
+
+export const MOCK_TASK_SCHEDULES: TaskSchedule[] = [
+  {
+    id: 'schedule-1',
+    room_id: 'room-1',
+    task_template_id: 'task-template-1',
+    kind: 'recurring',
+    template_title: '生成工作日报',
+    timezone: 'Asia/Shanghai',
+    recurrence_rule: 'CRON:0 9 * * 1-5',
+    next_fire_at: '2026-05-15T01:00:00Z',
+    enabled: true,
+    overlap_policy: 'skip',
+    catch_up_policy: 'latest',
+    created_at: '2026-05-09T00:00:00Z',
+    updated_at: '2026-05-09T00:00:00Z',
+  },
+]
+
+export const MOCK_CALENDAR_EVENTS: CalendarEvent[] = [
+  {
+    id: 'schedule:schedule-1:2026-05-15T01:00:00Z',
+    type: 'projected_occurrence',
+    title: '生成工作日报',
+    start_at: '2026-05-15T01:00:00Z',
+    status: 'scheduled',
+    schedule_id: 'schedule-1',
+    occurrence_at: '2026-05-15T01:00:00Z',
+    is_recurring: true,
+  },
 ]

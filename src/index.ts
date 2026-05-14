@@ -11,7 +11,7 @@ export type {
   // Agent Loop
   AgentLoopToolCallStatus, AgentLoopToolCall, AgentLoopTurn, AgentLoopState,
   // Task System
-  Project, Task, TaskComment,
+  Project, Task, TaskComment, TaskSchedule, CalendarEvent,
   // Knowledge Base
   KnowledgeSource, KnowledgeSearchResult, KnowledgeEntity, KnowledgeGraphNode, KnowledgeGraphEdge, KnowledgeGraphData,
   // Storage
@@ -79,6 +79,7 @@ export { AccordionSection } from './components/layout/index.js'
 export { TaskPanel } from './components/tasks/index.js'
 export { TaskItem } from './components/tasks/index.js'
 export { CreateTaskDialog } from './components/tasks/index.js'
+export { CreateScheduledTaskDialog } from './components/tasks/index.js'
 export { KnowledgePanel } from './components/knowledge/index.js'
 export { CloudStoragePanel } from './components/storage/index.js'
 export { NotificationList } from './components/notifications/index.js'
@@ -102,3 +103,4 @@ export { cn } from './lib/cn.js'
 export { formatTime, formatBytes } from './lib/format.js'
 export { isLikelyFilePath } from './lib/file-path-utils.js'
 export { parseMessage } from './stores/messages.js'
+export type { CreateScheduledTaskInput, UpdateScheduledTaskInput } from './stores/tasks.js'
