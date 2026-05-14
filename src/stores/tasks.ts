@@ -149,7 +149,17 @@ export function createTasksStore(config: TasksStoreConfig) {
       }
       try {
         const updated = await config.api.patch(`rooms/${roomId}/scheduled-tasks/${scheduleId}`, { json: patch }).json<TaskSchedule>()
-        set({ scheduledTasks: get().scheduledTasks.map((s) => s.id === scheduleId ? updated : s) })
+        set({
+          scheduledTasks: get().scheduledTasks.map((s) => s.id === scheduleId
+            ? {
+                ...s,
+                ...updated,
+                template_title: updated.template_title || s.template_title,
+                template_description: updated.template_description || s.template_description,
+                assigned_agent_id: updated.assigned_agent_id || s.assigned_agent_id,
+              }
+            : s),
+        })
       } catch { /* */ }
     },
 
