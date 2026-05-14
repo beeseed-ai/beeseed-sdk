@@ -1,5 +1,5 @@
 {
-  "name": "@beeseed/react-sdk",
+  "name": "@beeseed/beeseed-sdk",
   "version": "0.1.0",
   "type": "module",
   "main": "./dist/index.cjs",

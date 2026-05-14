@@ -1,1 +1,1 @@
-# react-sdk
+# beeseed-sdk

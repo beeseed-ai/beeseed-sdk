@@ -1,1 +1,1 @@
-# React SDK
+# BeeSeed SDK
