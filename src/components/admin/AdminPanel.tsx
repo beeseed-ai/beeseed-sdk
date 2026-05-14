@@ -1,9 +1,12 @@
 import { useEffect, useState } from 'react'
 import { Bot, Users, MessageSquare, Settings } from 'lucide-react'
+import type { AppBrandingConfig, AppRuntimeConfig } from '../../core/types.js'
+import { applyDocumentBranding, resolveAppBranding } from '../../core/app-config.js'
 import { cn } from '../../lib/cn.js'
 import { AgentManageTab } from './AgentManageTab.js'
 import { UserManageTab } from './UserManageTab.js'
 import { useBeeSeedContext } from '../../provider/BeeSeedProvider.js'
+import { useAppConfig } from '../../hooks/use-app-config.js'
 import { Button } from '../ui/button.js'
 import { Input } from '../ui/input.js'
 
@@ -47,7 +50,7 @@ export function AdminPanel() {
         {activeTab === 'agents' && <AgentManageTab />}
         {activeTab === 'users' && <UserManageTab />}
         {activeTab === 'channels' && <Placeholder label="频道管理" />}
-        {activeTab === 'settings' && <ChannelPolicySettings />}
+        {activeTab === 'settings' && <AppSettingsPanel />}
       </div>
     </div>
   )
@@ -55,9 +58,221 @@ export function AdminPanel() {
 
 function Placeholder({ label }: { label: string }) {
   return (
-    <div className="flex-1 flex items-center justify-center h-full text-sm text-[#999]">
-      {label}（即将推出）
+    <div className="flex h-full overflow-hidden bg-[#fafafa]">
+      <div className="flex-1 overflow-y-auto">
+        <div className="mx-auto max-w-5xl p-8">
+          <div className="flex h-[320px] items-center justify-center rounded-xl border border-border bg-white text-sm text-muted-foreground shadow-sm">
+            {label}（即将推出）
+          </div>
+        </div>
+      </div>
     </div>
+  )
+}
+
+const BRANDING_FIELDS: (keyof AppBrandingConfig)[] = [
+  'title',
+  'pageTitle',
+  'logo',
+  'favicon',
+  'description',
+  'welcomeMessage',
+  'inputPlaceholder',
+]
+
+function compactBranding(branding: AppBrandingConfig): AppBrandingConfig {
+  const clean: AppBrandingConfig = {}
+  for (const key of BRANDING_FIELDS) {
+    const value = branding[key]
+    if (typeof value === 'string' && value.trim()) {
+      clean[key] = value.trim()
+    }
+  }
+  return clean
+}
+
+function AppSettingsPanel() {
+  return (
+    <div className="flex h-full overflow-hidden bg-[#fafafa]">
+      <div className="flex-1 overflow-y-auto">
+        <div className="mx-auto max-w-5xl space-y-6 p-8">
+          <div>
+            <h1 className="text-xl font-bold text-[#1a1a1a]">设置</h1>
+            <p className="mt-1 text-sm text-muted-foreground">配置标准模板的品牌和频道策略。</p>
+          </div>
+        <BrandSettings />
+        <ChannelPolicySettings />
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function BrandSettings() {
+  const { api, updateAppConfig } = useBeeSeedContext()
+  const { appConfig } = useAppConfig()
+  const [branding, setBranding] = useState<AppBrandingConfig>(appConfig.branding ?? {})
+  const [loading, setLoading] = useState(true)
+  const [saving, setSaving] = useState(false)
+  const [saved, setSaved] = useState(false)
+  const [uploading, setUploading] = useState<'logo' | 'favicon' | null>(null)
+
+  useEffect(() => {
+    api.get('admin/settings/frontend').json<AppRuntimeConfig>().then((data) => {
+      setBranding(data.branding ?? appConfig.branding ?? {})
+      setLoading(false)
+    }).catch(() => {
+      setBranding(appConfig.branding ?? {})
+      setLoading(false)
+    })
+  }, [api, appConfig.branding])
+
+  async function persistBranding(nextBranding: AppBrandingConfig) {
+    const payload: AppRuntimeConfig = { branding: compactBranding(nextBranding) }
+    const updated = await api.patch('admin/settings/frontend', { json: payload }).json<AppRuntimeConfig>()
+    setBranding(updated.branding ?? {})
+    updateAppConfig(updated)
+    applyDocumentBranding(resolveAppBranding(updated))
+    setSaved(true)
+    window.setTimeout(() => setSaved(false), 1800)
+    return updated
+  }
+
+  async function save() {
+    setSaving(true)
+    setSaved(false)
+    try {
+      await persistBranding(branding)
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  function updateBranding(key: keyof AppBrandingConfig, value: string) {
+    setBranding((current) => ({ ...current, [key]: value }))
+  }
+
+  async function uploadAsset(kind: 'logo' | 'favicon', file: File | undefined) {
+    if (!file) return
+    setUploading(kind)
+    try {
+      const form = new FormData()
+      form.set('kind', kind)
+      form.set('asset', file)
+      const result = await api.post('admin/settings/frontend/assets', { body: form }).json<{ url: string }>()
+      const nextBranding = { ...branding, [kind]: result.url }
+      setBranding(nextBranding)
+      await persistBranding(nextBranding)
+    } finally {
+      setUploading(null)
+    }
+  }
+
+  if (loading) {
+    return <div className="rounded-xl border border-border bg-white p-5 text-sm text-muted-foreground shadow-sm">加载品牌设置...</div>
+  }
+
+  const preview = resolveAppBranding({ branding })
+
+  return (
+    <section className="space-y-4 rounded-xl border border-border bg-white p-5 shadow-sm">
+      <div>
+        <h3 className="text-sm font-semibold">品牌</h3>
+        <p className="mt-1 text-xs text-[#777]">配置 App 名称、主页标题、Logo 和聊天入口文案。</p>
+      </div>
+
+      <div className="grid gap-4 sm:grid-cols-2">
+        <div className="space-y-2">
+          <label className="text-xs font-medium text-[#555]">品牌名</label>
+          <Input value={branding.title ?? ''} onChange={(e) => updateBranding('title', e.target.value)} placeholder="BeeSeed" />
+        </div>
+        <div className="space-y-2">
+          <label className="text-xs font-medium text-[#555]">主页标题</label>
+          <Input value={branding.pageTitle ?? ''} onChange={(e) => updateBranding('pageTitle', e.target.value)} placeholder={preview.title} />
+        </div>
+      </div>
+
+      <div className="grid gap-4 sm:grid-cols-2">
+        <div className="space-y-2">
+          <label className="text-xs font-medium text-[#555]">Logo</label>
+          <div className="flex items-center gap-2">
+            <label className="inline-flex h-9 cursor-pointer items-center rounded-lg border border-border bg-white px-3 text-sm hover:bg-[#f8f8f8]">
+              {uploading === 'logo' ? '上传中...' : '上传 Logo'}
+              <input
+                type="file"
+                accept="image/png,image/jpeg,image/webp,image/gif,image/x-icon"
+                className="hidden"
+                onChange={(e) => { void uploadAsset('logo', e.target.files?.[0]); e.target.value = '' }}
+              />
+            </label>
+            <span className="min-w-0 flex-1 truncate text-xs text-[#777]">{branding.logo || '未上传'}</span>
+          </div>
+        </div>
+        <div className="space-y-2">
+          <label className="text-xs font-medium text-[#555]">Favicon</label>
+          <div className="flex items-center gap-2">
+            <label className="inline-flex h-9 cursor-pointer items-center rounded-lg border border-border bg-white px-3 text-sm hover:bg-[#f8f8f8]">
+              {uploading === 'favicon' ? '上传中...' : '上传 Favicon'}
+              <input
+                type="file"
+                accept="image/png,image/jpeg,image/webp,image/gif,image/x-icon,.ico"
+                className="hidden"
+                onChange={(e) => { void uploadAsset('favicon', e.target.files?.[0]); e.target.value = '' }}
+              />
+            </label>
+            <span className="min-w-0 flex-1 truncate text-xs text-[#777]">{branding.favicon || '未上传'}</span>
+          </div>
+        </div>
+      </div>
+
+      <div className="space-y-2">
+        <label className="text-xs font-medium text-[#555]">描述</label>
+        <Input value={branding.description ?? ''} onChange={(e) => updateBranding('description', e.target.value)} placeholder="你的 AI 协作空间" />
+      </div>
+
+      <div className="space-y-2">
+        <label className="text-xs font-medium text-[#555]">欢迎语</label>
+        <textarea
+          value={branding.welcomeMessage ?? ''}
+          onChange={(e) => updateBranding('welcomeMessage', e.target.value)}
+          rows={2}
+          placeholder="你好！有什么可以帮助你的？"
+          className="w-full resize-none rounded-lg border border-border bg-white px-3 py-2 text-sm outline-none focus:border-[#999]"
+        />
+      </div>
+
+      <div className="space-y-2">
+        <label className="text-xs font-medium text-[#555]">输入框提示</label>
+        <Input value={branding.inputPlaceholder ?? ''} onChange={(e) => updateBranding('inputPlaceholder', e.target.value)} placeholder="输入消息..." />
+      </div>
+
+      <div className="rounded-md border border-border bg-[#fafaf8] p-3">
+        <div className="mb-3 flex items-center gap-2">
+          {preview.logo ? (
+            <img src={preview.logo} alt={preview.title} className="h-7 w-auto max-w-[160px] rounded-md object-contain" />
+          ) : (
+            <div className="flex size-7 items-center justify-center rounded-md bg-[#181d26] text-xs font-medium text-white">
+              {Array.from(preview.title)[0] || 'B'}
+            </div>
+          )}
+          {!preview.logo && (
+            <div className="min-w-0">
+              <div className="truncate text-sm font-medium text-[#181d26]">{preview.title}</div>
+              <div className="truncate text-xs text-[#777]">{preview.description}</div>
+            </div>
+          )}
+        </div>
+        <div className="rounded-md border border-border bg-white p-3">
+          <div className="text-sm font-medium text-[#181d26]">{preview.pageTitle}</div>
+          <div className="mt-1 text-xs text-[#777]">浏览器标签标题</div>
+          <div className="mt-3 rounded-md border border-border px-3 py-2 text-xs text-[#999]">{preview.inputPlaceholder}</div>
+        </div>
+      </div>
+
+      <Button onClick={save} disabled={saving}>
+        {saving ? '保存中...' : saved ? '已保存' : '保存品牌设置'}
+      </Button>
+    </section>
   )
 }
 
@@ -108,12 +323,11 @@ function ChannelPolicySettings() {
   }
 
   if (loading) {
-    return <div className="flex h-full items-center justify-center text-sm text-[#999]">加载中...</div>
+    return <div className="rounded-xl border border-border bg-white p-5 text-sm text-muted-foreground shadow-sm">加载频道策略...</div>
   }
 
   return (
-    <div className="h-full overflow-y-auto px-6 py-5">
-      <div className="max-w-2xl space-y-6">
+    <section className="space-y-6 rounded-xl border border-border bg-white p-5 shadow-sm">
         <div>
           <h3 className="text-sm font-semibold">频道策略</h3>
           <p className="mt-1 text-xs text-[#777]">控制谁可以手动创建频道，以及新频道默认加入哪些 Agent。</p>
@@ -173,7 +387,6 @@ function ChannelPolicySettings() {
         <Button onClick={save} disabled={saving}>
           {saving ? '保存中...' : '保存频道策略'}
         </Button>
-      </div>
-    </div>
+    </section>
   )
 }

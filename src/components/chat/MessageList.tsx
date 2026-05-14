@@ -35,6 +35,7 @@ interface Props {
   currentUserId?: string
   onSubmitAnswer?: (askId: string, answers: Record<string, unknown>) => void
   onStopAgent?: (agentId: string, reason?: string) => void
+  welcomeMessage?: string
   className?: string
 }
 
@@ -107,6 +108,7 @@ export function MessageList({
   currentUserId,
   onSubmitAnswer,
   onStopAgent,
+  welcomeMessage,
 }: Props) {
   const containerRef = useRef<HTMLDivElement>(null)
   const shouldAutoScroll = useRef(true)
@@ -173,9 +175,15 @@ export function MessageList({
     <div
       ref={containerRef}
       onScroll={handleScroll}
-      className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden bg-white"
+      className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden bg-[#fafafa]"
     >
       <div className="mx-auto w-full" style={{ maxWidth: CHAT_MAX_WIDTH }}>
+        {messages.length === 0 && visibleStreams.length === 0 && standaloneLoops.length === 0 && visibleTypings.length === 0 && (
+          <div className="flex min-h-[calc(100dvh-190px)] items-center justify-center px-6 text-center">
+            <p className="max-w-md rounded-xl border border-border bg-white px-6 py-5 text-sm leading-6 text-muted-foreground shadow-sm">{welcomeMessage}</p>
+          </div>
+        )}
+
         {messages.length > 0 && (
           <div className="flex flex-col justify-end min-h-full px-4 py-3 gap-1 overflow-x-hidden max-w-full">
             {grouped.map((item, i) => {

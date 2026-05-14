@@ -207,11 +207,10 @@ export function MessageInput({
   }
 
   return (
-    <div className={cn('shrink-0 bg-white px-3 pb-3 relative', className)}>
+    <div className={cn('relative shrink-0 bg-[#fafafa]', className)}>
       {/* Unified input card — textarea + toolbar in one bordered container */}
       <div
-        className="relative bg-white border border-[#e5e5e5] focus-within:border-[#d4d4d4] rounded-2xl transition-colors"
-        style={{ boxShadow: '0 2.7px 8px rgba(0,0,0,0.06)' }}
+        className="relative rounded-xl border border-border bg-white shadow-sm transition-colors focus-within:border-[#9297a0]"
       >
         {/* Mention menu — anchored above */}
         {mentionOpen && members.length > 0 && (

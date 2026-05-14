@@ -1,6 +1,6 @@
-import { createContext, useContext, useEffect, useRef, type ReactNode } from 'react'
+import { createContext, useContext, useEffect, useRef, useState, type ReactNode } from 'react'
 import type { KyInstance } from 'ky'
-import type { BeeSeedConfig, WSEvent } from '../core/types.js'
+import type { AppRuntimeConfig, BeeSeedConfig, WSEvent } from '../core/types.js'
 import { createApiClient } from '../core/client.js'
 import { WSClient } from '../core/ws.js'
 import { createAuthStore, type AuthStore } from '../stores/auth.js'
@@ -36,6 +36,7 @@ export interface BeeSeedContextValue {
   invitesStore: InvitesStore
   appSettingsStore: AppSettingsStore
   config: BeeSeedConfig
+  updateAppConfig: (appConfig: AppRuntimeConfig) => void
 }
 
 const BeeSeedContext = createContext<BeeSeedContextValue | null>(null)
@@ -51,7 +52,7 @@ interface Props {
   children: ReactNode
 }
 
-function createBeeSeedContext(config: BeeSeedConfig): BeeSeedContextValue {
+function createBeeSeedContext(config: BeeSeedConfig, updateAppConfig: (appConfig: AppRuntimeConfig) => void): BeeSeedContextValue {
   const tokenKey = config.tokenKey ?? 'beeseed_token'
   const useMock = config.useMockData ?? false
   const getToken = () => {
@@ -135,24 +136,30 @@ function createBeeSeedContext(config: BeeSeedConfig): BeeSeedContextValue {
   return {
     api, ws, authStore, connectionStore, channelsStore, messagesStore,
     detailPanelStore, tasksStore, knowledgeStore, storageStore,
-    notificationsStore, cronStore, agentsStore, appUsersStore, invitesStore, appSettingsStore, config,
+    notificationsStore, cronStore, agentsStore, appUsersStore, invitesStore, appSettingsStore, config, updateAppConfig,
   }
 }
 
 export function BeeSeedProvider({ config, children }: Props) {
-  const ref = useRef<BeeSeedContextValue | null>(null)
-  if (!ref.current) {
-    ref.current = createBeeSeedContext(config)
+  const updateRef = useRef<(appConfig: AppRuntimeConfig) => void>(() => {})
+  const [ctx, setCtx] = useState<BeeSeedContextValue>(() => createBeeSeedContext(config, (appConfig) => updateRef.current(appConfig)))
+  const ctxRef = useRef(ctx)
+  ctxRef.current = ctx
+  updateRef.current = (appConfig) => {
+    setCtx((current) => ({
+      ...current,
+      config: { ...current.config, appConfig },
+    }))
   }
 
   useEffect(() => {
-    const ctx = ref.current!
-    void ctx.authStore.getState().init()
-    return () => ctx.ws.disconnect()
+    const current = ctxRef.current
+    void current.authStore.getState().init()
+    return () => current.ws.disconnect()
   }, [])
 
   return (
-    <BeeSeedContext.Provider value={ref.current}>
+    <BeeSeedContext.Provider value={ctx}>
       {children}
     </BeeSeedContext.Provider>
   )

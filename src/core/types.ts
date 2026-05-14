@@ -529,9 +529,28 @@ export interface AuthResponse {
 
 // ── SDK Configuration ──
 
+export interface AppBrandingConfig {
+  title?: string
+  pageTitle?: string
+  logo?: string
+  favicon?: string
+  description?: string
+  welcomeMessage?: string
+  inputPlaceholder?: string
+}
+
+export interface AppRuntimeConfig {
+  branding?: AppBrandingConfig
+  theme?: Record<string, unknown>
+  features?: Record<string, unknown>
+  layout?: Record<string, unknown>
+  customCSS?: string
+}
+
 export interface BeeSeedConfig {
   workerUrl: string
   tokenKey?: string
   onAuthError?: () => void
   useMockData?: boolean
+  appConfig?: AppRuntimeConfig
 }

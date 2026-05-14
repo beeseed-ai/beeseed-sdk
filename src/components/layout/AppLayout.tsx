@@ -19,7 +19,7 @@ const AdminPanel = lazy(() => import('../admin/AdminPanel.js').then((m) => ({ de
 interface Props { className?: string }
 
 function FeatureLoading() {
-  return <div className="flex-1 flex items-center justify-center"><span className="text-sm text-muted-foreground">加载中...</span></div>
+  return <div className="flex-1 flex items-center justify-center bg-[#fafafa]"><span className="text-sm text-muted-foreground">加载中...</span></div>
 }
 
 export function AppLayout({ className }: Props) {
@@ -51,7 +51,7 @@ export function AppLayout({ className }: Props) {
   }
 
   return (
-    <div className={cn('flex h-[100dvh] bg-background', className)}>
+    <div className={cn('flex h-[100dvh] bg-[#fafafa]', className)}>
       <LeftNavSidebar
         className={activeFeature === 'chat' && currentChannelId ? 'hidden md:flex' : undefined}
         activeFeature={activeFeature}
@@ -81,7 +81,11 @@ export function AppLayout({ className }: Props) {
             }
           />
         ) : activeFeature === 'chat' ? (
-          <div className="flex-1 flex items-center justify-center text-muted-foreground">选择一个对话开始聊天</div>
+          <div className="flex-1 bg-[#fafafa] p-8">
+            <div className="mx-auto flex h-full max-w-5xl items-center justify-center rounded-xl border border-border bg-white text-sm text-muted-foreground shadow-sm">
+              选择一个对话开始聊天
+            </div>
+          </div>
         ) : (
           <Suspense fallback={<FeatureLoading />}>
             {activeFeature === 'tasks' && <TaskPanel channelId={currentChannelId} members={members} createTaskRequest={createTaskRequest} />}

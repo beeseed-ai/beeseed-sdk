@@ -2,6 +2,7 @@ import { useState, useCallback } from 'react'
 import type { ChatMessage } from '../../core/types.js'
 import { cn } from '../../lib/cn.js'
 import { useAuth } from '../../hooks/use-auth.js'
+import { useAppConfig } from '../../hooks/use-app-config.js'
 import { useChat } from '../../hooks/use-chat.js'
 import { useDetailPanel } from '../../hooks/use-detail-panel.js'
 import { MessageList } from './MessageList.js'
@@ -17,6 +18,7 @@ interface Props {
 
 export function ChatChannel({ channelId, className, header }: Props) {
   const { user } = useAuth()
+  const { branding } = useAppConfig()
   const { messages, streams, agentLoops, members, typings, send, sendWithQuote, submitAnswer, stopAgent, loading } = useChat(channelId)
   const { composerInsertText, consumeComposerInsert } = useDetailPanel()
   const [quotedMessage, setQuotedMessage] = useState<ChatMessage | null>(null)
@@ -31,7 +33,7 @@ export function ChatChannel({ channelId, className, header }: Props) {
   }, [quotedMessage, send, sendWithQuote])
 
   return (
-    <div className={cn('flex h-full flex-col bg-white', className)}>
+    <div className={cn('flex h-full flex-col bg-[#fafafa]', className)}>
       {header}
 
       {loading ? (
@@ -50,11 +52,12 @@ export function ChatChannel({ channelId, className, header }: Props) {
           currentUserId={user?.id}
           onSubmitAnswer={submitAnswer}
           onStopAgent={stopAgent}
+          welcomeMessage={branding.welcomeMessage}
         />
       )}
 
       {/* Input area — centered at max-width */}
-      <div className="shrink-0 mx-auto w-full" style={{ maxWidth: CHAT_MAX_WIDTH }}>
+      <div className="mx-auto w-full shrink-0 px-4 pb-4" style={{ maxWidth: CHAT_MAX_WIDTH + 32 }}>
         <MessageInput
           channelId={channelId}
           onSend={handleSend}
@@ -63,6 +66,7 @@ export function ChatChannel({ channelId, className, header }: Props) {
           onClearQuote={() => setQuotedMessage(null)}
           insertText={composerInsertText}
           onInsertTextConsumed={consumeComposerInsert}
+          placeholder={branding.inputPlaceholder}
         />
       </div>
     </div>

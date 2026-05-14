@@ -26,7 +26,7 @@ export function TaskItem({ task, onClick, onDelete, assignedLabel, className }: 
   const awaitingVerification = task.verification_status === 'pending' || task.scheduler_state === 'awaiting_verify'
 
   return (
-    <div className={cn('group flex items-start gap-2 rounded-md px-2 py-1.5 hover:bg-muted/50 transition-colors', className)}>
+    <div className={cn('group mb-2 flex items-start gap-3 rounded-lg border border-border bg-white p-3 transition-colors hover:bg-muted', className)}>
       <button type="button" onClick={onClick} className="mt-0.5 shrink-0">
         <Icon className={cn('w-4 h-4', config.color)} />
       </button>

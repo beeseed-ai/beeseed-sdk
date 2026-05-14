@@ -13,20 +13,23 @@ export function KnowledgePanel() {
   }
 
   return (
-    <div className="flex-1 flex flex-col overflow-hidden">
-      <div className="flex items-center gap-2 px-4 py-3 border-b border-border">
-        <h2 className="text-sm font-semibold">知识库</h2>
-      </div>
+    <div className="flex h-full overflow-hidden bg-[#fafafa]">
+      <div className="flex-1 overflow-y-auto">
+        <div className="mx-auto max-w-5xl space-y-6 p-8">
+          <div>
+            <h1 className="text-xl font-bold text-[#1a1a1a]">知识库</h1>
+            <p className="mt-1 text-sm text-muted-foreground">管理知识来源并检索已索引内容。</p>
+          </div>
 
-      <Tabs defaultValue="sources" className="flex-1 flex flex-col overflow-hidden">
-        <div className="px-4 pt-2">
-          <TabsList>
-            <TabsTrigger value="sources">来源</TabsTrigger>
-            <TabsTrigger value="search">搜索</TabsTrigger>
-          </TabsList>
-        </div>
+          <Tabs defaultValue="sources" className="overflow-hidden rounded-xl border border-border bg-white shadow-sm">
+            <div className="border-b border-border px-5 py-4">
+              <TabsList>
+                <TabsTrigger value="sources">来源</TabsTrigger>
+                <TabsTrigger value="search">搜索</TabsTrigger>
+              </TabsList>
+            </div>
 
-        <TabsContent value="sources" className="flex-1 overflow-y-auto px-4 py-2">
+            <TabsContent value="sources" className="p-5">
           {loading ? (
             <div className="text-center text-sm text-muted-foreground py-8">加载中...</div>
           ) : sources.length === 0 ? (
@@ -34,8 +37,8 @@ export function KnowledgePanel() {
           ) : (
             <div className="space-y-2">
               {sources.map((s) => (
-                <div key={s.id} className="flex items-start gap-3 p-3 rounded-lg border border-border group hover:bg-muted/30 transition-colors">
-                  <FileText className="w-4 h-4 text-blue-500 mt-0.5 shrink-0" />
+                <div key={s.id} className="group flex items-start gap-3 rounded-lg border border-border p-3 transition-colors hover:bg-muted">
+                  <FileText className="mt-0.5 h-4 w-4 shrink-0 text-[#181d26]" />
                   <div className="flex-1 min-w-0">
                     <div className="text-sm font-medium truncate">{s.title}</div>
                     {s.summary && <div className="text-xs text-muted-foreground mt-0.5 line-clamp-2">{s.summary}</div>}
@@ -57,9 +60,9 @@ export function KnowledgePanel() {
               ))}
             </div>
           )}
-        </TabsContent>
+            </TabsContent>
 
-        <TabsContent value="search" className="flex-1 overflow-y-auto px-4 py-2">
+            <TabsContent value="search" className="p-5">
           <div className="flex gap-2 mb-3">
             <div className="relative flex-1">
               <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground" />
@@ -95,8 +98,10 @@ export function KnowledgePanel() {
           ) : (
             <div className="text-center text-sm text-muted-foreground py-8">输入关键词搜索知识库</div>
           )}
-        </TabsContent>
-      </Tabs>
+            </TabsContent>
+          </Tabs>
+        </div>
+      </div>
     </div>
   )
 }

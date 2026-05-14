@@ -1,8 +1,9 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { MessageSquareText, BookOpen, ListChecks, Plus, MoreHorizontal, LogOut, Bell, Hash, Shield, User } from 'lucide-react'
 import type { FeatureView, ChannelWithMeta } from '../../core/types.js'
 import { cn } from '../../lib/cn.js'
 import { useAuth } from '../../hooks/use-auth.js'
+import { useAppConfig } from '../../hooks/use-app-config.js'
 import { useNotifications } from '../../hooks/use-notifications.js'
 import { CreateChannelDialog } from '../channels/CreateChannelDialog.js'
 import { ProfileModal } from '../user/ProfileModal.js'
@@ -26,17 +27,47 @@ interface Props {
 
 export function LeftNavSidebar({ activeFeature, onFeatureChange, channels, currentChannelId, onChannelSelect, className }: Props) {
   const { user, signOut } = useAuth()
+  const { branding } = useAppConfig()
   const { unreadCount } = useNotifications()
   const [createDialogOpen, setCreateDialogOpen] = useState(false)
   const [menuOpen, setMenuOpen] = useState(false)
   const [profileOpen, setProfileOpen] = useState(false)
+  const [logoFailed, setLogoFailed] = useState(false)
   const isAdmin = user?.role === 'owner' || user?.role === 'admin' || user?.role === 'super_admin'
   const navItems = isAdmin ? [...BASE_NAV_ITEMS, { id: 'admin' as const, label: '管理后台', icon: Shield }] : BASE_NAV_ITEMS
+  const brandInitial = Array.from(branding.title)[0] || 'B'
+  const hasLogo = Boolean(branding.logo && !logoFailed)
+
+  useEffect(() => {
+    setLogoFailed(false)
+  }, [branding.logo])
 
   return (
-    <div className={cn('w-[200px] shrink-0 border-r border-border bg-[#fafaf8] flex flex-col', className)}>
+    <div className={cn('w-[200px] shrink-0 border-r border-border bg-white flex flex-col', className)}>
+      <div className="px-3 pt-3 pb-2">
+        <div className="flex min-w-0 items-center gap-2 rounded-md px-2 py-1.5">
+          {hasLogo ? (
+            <img
+              src={branding.logo}
+              alt={branding.title}
+              className="h-7 w-auto max-w-[152px] shrink-0 rounded-md object-contain"
+              onError={() => setLogoFailed(true)}
+            />
+          ) : (
+            <div className="flex size-7 shrink-0 items-center justify-center rounded-md bg-[#181d26] text-xs font-medium text-white">
+              {brandInitial}
+            </div>
+          )}
+          {!hasLogo && (
+            <div className="min-w-0 flex-1">
+              <div className="truncate text-sm font-semibold text-[#181d26]" title={branding.title}>{branding.title}</div>
+            </div>
+          )}
+        </div>
+      </div>
+
       {/* Top nav actions */}
-      <div className="px-3 pt-4 pb-2 space-y-0.5">
+      <div className="px-3 pb-2 space-y-0.5">
         <button
           onClick={() => { onFeatureChange('chat'); setCreateDialogOpen(true) }}
           className="flex items-center gap-2.5 w-full rounded-md px-2.5 py-2 text-sm text-foreground hover:bg-black/5 transition-colors"

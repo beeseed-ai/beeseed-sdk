@@ -6,6 +6,7 @@ export type {
   User, Channel, ChannelWithMeta, ChannelMember, ChannelMemberInfo,
   Message, ChatMessage, AgentMeta, AgentConfig,
   WSEvent, WSCommand, AuthResponse, BeeSeedConfig, StreamState,
+  AppBrandingConfig, AppRuntimeConfig,
   // Ask-User
   AskUserQuestion, AskUserData,
   // Agent Loop
@@ -40,6 +41,8 @@ export { useStorage } from './hooks/use-storage.js'
 export { useNotifications } from './hooks/use-notifications.js'
 export { useCron } from './hooks/use-cron.js'
 export { useAgents } from './hooks/use-agents.js'
+export { useAppConfig } from './hooks/use-app-config.js'
+export { DEFAULT_APP_BRANDING, resolveAppBranding, applyDocumentBranding } from './core/app-config.js'
 
 // Components — Auth
 export { LoginForm } from './components/auth/index.js'

@@ -11,7 +11,7 @@ interface Props {
 
 export function ChannelHeader({ channel, className, leading, trailing }: Props) {
   return (
-    <div className={cn('flex items-center gap-3 border-b border-border px-4 py-2.5 bg-background', className)}>
+    <div className={cn('flex items-center gap-3 border-b border-border bg-white px-4 py-2.5', className)}>
       {leading}
       <div className="flex items-center gap-2 flex-1 min-w-0">
         <Settings className="w-3.5 h-3.5 text-muted-foreground/50 shrink-0" />

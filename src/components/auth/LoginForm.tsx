@@ -1,5 +1,6 @@
 import { useState, type FormEvent } from 'react'
 import { useAuth } from '../../hooks/use-auth.js'
+import { useAppConfig } from '../../hooks/use-app-config.js'
 import { Button } from '../ui/button.js'
 import { Input } from '../ui/input.js'
 
@@ -10,10 +11,13 @@ interface Props {
 
 export function LoginForm({ onSwitchToRegister, className }: Props) {
   const { signIn } = useAuth()
+  const { branding } = useAppConfig()
+  const [logoFailed, setLogoFailed] = useState(false)
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
+  const hasLogo = Boolean(branding.logo && !logoFailed)
 
   async function handleSubmit(e: FormEvent) {
     e.preventDefault()
@@ -27,10 +31,25 @@ export function LoginForm({ onSwitchToRegister, className }: Props) {
 
   return (
     <div className={className}>
-      <div className="mx-auto w-full max-w-sm space-y-6 rounded-xl border bg-card p-6">
-        <div className="space-y-1 text-center">
-          <h1 className="text-xl font-bold">登录</h1>
-          <p className="text-sm text-muted-foreground">登录你的账号</p>
+      <div className="mx-auto w-full max-w-sm space-y-6 rounded-xl border border-border bg-white p-6 shadow-sm">
+        <div className="space-y-3 text-center">
+          {hasLogo ? (
+            <img
+              src={branding.logo}
+              alt={branding.title}
+              className="mx-auto h-10 w-auto max-w-[220px] rounded-md object-contain"
+              onError={() => setLogoFailed(true)}
+            />
+          ) : (
+            <div className="mx-auto flex size-10 items-center justify-center rounded-md bg-[#181d26] text-sm font-medium text-white">
+              {Array.from(branding.title)[0] || 'B'}
+            </div>
+          )}
+          <div className="space-y-1">
+            {!hasLogo && <div className="truncate text-sm font-medium text-muted-foreground">{branding.title}</div>}
+            <h1 className="text-xl font-semibold">登录</h1>
+            <p className="text-sm text-muted-foreground">登录你的账号</p>
+          </div>
         </div>
 
         {error && (
