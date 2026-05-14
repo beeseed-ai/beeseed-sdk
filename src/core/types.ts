@@ -120,6 +120,7 @@ export interface ChatMessage {
   isSlowHint?: boolean
   // Interactive
   askUserData?: AskUserData
+  askUserAnswerData?: AskUserAnswerData
   suggestions?: string[]
   // Quoting
   quotedMessage?: { msgId?: number; senderName?: string; content: string }
@@ -155,6 +156,13 @@ export interface AskUserData {
   targetUserIds?: string[]
   visibility?: 'target_user' | 'target_users' | 'mentioned_users' | 'room_admins' | 'all_members'
   expiresAt?: string
+}
+
+export interface AskUserAnswerData {
+  askId?: string
+  targetAgentId?: string
+  targetAgentName?: string
+  answers?: Record<string, unknown>
 }
 
 // ── Agent Loop ──
@@ -323,6 +331,7 @@ export interface StorageObject {
   id?: string
   key: string
   name?: string
+  display_name?: string
   size: number
   last_modified: string
   content_type: string
@@ -402,15 +411,16 @@ export interface StreamState {
 export type WSEvent =
   | { type: 'auth_ok'; user: User; rooms: RoomWithMeta[] }
   | { type: 'message'; room_id: string; message: Message }
-  | { type: 'chunk'; room_id: string; agent_id: string; content: string }
+  | { type: 'chunk'; room_id: string; agent_id: string; content: string; turn?: number }
   | { type: 'message_end'; room_id: string; agent_id: string; message: Message }
   | { type: 'thinking'; room_id: string; agent_id: string; content: string }
   | { type: 'thinking_content'; room_id: string; agent_id: string; content: string }
-  | { type: 'tool_call'; room_id: string; agent_id: string; name: string; args?: unknown; batch_id?: string; parallel?: boolean }
-  | { type: 'tool_result'; room_id: string; agent_id: string; name: string; success?: boolean; output?: string; duration_secs?: number }
-  | { type: 'error'; room_id?: string; agent_id?: string; error: string }
+  | { type: 'tool_call'; room_id: string; agent_id: string; name: string; args?: unknown; batch_id?: string; parallel?: boolean; turn?: number }
+  | { type: 'tool_result'; room_id: string; agent_id: string; name: string; success?: boolean; output?: string; duration_secs?: number; turn?: number }
+  | { type: 'error'; room_id?: string; agent_id?: string; error: string; turn?: number }
   // Agent Loop events
   | { type: 'agent_ack'; room_id: string; agent_id: string; turn: number; content?: string }
+  | { type: 'agent_turn_start'; room_id: string; agent_id: string; turn: number }
   | { type: 'agent_thinking'; room_id: string; agent_id: string; turn: number; content?: string }
   | { type: 'agent_progress'; room_id: string; agent_id: string; turn: number; summary: string }
   | { type: 'agent_waiting_user'; room_id: string; agent_id: string; turn: number; summary: string }

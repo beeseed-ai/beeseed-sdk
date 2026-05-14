@@ -2,9 +2,14 @@ import { useRef, useCallback, useEffect, useState, type KeyboardEvent, type Chan
 import { X, Plus, AtSign, Zap, ListChecks, Workflow, ArrowUp } from 'lucide-react'
 import type { ChatMessage, RoomMemberInfo } from '../../core/types.js'
 import { cn } from '../../lib/cn.js'
+import { fileNameFromStorageRef, storageRefFromKey } from '../../lib/storage-ref.js'
+import { useStorage } from '../../hooks/use-storage.js'
 import { MentionMenu, getFilteredCount, getFilteredMember } from './MentionMenu.js'
 
+const CHAT_UPLOAD_PREFIX = '__chat_uploads/'
+
 interface Props {
+  roomId: string
   onSend: (content: string, metadata?: Record<string, unknown>) => void
   disabled?: boolean
   placeholder?: string
@@ -12,12 +17,12 @@ interface Props {
   members?: RoomMemberInfo[]
   quotedMessage?: ChatMessage | null
   onClearQuote?: () => void
-  onImageSelect?: (file: File) => void
   insertText?: string | null
   onInsertTextConsumed?: () => void
 }
 
 export function MessageInput({
+  roomId,
   onSend,
   disabled,
   placeholder = '输入消息...',
@@ -25,18 +30,20 @@ export function MessageInput({
   members = [],
   quotedMessage,
   onClearQuote,
-  onImageSelect,
   insertText,
   onInsertTextConsumed,
 }: Props) {
   const ref = useRef<HTMLTextAreaElement>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
+  const { uploadFile, uploading, uploadProgress } = useStorage(roomId)
 
   // Mention state
   const [mentionOpen, setMentionOpen] = useState(false)
   const [mentionQuery, setMentionQuery] = useState('')
   const [mentionIndex, setMentionIndex] = useState(0)
   const [mentionStart, setMentionStart] = useState(-1)
+  const [storageRefs, setStorageRefs] = useState<string[]>([])
+  const [attachmentError, setAttachmentError] = useState<string | null>(null)
 
   const autoResize = useCallback(() => {
     const el = ref.current
@@ -49,6 +56,12 @@ export function MessageInput({
     if (!insertText) return
     const el = ref.current
     if (!el) return
+    if (insertText.startsWith('storage://')) {
+      setStorageRefs((refs) => refs.includes(insertText) ? refs : [...refs, insertText])
+      el.focus()
+      onInsertTextConsumed?.()
+      return
+    }
     const start = el.selectionStart ?? el.value.length
     const end = el.selectionEnd ?? el.value.length
     const before = el.value.slice(0, start)
@@ -82,14 +95,34 @@ export function MessageInput({
   const handleSend = useCallback(() => {
     const el = ref.current
     if (!el) return
-    const content = el.value.trim()
+    const typedContent = el.value.trim()
+    const refsContent = storageRefs.length > 0
+      ? `引用文件：\n${storageRefs.map((item) => `- ${item}`).join('\n')}`
+      : ''
+    const content = [typedContent, refsContent].filter(Boolean).join('\n\n')
     if (!content) return
     onSend(content)
     el.value = ''
+    setStorageRefs([])
     setMentionOpen(false)
     autoResize()
     el.focus()
-  }, [onSend, autoResize])
+  }, [onSend, autoResize, storageRefs])
+
+  const handleAttachFile = useCallback(async (file: File | undefined) => {
+    if (!file || disabled) return
+    setAttachmentError(null)
+    try {
+      const uploaded = await uploadFile(file, CHAT_UPLOAD_PREFIX)
+      if (!uploaded?.key) return
+      const refText = storageRefFromKey(uploaded.key)
+      setStorageRefs((refs) => refs.includes(refText) ? refs : [...refs, refText])
+      setMentionOpen(false)
+      ref.current?.focus()
+    } catch (err) {
+      setAttachmentError(err instanceof Error ? err.message : '文件上传失败')
+    }
+  }, [disabled, uploadFile])
 
   const handleKeyDown = useCallback(
     (e: KeyboardEvent<HTMLTextAreaElement>) => {
@@ -204,6 +237,37 @@ export function MessageInput({
           </div>
         )}
 
+        {storageRefs.length > 0 && (
+          <div className="flex flex-wrap gap-1.5 px-4 pt-3 pb-1">
+            {storageRefs.map((item) => (
+              <span
+                key={item}
+                title={item.replace(/^storage:\/\//, '')}
+                className="inline-flex max-w-full items-center gap-1.5 rounded-md border border-[#d8dde6] bg-[#f8fafc] px-2 py-1 text-xs font-medium text-[#333840]"
+              >
+                <span className="min-w-0 max-w-[260px] truncate">{fileNameFromStorageRef(item)}</span>
+                <button
+                  type="button"
+                  className="shrink-0 rounded p-0.5 text-[#888] hover:bg-black/5 hover:text-[#333]"
+                  onClick={() => setStorageRefs((refs) => refs.filter((ref) => ref !== item))}
+                  aria-label="移除引用文件"
+                >
+                  <X className="h-3 w-3" />
+                </button>
+              </span>
+            ))}
+          </div>
+        )}
+
+        {attachmentError && (
+          <div className="flex items-center gap-2 px-4 pt-3 pb-1 text-xs text-red-600">
+            <span className="min-w-0 flex-1 truncate">{attachmentError}</span>
+            <button type="button" className="rounded p-0.5 hover:bg-red-50" onClick={() => setAttachmentError(null)} aria-label="关闭上传错误">
+              <X className="h-3 w-3" />
+            </button>
+          </div>
+        )}
+
         {/* Textarea — no border, transparent */}
         <textarea
           ref={ref}
@@ -222,6 +286,7 @@ export function MessageInput({
           <div className="flex items-center gap-1 flex-1 min-w-0">
             <button
               onClick={() => fileInputRef.current?.click()}
+              disabled={disabled || uploading}
               className="flex items-center justify-center w-8 h-8 rounded-lg text-[#888] hover:text-black hover:bg-black/5 transition-colors shrink-0"
             >
               <Plus className="w-4 h-4" />
@@ -229,11 +294,10 @@ export function MessageInput({
             <input
               ref={fileInputRef}
               type="file"
-              accept="image/*"
               className="hidden"
               onChange={(e) => {
                 const file = e.target.files?.[0]
-                if (file && onImageSelect) onImageSelect(file)
+                void handleAttachFile(file)
                 e.target.value = ''
               }}
             />
@@ -262,11 +326,11 @@ export function MessageInput({
               <svg className="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="6 9 12 15 18 9"/></svg>
             </button>
             <button
-              disabled={disabled}
+              disabled={disabled || uploading}
               onClick={handleSend}
               className="flex items-center justify-center w-8 h-8 rounded-full bg-[#1a1a1a] text-white hover:bg-[#333] disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
             >
-              <ArrowUp className="w-4 h-4" />
+              {uploading ? <span className="text-[10px] font-medium">{uploadProgress}%</span> : <ArrowUp className="w-4 h-4" />}
             </button>
           </div>
         </div>

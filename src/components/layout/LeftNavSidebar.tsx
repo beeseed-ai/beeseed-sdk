@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { MessageSquareText, Bot, BookOpen, HardDrive, ListChecks, Plus, MoreHorizontal, LogOut, Bell, Hash, Shield, User } from 'lucide-react'
+import { MessageSquareText, Bot, BookOpen, ListChecks, Plus, MoreHorizontal, LogOut, Bell, Hash, Shield, User } from 'lucide-react'
 import type { FeatureView, RoomWithMeta } from '../../core/types.js'
 import { cn } from '../../lib/cn.js'
 import { useAuth } from '../../hooks/use-auth.js'
@@ -12,7 +12,6 @@ interface NavItem { id: FeatureView; label: string; icon: React.ElementType }
 
 const NAV_ITEMS: NavItem[] = [
   { id: 'knowledge', label: '知识库', icon: BookOpen },
-  { id: 'storage', label: '云盘', icon: HardDrive },
   { id: 'tasks', label: '任务', icon: ListChecks },
   { id: 'agents', label: 'Agent 员工', icon: Bot },
 ]

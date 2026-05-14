@@ -1,12 +1,15 @@
-import { Plus, Search, Upload, ChevronDown, ChevronRight, FileText, Users, ListChecks, FolderOpen, MessageSquareQuote } from 'lucide-react'
+import { Plus, Search, Upload, ChevronDown, ChevronRight, FileText, Users, ListChecks, FolderOpen, MessageSquareQuote, Maximize2 } from 'lucide-react'
 import { useState } from 'react'
 import type { RoomMemberInfo, Task, StorageObject } from '../../core/types.js'
 import { cn } from '../../lib/cn.js'
 import { formatBytes, formatTime } from '../../lib/format.js'
+import { storageDisplayName } from '../../lib/storage-display.js'
 import { storageRefFromKey } from '../../lib/storage-ref.js'
 import { useDetailPanel } from '../../hooks/use-detail-panel.js'
 import { useStorage } from '../../hooks/use-storage.js'
 import { Avatar, AvatarFallback, AvatarImage } from '../ui/avatar.js'
+import { Dialog, DialogContent } from '../ui/dialog.js'
+import { CloudStoragePanel } from '../storage/CloudStoragePanel.js'
 
 interface Props {
   roomId: string | null
@@ -23,6 +26,7 @@ export function DetailPanel({ roomId, members = [], tasks = [], files = [], onCr
   const [tasksOpen, setTasksOpen] = useState(true)
   const [filesOpen, setFilesOpen] = useState(true)
   const [membersOpen, setMembersOpen] = useState(true)
+  const [storageOpen, setStorageOpen] = useState(false)
 
   if (!panelVisible || !roomId) return null
 
@@ -72,19 +76,28 @@ export function DetailPanel({ roomId, members = [], tasks = [], files = [], onCr
 
         {/* Files */}
         <div className="border-b border-border">
-          <button onClick={() => setFilesOpen(!filesOpen)} className="flex items-center gap-2 w-full px-4 py-3 text-sm font-medium hover:bg-muted/30 transition-colors">
-            <FolderOpen className="w-4 h-4 text-muted-foreground" />
-            <span className="flex-1 text-left">群文件</span>
-            {filesOpen ? <ChevronDown className="w-3.5 h-3.5 text-muted-foreground" /> : <ChevronRight className="w-3.5 h-3.5 text-muted-foreground" />}
-          </button>
+          <div className="flex items-center gap-1 px-4 py-3 hover:bg-muted/30 transition-colors">
+            <button onClick={() => setFilesOpen(!filesOpen)} className="flex min-w-0 flex-1 items-center gap-2 text-sm font-medium">
+              <FolderOpen className="w-4 h-4 text-muted-foreground" />
+              <span className="flex-1 text-left">云存储</span>
+              {filesOpen ? <ChevronDown className="w-3.5 h-3.5 text-muted-foreground" /> : <ChevronRight className="w-3.5 h-3.5 text-muted-foreground" />}
+            </button>
+            <button
+              title="打开云存储"
+              className="rounded p-1 text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
+              onClick={() => setStorageOpen(true)}
+            >
+              <Maximize2 className="w-3.5 h-3.5" />
+            </button>
+          </div>
           {filesOpen && (
             <div className="px-4 pb-3">
               <div className="flex items-center gap-2 mb-2">
-                <span className="text-[10px] text-primary cursor-pointer hover:underline">云盘</span>
+                <span className="text-[10px] text-primary">云存储</span>
                 <span className="text-[10px] text-muted-foreground">/</span>
                 <span className="text-[10px] text-muted-foreground">当前对话</span>
                 <div className="flex-1" />
-                <Search className="w-3 h-3 text-muted-foreground cursor-pointer" />
+                <Search className="w-3 h-3 text-muted-foreground" />
                 <label className="cursor-pointer">
                   <Upload className="w-3 h-3 text-muted-foreground" />
                   <input type="file" className="hidden" onChange={(e) => { void uploadFromPicker(e.target.files?.[0]); e.target.value = '' }} />
@@ -98,7 +111,7 @@ export function DetailPanel({ roomId, members = [], tasks = [], files = [], onCr
                     <div key={f.key} className="group flex items-start gap-2 py-1 hover:bg-muted/30 rounded px-1 -mx-1 transition-colors">
                       <FileText className="w-4 h-4 text-blue-500 mt-0.5 shrink-0" />
                       <div className="min-w-0 flex-1">
-                        <div className="text-xs truncate">{f.key.split('/').pop()}</div>
+                        <div className="text-xs truncate">{storageDisplayName(f)}</div>
                         <div className="text-[10px] text-muted-foreground">{formatBytes(f.size)} · {formatTime(f.last_modified)}</div>
                       </div>
                       <button
@@ -171,6 +184,15 @@ export function DetailPanel({ roomId, members = [], tasks = [], files = [], onCr
           )}
         </div>
       </div>
+
+      <Dialog open={storageOpen} onOpenChange={setStorageOpen}>
+        <DialogContent
+          className="h-[min(720px,calc(100vh-4rem))] w-[min(920px,calc(100vw-2rem))] max-w-[calc(100vw-2rem)] sm:max-w-[920px] overflow-hidden p-0"
+          onClose={() => setStorageOpen(false)}
+        >
+          <CloudStoragePanel roomId={roomId} className="h-full" onReference={() => setStorageOpen(false)} />
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }

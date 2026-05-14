@@ -23,12 +23,19 @@ export interface DetailPanelState {
 }
 
 const DEFAULT_SECTIONS: AccordionSections = { members: true, tasks: false, storage: false }
+const DEFAULT_PANEL_VISIBLE = true
+
+function initialFeature(): FeatureView {
+  if (typeof sessionStorage === 'undefined') return 'chat'
+  const saved = sessionStorage.getItem('beeseed-feature') as FeatureView | null
+  return saved === 'storage' || !saved ? 'chat' : saved
+}
 
 export function createDetailPanelStore() {
   return createStore<DetailPanelState>()((set, get) => ({
-    panelVisible: false,
+    panelVisible: DEFAULT_PANEL_VISIBLE,
     sections: { ...DEFAULT_SECTIONS },
-    activeFeature: (typeof sessionStorage !== 'undefined' && sessionStorage.getItem('beeseed-feature') as FeatureView) || 'chat',
+    activeFeature: initialFeature(),
     composerInsertText: null,
 
     togglePanel: () => set({ panelVisible: !get().panelVisible }),
@@ -51,7 +58,7 @@ export function createDetailPanelStore() {
     insertIntoComposer: (text) => set({ composerInsertText: text }),
     consumeComposerInsert: () => set({ composerInsertText: null }),
 
-    reset: () => set({ panelVisible: false, sections: { ...DEFAULT_SECTIONS }, activeFeature: 'chat', composerInsertText: null }),
+    reset: () => set({ panelVisible: DEFAULT_PANEL_VISIBLE, sections: { ...DEFAULT_SECTIONS }, activeFeature: 'chat', composerInsertText: null }),
   }))
 }
 

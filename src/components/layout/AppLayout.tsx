@@ -12,7 +12,6 @@ import { DetailPanel } from './DetailPanel.js'
 
 const TaskPanel = lazy(() => import('../tasks/TaskPanel.js').then((m) => ({ default: m.TaskPanel })))
 const KnowledgePanel = lazy(() => import('../knowledge/KnowledgePanel.js').then((m) => ({ default: m.KnowledgePanel })))
-const CloudStoragePanel = lazy(() => import('../storage/CloudStoragePanel.js').then((m) => ({ default: m.CloudStoragePanel })))
 const AgentManagePanel = lazy(() => import('../agents/AgentManagePanel.js').then((m) => ({ default: m.AgentManagePanel })))
 const CronPanel = lazy(() => import('../cron/CronPanel.js').then((m) => ({ default: m.CronPanel })))
 const AdminPanel = lazy(() => import('../admin/AdminPanel.js').then((m) => ({ default: m.AdminPanel })))
@@ -78,7 +77,6 @@ export function AppLayout({ className }: Props) {
           <Suspense fallback={<FeatureLoading />}>
             {activeFeature === 'tasks' && <TaskPanel roomId={currentRoomId} />}
             {activeFeature === 'knowledge' && <KnowledgePanel />}
-            {activeFeature === 'storage' && <CloudStoragePanel roomId={currentRoomId} />}
             {activeFeature === 'agents' && <AgentManagePanel />}
             {activeFeature === 'cron' && <CronPanel roomId={currentRoomId} />}
             {activeFeature === 'admin' && <AdminPanel />}

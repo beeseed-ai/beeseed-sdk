@@ -1,17 +1,22 @@
-import { useRef } from 'react'
-import { AlertCircle, Download, File, FolderOpen, MessageSquareQuote, Search, Trash2, Upload, X } from 'lucide-react'
+import { useRef, useState, type FormEvent } from 'react'
+import { AlertCircle, Download, File, FolderOpen, FolderPlus, MessageSquareQuote, Search, Trash2, Upload, X } from 'lucide-react'
 import { useStorage } from '../../hooks/use-storage.js'
 import { useDetailPanel } from '../../hooks/use-detail-panel.js'
+import { cn } from '../../lib/cn.js'
 import { formatBytes } from '../../lib/format.js'
+import { storageDisplayName } from '../../lib/storage-display.js'
 import { storageRefFromKey } from '../../lib/storage-ref.js'
 import { Input } from '../ui/input.js'
 import { Button } from '../ui/button.js'
+import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '../ui/dialog.js'
 
 interface Props {
   roomId: string | null
+  className?: string
+  onReference?: () => void
 }
 
-export function CloudStoragePanel({ roomId }: Props) {
+export function CloudStoragePanel({ roomId, className, onReference }: Props) {
   const { insertIntoComposer, setActiveFeature, setPanel } = useDetailPanel()
   const {
     objects,
@@ -27,6 +32,7 @@ export function CloudStoragePanel({ roomId }: Props) {
     searchQuery,
     breadcrumbs,
     browse,
+    createDirectory,
     uploadFile,
     downloadFile,
     deleteFile,
@@ -34,6 +40,9 @@ export function CloudStoragePanel({ roomId }: Props) {
     setSearchQuery,
   } = useStorage(roomId)
   const fileRef = useRef<HTMLInputElement>(null)
+  const [createOpen, setCreateOpen] = useState(false)
+  const [directoryName, setDirectoryName] = useState('')
+  const [creatingDirectory, setCreatingDirectory] = useState(false)
 
   if (!roomId) {
     return <div className="flex-1 flex items-center justify-center text-muted-foreground text-sm">选择一个对话查看文件</div>
@@ -55,22 +64,41 @@ export function CloudStoragePanel({ roomId }: Props) {
     if (url) window.open(url, '_blank')
   }
 
+  async function handleCreateDirectory(e: FormEvent) {
+    e.preventDefault()
+    const name = directoryName.trim()
+    if (!name) return
+    setCreatingDirectory(true)
+    try {
+      await createDirectory(name, currentPrefix)
+      setDirectoryName('')
+      setCreateOpen(false)
+    } finally {
+      setCreatingDirectory(false)
+    }
+  }
+
   function handleReference(key: string) {
     insertIntoComposer(storageRefFromKey(key))
     setActiveFeature('chat')
     setPanel(true)
+    onReference?.()
   }
 
   return (
-    <div className="flex-1 flex flex-col overflow-hidden">
+    <div className={cn('flex-1 flex flex-col overflow-hidden', className)}>
       <div className="flex items-center gap-2 px-4 py-3 border-b border-border">
         <div>
-          <h2 className="text-sm font-semibold">文件存储</h2>
+          <h2 className="text-sm font-semibold">云存储</h2>
           <div className="text-[11px] text-muted-foreground">
             {policy.visibility === 'shared' ? '共享空间' : '个人空间'} · {directories.length + objects.length > 0 ? `${directories.length} 个文件夹 · ${objects.length} 个文件` : '当前目录'} · 已用 {formatBytes(usage.bytes)}
           </div>
         </div>
         <div className="flex-1" />
+        <Button size="sm" variant="outline" className="h-7 px-2 text-xs" disabled={uploading || !canUpload} onClick={() => setCreateOpen(true)}>
+          <FolderPlus className="w-3.5 h-3.5 mr-1" />
+          新建文件夹
+        </Button>
         <Button size="sm" variant="outline" className="h-7 px-2 text-xs" disabled={uploading || !canUpload} onClick={() => fileRef.current?.click()}>
           <Upload className="w-3.5 h-3.5 mr-1" />
           {uploading ? '上传中' : canUpload ? '上传' : '只读'}
@@ -156,7 +184,7 @@ export function CloudStoragePanel({ roomId }: Props) {
               <div key={obj.key} className="flex items-center gap-3 px-4 py-2 group">
                 <File className="w-4 h-4 text-blue-500" />
                 <div className="flex-1 min-w-0">
-                  <div className="text-sm truncate">{obj.name || obj.key.split('/').pop()}</div>
+                  <div className="text-sm truncate">{storageDisplayName(obj)}</div>
                   <div className="text-[10px] text-muted-foreground">
                     {formatBytes(obj.size)} · {new Date(obj.last_modified).toLocaleDateString('zh-CN')}
                   </div>
@@ -187,6 +215,30 @@ export function CloudStoragePanel({ roomId }: Props) {
           </div>
         )}
       </div>
+
+      <Dialog open={createOpen} onOpenChange={setCreateOpen}>
+        <DialogContent onClose={() => setCreateOpen(false)}>
+          <DialogHeader>
+            <DialogTitle>新建文件夹</DialogTitle>
+          </DialogHeader>
+          <form onSubmit={handleCreateDirectory} className="mt-3 space-y-4">
+            <Input
+              value={directoryName}
+              onChange={(e) => setDirectoryName(e.target.value)}
+              placeholder="文件夹名称"
+              autoFocus
+            />
+            <DialogFooter>
+              <Button variant="outline" type="button" onClick={() => setCreateOpen(false)}>
+                取消
+              </Button>
+              <Button disabled={!directoryName.trim() || creatingDirectory}>
+                {creatingDirectory ? '创建中...' : '创建'}
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }

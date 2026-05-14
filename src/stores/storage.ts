@@ -18,7 +18,8 @@ export interface StorageState {
   previewObj: StorageObject | null
 
   browse: (roomId: string, prefix?: string) => Promise<void>
-  uploadFile: (roomId: string, file: File, prefix?: string) => Promise<void>
+  createDirectory: (roomId: string, name: string, prefix?: string) => Promise<void>
+  uploadFile: (roomId: string, file: File, prefix?: string) => Promise<StorageObject | null>
   downloadFile: (roomId: string, key: string) => Promise<string | null>
   deleteFile: (roomId: string, key: string) => Promise<void>
   clearUploadError: () => void
@@ -67,12 +68,14 @@ export function createStorageStore(config: StorageStoreConfig) {
     },
 
     uploadFile: async (roomId, file, prefix = get().currentPrefix) => {
+      const visiblePrefix = get().currentPrefix
       set({ uploading: true, uploadProgress: 0, uploadError: null })
       if (config.useMock) {
         const key = `${prefix || ''}${file.name}`
-        set({ objects: [{ key, name: file.name, size: file.size, content_type: file.type || 'application/octet-stream', last_modified: new Date().toISOString(), status: 'available' }, ...get().objects] })
+        const obj: StorageObject = { key, name: file.name, display_name: file.name, size: file.size, content_type: file.type || 'application/octet-stream', last_modified: new Date().toISOString(), status: 'available' }
+        if (prefix === visiblePrefix) set({ objects: [obj, ...get().objects] })
         set({ uploading: false, uploadProgress: 100 })
-        return
+        return obj
       }
       try {
         const presign = await config.api.post(`rooms/${roomId}/storage/presign-upload`, {
@@ -85,11 +88,12 @@ export function createStorageStore(config: StorageStoreConfig) {
           set({ uploadProgress: progress })
         })
 
-        await config.api.post(`rooms/${roomId}/storage/complete-upload`, {
+        const completed = await config.api.post(`rooms/${roomId}/storage/complete-upload`, {
           json: { object_id: presign.object.id },
-        })
+        }).json<StorageObject>()
         set({ uploadProgress: 100 })
-        await get().browse(roomId, prefix)
+        await get().browse(roomId, visiblePrefix)
+        return completed
       } catch (err) {
         const message = err instanceof Error ? err.message : '上传失败'
         set({ uploadError: message })
@@ -97,6 +101,20 @@ export function createStorageStore(config: StorageStoreConfig) {
       } finally {
         set({ uploading: false })
       }
+    },
+
+    createDirectory: async (roomId, name, prefix = get().currentPrefix) => {
+      const safeName = name.trim()
+      if (!safeName) return
+      if (config.useMock) {
+        const dir = `${prefix || ''}${safeName.replaceAll('/', '_')}/`
+        set({ directories: [...get().directories, dir].filter((v, i, a) => a.indexOf(v) === i) })
+        return
+      }
+      await config.api.post(`rooms/${roomId}/storage/directory`, {
+        json: { name: safeName, prefix },
+      })
+      await get().browse(roomId, prefix)
     },
 
     downloadFile: async (roomId, key) => {

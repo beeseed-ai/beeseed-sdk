@@ -2,13 +2,16 @@ import { useState, useCallback } from 'react'
 import { Copy, Check, CornerDownLeft } from 'lucide-react'
 import type { ChatMessage } from '../../core/types.js'
 import { cn } from '../../lib/cn.js'
+import { storageRefsFromText, stripStorageReferenceBlock } from '../../lib/storage-ref.js'
 import { MarkdownRenderer } from './MarkdownRenderer.js'
 import { ImagePreview } from './ImagePreview.js'
 import { AskUserCard } from './AskUserCard.js'
+import { StorageAttachmentPreview } from './StorageAttachmentPreview.js'
 
 interface Props {
   message: ChatMessage
   isOwn: boolean
+  roomId: string
   currentUserId?: string
   onQuote?: (message: ChatMessage) => void
   onMentionClick?: (name: string) => void
@@ -32,10 +35,17 @@ const SYSTEM_COLORS: Record<string, string> = {
   agent_connection_error: 'text-[#b45309] bg-[#fef3c7]',
   agent_start_failed: 'text-[#b45309] bg-[#fef3c7]',
   agent_retry: 'text-[#1e40af] bg-[#dbeafe]',
+  ask_user_answer: 'text-[#41454d] bg-[#f8fafc] border border-[#dddddd]',
+}
+
+function formatAskUserAnswerSummary(message: ChatMessage): string {
+  const target = message.askUserAnswerData?.targetAgentName || message.askUserAnswerData?.targetAgentId || message.routingInfo?.targets[0] || 'Agent'
+  const method = message.routingInfo?.method || 'ask_user_resume'
+  return `已回答 ${target} 的补充问题 · ${method}`
 }
 
 export function MessageBubble({
-  message, currentUserId, onQuote, onMentionClick, onScrollToMessage, onSubmitAnswer, className,
+  message, roomId, currentUserId, onQuote, onMentionClick, onScrollToMessage, onSubmitAnswer, className,
 }: Props) {
   const [copied, setCopied] = useState(false)
   const [previewImage, setPreviewImage] = useState<string | null>(null)
@@ -51,28 +61,52 @@ export function MessageBubble({
   }, [message, onQuote])
 
   const timeStr = new Date(message.timestamp).toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' })
+  const senderLabel = message.senderName || (message.isAgent ? 'Agent' : '用户')
 
   // Ask-User card
   if (message.askUserData) {
     return (
-      <AskUserCard
-        data={message.askUserData}
-        currentUserId={currentUserId}
-        onSubmit={(answers) => {
-          if (message.askUserData?.askId && onSubmitAnswer) onSubmitAnswer(message.askUserData.askId, answers)
-        }}
-        className={className}
-      />
+      <div
+        className={cn('flex gap-2.5 py-2.5', className)}
+        id={message.msgId ? `msg-${message.msgId}` : undefined}
+      >
+        <div className="shrink-0 mt-0.5">
+          {message.senderAvatarUrl ? (
+            <img src={message.senderAvatarUrl} alt="" className="w-9 h-9 rounded-full object-cover" />
+          ) : (
+            <div className="w-9 h-9 rounded-full flex items-center justify-center text-white text-xs font-medium" style={{ backgroundColor: avatarColor(senderLabel) }}>
+              {senderLabel.charAt(0)}
+            </div>
+          )}
+        </div>
+        <div className="flex-1 min-w-0">
+          <div className="flex items-baseline gap-1.5 mb-1">
+            <span className="text-xs text-[#777169]">{senderLabel}</span>
+            <span className="text-[10px] text-[#999999]">{timeStr}</span>
+          </div>
+          <AskUserCard
+            data={message.askUserData}
+            currentUserId={currentUserId}
+            onSubmit={(answers) => {
+              if (message.askUserData?.askId && onSubmitAnswer) onSubmitAnswer(message.askUserData.askId, answers)
+            }}
+            className="mx-0 my-0"
+          />
+        </div>
+      </div>
     )
   }
 
   // System messages
   if (message.role === 'system') {
     const colorClass = message.systemSource ? (SYSTEM_COLORS[message.systemSource] ?? 'text-[#777169] bg-[#f0f0f0]') : 'text-[#777169] bg-[#f0f0f0]'
+    const content = message.systemSource === 'ask_user_answer'
+      ? formatAskUserAnswerSummary(message)
+      : message.content
     return (
       <div className={cn('flex justify-center py-1.5', className)} id={message.msgId ? `msg-${message.msgId}` : undefined}>
         <span className={cn('px-3 py-1 text-xs rounded-full text-center break-words max-w-full', colorClass)}>
-          {message.content}
+          {content}
         </span>
       </div>
     )
@@ -96,8 +130,8 @@ export function MessageBubble({
 
   const isUser = message.role === 'user'
   const isImage = message.contentType === 'image'
-
-  const senderLabel = message.senderName || (message.isAgent ? 'Agent' : '用户')
+  const storageRefs = storageRefsFromText(message.content)
+  const visibleContent = storageRefs.length > 0 ? stripStorageReferenceBlock(message.content) : message.content
 
   return (
     <div
@@ -181,17 +215,27 @@ export function MessageBubble({
                 )}
               </div>
             ) : isUser ? (
-              <MarkdownRenderer
-                content={message.content}
-                className="prose prose-sm max-w-none break-words text-inherit [&_p]:my-1 [&_p:first-child]:mt-0 [&_p:last-child]:mb-0"
-                onMentionClick={onMentionClick}
-              />
+              <>
+                {visibleContent && (
+                  <MarkdownRenderer
+                    content={visibleContent}
+                    className="prose prose-sm max-w-none break-words text-inherit [&_p]:my-1 [&_p:first-child]:mt-0 [&_p:last-child]:mb-0"
+                    onMentionClick={onMentionClick}
+                  />
+                )}
+                {storageRefs.length > 0 && <StorageAttachmentPreview roomId={roomId} refs={storageRefs} compact={!visibleContent} />}
+              </>
             ) : (
-              <MarkdownRenderer
-                content={message.content}
-                className="prose prose-base max-w-none break-words [&_pre]:overflow-x-auto [&_pre]:max-w-full [&_pre]:rounded-lg [&_pre]:bg-[#f5f5f5] [&_pre]:p-3 [&_pre]:text-xs [&_code.inline-code]:rounded [&_code.inline-code]:bg-[#f5f5f5] [&_code.inline-code]:px-1.5 [&_code.inline-code]:py-0.5 [&_code.inline-code]:text-xs [&_a]:text-black [&_a]:underline [&_p]:my-2 [&_p:last-child]:mb-0 [&_p:first-child]:mt-0 [&_ul]:my-1 [&_li]:my-0 [&_ol]:list-decimal [&_ol]:pl-5 [&_ul]:list-disc [&_ul]:pl-5 [&_hr]:my-4 [&_hr]:border-t [&_hr]:border-[#e5e5e5] [&_table]:border-collapse [&_table]:w-full [&_th]:border [&_th]:border-[#e5e5e5] [&_th]:px-3 [&_th]:py-1.5 [&_th]:bg-[#f5f5f5] [&_th]:text-left [&_td]:border [&_td]:border-[#e5e5e5] [&_td]:px-3 [&_td]:py-1.5"
-                onMentionClick={onMentionClick}
-              />
+              <>
+                {visibleContent && (
+                  <MarkdownRenderer
+                    content={visibleContent}
+                    className="prose prose-base max-w-none break-words [&_pre]:overflow-x-auto [&_pre]:max-w-full [&_pre]:rounded-lg [&_pre]:bg-[#f5f5f5] [&_pre]:p-3 [&_pre]:text-xs [&_code.inline-code]:rounded [&_code.inline-code]:bg-[#f5f5f5] [&_code.inline-code]:px-1.5 [&_code.inline-code]:py-0.5 [&_code.inline-code]:text-xs [&_a]:text-black [&_a]:underline [&_p]:my-2 [&_p:last-child]:mb-0 [&_p:first-child]:mt-0 [&_ul]:my-1 [&_li]:my-0 [&_ol]:list-decimal [&_ol]:pl-5 [&_ul]:list-disc [&_ul]:pl-5 [&_hr]:my-4 [&_hr]:border-t [&_hr]:border-[#e5e5e5] [&_table]:border-collapse [&_table]:w-full [&_th]:border [&_th]:border-[#e5e5e5] [&_th]:px-3 [&_th]:py-1.5 [&_th]:bg-[#f5f5f5] [&_th]:text-left [&_td]:border [&_td]:border-[#e5e5e5] [&_td]:px-3 [&_td]:py-1.5"
+                    onMentionClick={onMentionClick}
+                  />
+                )}
+                {storageRefs.length > 0 && <StorageAttachmentPreview roomId={roomId} refs={storageRefs} compact={!visibleContent} />}
+              </>
             )}
           </div>
         )}

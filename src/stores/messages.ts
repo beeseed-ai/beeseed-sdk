@@ -99,6 +99,33 @@ export function parseMessage(m: Message, myUserId?: string): ChatMessage | null 
     }
   }
 
+  if (meta.source === 'ask_user_answer') {
+    const routing = meta.routing_info as Record<string, unknown> | undefined
+    const targets = (routing?.target_agent_ids as string[]) ?? (meta.target_agent_id ? [meta.target_agent_id as string] : [])
+    const targetAgentId = targets[0] || (meta.target_agent_id as string | undefined)
+    return {
+      role: 'system',
+      content: m.content,
+      timestamp: new Date(m.created_at).getTime(),
+      msgId: m.id,
+      senderName: meta.sender_display_name as string,
+      senderAvatarUrl: meta.sender_avatar_url as string,
+      senderId: m.sender_user_id ?? undefined,
+      senderType: 'user',
+      systemSource: 'ask_user_answer',
+      routingInfo: {
+        targets,
+        method: (routing?.routing_method as string) || 'ask_user_resume',
+      },
+      askUserAnswerData: {
+        askId: (meta.ask_id as string) || undefined,
+        targetAgentId,
+        targetAgentName: (meta.target_agent_name as string) || undefined,
+        answers: meta.answers as Record<string, unknown> | undefined,
+      },
+    }
+  }
+
   const isMe = m.sender_type === 'user' && m.sender_user_id === myUserId
   const role: 'user' | 'assistant' = isMe ? 'user' : 'assistant'
 
@@ -374,6 +401,101 @@ function buildAgentLoopsFromMessages(roomId: string, messages: Message[]): Map<s
   return loops
 }
 
+function eventTurnNumber(event: { turn?: number }, loop?: AgentLoopState): number {
+  return typeof event.turn === 'number' && event.turn > 0
+    ? event.turn
+    : loop?.currentTurn || loop?.turns[loop.turns.length - 1]?.turnNumber || 1
+}
+
+function ensureLoopTurn(
+  loop: AgentLoopState | undefined,
+  roomId: string,
+  agentId: string,
+  turnNumber: number,
+): AgentLoopState {
+  const now = Date.now()
+  const base: AgentLoopState = loop ?? {
+    agentId,
+    roomId,
+    turns: [],
+    status: 'running',
+    currentTurn: turnNumber,
+    startedAt: now,
+  }
+
+  const turns = base.turns.map((turn) => (
+    turn.status === 'active' && turn.turnNumber < turnNumber
+      ? { ...turn, status: 'completed' as const, completedAt: turn.completedAt ?? now }
+      : turn
+  ))
+
+  if (!turns.some((turn) => turn.turnNumber === turnNumber)) {
+    turns.push({
+      turnNumber,
+      toolCalls: [],
+      status: 'active',
+      startedAt: now,
+    })
+  }
+
+  turns.sort((a, b) => a.turnNumber - b.turnNumber)
+
+  return {
+    ...base,
+    turns,
+    status: 'running',
+    currentTurn: Math.max(base.currentTurn, turnNumber),
+    completedAt: undefined,
+    error: undefined,
+  }
+}
+
+function updateLoopTurn(
+  loop: AgentLoopState,
+  turnNumber: number,
+  updater: (turn: AgentLoopTurn) => AgentLoopTurn,
+): AgentLoopState {
+  return {
+    ...loop,
+    turns: loop.turns.map((turn) => (
+      turn.turnNumber === turnNumber ? updater(turn) : turn
+    )),
+    currentTurn: Math.max(loop.currentTurn, turnNumber),
+  }
+}
+
+function agentLoopActivityAt(loop: AgentLoopState): number {
+  let latest = loop.completedAt ?? loop.startedAt ?? 0
+  for (const turn of loop.turns) {
+    latest = Math.max(latest, turn.completedAt ?? turn.startedAt ?? 0)
+    for (const tool of turn.toolCalls) {
+      latest = Math.max(latest, tool.completedAt ?? tool.startedAt ?? 0)
+    }
+  }
+  return latest
+}
+
+function streamActivityAt(stream: StreamState): number {
+  return stream.agentLoop ? agentLoopActivityAt(stream.agentLoop) : 0
+}
+
+function typingKey(roomId: string, agentId?: string): string {
+  return `${roomId}:${agentId || '_'}`
+}
+
+function clearTypingForRoom(typing: Map<string, string>, roomId: string, agentId?: string) {
+  if (agentId) {
+    typing.delete(typingKey(roomId, agentId))
+    return
+  }
+  typing.delete(roomId)
+  for (const key of [...typing.keys()]) {
+    if (key.startsWith(`${roomId}:`)) {
+      typing.delete(key)
+    }
+  }
+}
+
 // ── Store ──
 
 export interface MessagesState {
@@ -391,9 +513,12 @@ export interface MessagesState {
   submitAskUserAnswer: (roomId: string, askId: string, answers: Record<string, unknown>) => void
   getMessages: (roomId: string) => ChatMessage[]
   getStream: (roomId: string) => StreamState | undefined
+  getStreams: (roomId: string) => StreamState[]
   getAgentLoop: (roomId: string) => AgentLoopState | undefined
+  getAgentLoops: (roomId: string) => AgentLoopState[]
   getMembers: (roomId: string) => RoomMemberInfo[]
   getTyping: (roomId: string) => string
+  getTypings: (roomId: string) => string[]
   reset: () => void
 }
 
@@ -515,7 +640,7 @@ export function createMessagesStore(config: MessagesStoreConfig) {
 
         case 'typing': {
           const typing = new Map(state.typingStatus)
-          typing.set(event.room_id, `${event.agent_id || 'Agent'} 正在输入...`)
+          typing.set(typingKey(event.room_id, event.agent_id), `${event.agent_id || 'Agent'} 正在输入...`)
           set({ typingStatus: typing })
           break
         }
@@ -524,24 +649,15 @@ export function createMessagesStore(config: MessagesStoreConfig) {
           const streams = new Map(state.streams)
           const key = `${event.room_id}:${event.agent_id}`
           const existing = streams.get(key)
-          let agentLoop = existing?.agentLoop
-          if (agentLoop) {
-            const turn = agentLoop.turns[agentLoop.turns.length - 1]
-            if (turn && turn.status === 'active') {
-              const updatedTurn: AgentLoopTurn = {
-                ...turn,
-                content: (turn.content || '') + event.content,
-              }
-              agentLoop = {
-                ...agentLoop,
-                turns: [...agentLoop.turns.slice(0, -1), updatedTurn],
-              }
-
-              const loops = new Map(state.agentLoops)
-              loops.set(key, agentLoop)
-              set({ agentLoops: loops })
-            }
-          }
+          const loops = new Map(state.agentLoops)
+          const turnNumber = eventTurnNumber(event, existing?.agentLoop ?? loops.get(key))
+          let agentLoop = ensureLoopTurn(existing?.agentLoop ?? loops.get(key), event.room_id, event.agent_id, turnNumber)
+          agentLoop = updateLoopTurn(agentLoop, turnNumber, (turn) => ({
+            ...turn,
+            content: (turn.content || '') + event.content,
+          }))
+          loops.set(key, agentLoop)
+          set({ agentLoops: loops })
           streams.set(key, {
             agentId: event.agent_id,
             content: (existing?.content || '') + event.content,
@@ -600,7 +716,7 @@ export function createMessagesStore(config: MessagesStoreConfig) {
           }
 
           const typing = new Map(state.typingStatus)
-          typing.delete(event.room_id)
+          clearTypingForRoom(typing, event.room_id, event.agent_id)
           set({ typingStatus: typing })
           break
         }
@@ -609,39 +725,38 @@ export function createMessagesStore(config: MessagesStoreConfig) {
           const streams = new Map(state.streams)
           const key = `${event.room_id}:${event.agent_id}`
           const existing = streams.get(key)
+          const loops = new Map(state.agentLoops)
+          const turnNumber = eventTurnNumber(event, existing?.agentLoop ?? loops.get(key))
+          let agentLoop = ensureLoopTurn(existing?.agentLoop ?? loops.get(key), event.room_id, event.agent_id, turnNumber)
+          const toolCall: AgentLoopToolCall = {
+            id: `${event.name}-${Date.now()}`,
+            name: event.name,
+            args: event.args as Record<string, unknown>,
+            status: 'calling',
+            startedAt: Date.now(),
+            parallel: (event as { parallel?: boolean }).parallel,
+            batchId: (event as { batch_id?: string }).batch_id,
+          }
+          agentLoop = updateLoopTurn(agentLoop, turnNumber, (turn) => ({
+            ...turn,
+            toolCalls: [...turn.toolCalls, toolCall],
+          }))
+          loops.set(key, agentLoop)
+          set({ agentLoops: loops })
+
           const newStream: StreamState = {
             agentId: event.agent_id,
             content: existing?.content || '',
             thinking: existing?.thinking || '',
             toolCall: { name: event.name, args: event.args },
-            agentLoop: existing?.agentLoop,
-          }
-
-          // Update agent loop if active
-          if (newStream.agentLoop) {
-            const loop = { ...newStream.agentLoop }
-            const turn = loop.turns[loop.turns.length - 1]
-            if (turn && turn.status === 'active') {
-              const toolCall: AgentLoopToolCall = {
-                id: `${event.name}-${Date.now()}`,
-                name: event.name,
-                args: event.args as Record<string, unknown>,
-                status: 'calling',
-                startedAt: Date.now(),
-                parallel: (event as { parallel?: boolean }).parallel,
-                batchId: (event as { batch_id?: string }).batch_id,
-              }
-              turn.toolCalls = [...turn.toolCalls, toolCall]
-              loop.turns = [...loop.turns.slice(0, -1), { ...turn }]
-              newStream.agentLoop = loop
-            }
+            agentLoop,
           }
 
           streams.set(key, newStream)
           set({ streams })
 
           const typing = new Map(state.typingStatus)
-          typing.set(event.room_id, `${event.agent_id} 调用工具 ${event.name}...`)
+          typing.set(typingKey(event.room_id, event.agent_id), `${event.agent_id} 调用工具 ${event.name}...`)
           set({ typingStatus: typing })
           break
         }
@@ -650,11 +765,12 @@ export function createMessagesStore(config: MessagesStoreConfig) {
           const streams = new Map(state.streams)
           const key = `${event.room_id}:${event.agent_id}`
           const existing = streams.get(key)
-
-          if (existing?.agentLoop) {
-            const loop = { ...existing.agentLoop }
-            const turn = loop.turns[loop.turns.length - 1]
-            if (turn) {
+          const loops = new Map(state.agentLoops)
+          const turnNumber = eventTurnNumber(event, existing?.agentLoop ?? loops.get(key))
+          let agentLoop = ensureLoopTurn(existing?.agentLoop ?? loops.get(key), event.room_id, event.agent_id, turnNumber)
+          agentLoop = updateLoopTurn(agentLoop, turnNumber, (turn) => {
+            let nextTurn = turn
+            if (nextTurn) {
               const idx = [...turn.toolCalls].reverse().findIndex(
                 (tc) => tc.name === event.name && tc.status === 'calling',
               )
@@ -664,20 +780,47 @@ export function createMessagesStore(config: MessagesStoreConfig) {
                 updated.status = event.success !== false ? 'success' : 'failed'
                 updated.output = event.output
                 updated.completedAt = Date.now()
-                turn.toolCalls = [
-                  ...turn.toolCalls.slice(0, realIdx),
-                  updated,
-                  ...turn.toolCalls.slice(realIdx + 1),
-                ]
-                loop.turns = [...loop.turns.slice(0, -1), { ...turn }]
+                nextTurn = {
+                  ...turn,
+                  toolCalls: [
+                    ...turn.toolCalls.slice(0, realIdx),
+                    updated,
+                    ...turn.toolCalls.slice(realIdx + 1),
+                  ],
+                }
+              } else {
+                nextTurn = {
+                  ...turn,
+                  toolCalls: [
+                    ...turn.toolCalls,
+                    {
+                      id: `${event.name}-${Date.now()}`,
+                      name: event.name,
+                      status: event.success !== false ? 'success' : 'failed',
+                      output: event.output,
+                      startedAt: Date.now(),
+                      completedAt: Date.now(),
+                    },
+                  ],
+                }
               }
             }
-            streams.set(key, { ...existing, agentLoop: loop, toolCall: undefined })
-            set({ streams })
-          }
+            return nextTurn
+          })
+          loops.set(key, agentLoop)
+          set({ agentLoops: loops })
+
+          streams.set(key, {
+            agentId: event.agent_id,
+            content: existing?.content || '',
+            thinking: existing?.thinking || '',
+            agentLoop,
+            toolCall: undefined,
+          })
+          set({ streams })
 
           const typing = new Map(state.typingStatus)
-          typing.set(event.room_id, `${event.agent_id} 正在思考...`)
+          typing.set(typingKey(event.room_id, event.agent_id), `${event.agent_id} 正在思考...`)
           set({ typingStatus: typing })
           break
         }
@@ -735,7 +878,7 @@ export function createMessagesStore(config: MessagesStoreConfig) {
           set({ streams })
 
           const typing = new Map(state.typingStatus)
-          typing.set(event.room_id, `${event.agent_id} 开始第 ${event.turn} 轮...`)
+          typing.set(typingKey(event.room_id, event.agent_id), `${event.agent_id} 开始第 ${event.turn} 轮...`)
           set({ typingStatus: typing })
           break
         }
@@ -743,54 +886,68 @@ export function createMessagesStore(config: MessagesStoreConfig) {
         case 'agent_thinking': {
           const loops = new Map(state.agentLoops)
           const loopKey = `${event.room_id}:${event.agent_id}`
-          const loop = loops.get(loopKey)
-          if (loop) {
-            const updated = { ...loop }
-            const turn = updated.turns[updated.turns.length - 1]
-            if (turn) {
-              turn.thinking = (turn.thinking || '') + (event.content || '')
-              updated.turns = [...updated.turns.slice(0, -1), { ...turn }]
-            }
-            loops.set(loopKey, updated)
-            set({ agentLoops: loops })
+          const turnNumber = eventTurnNumber(event, loops.get(loopKey))
+          let updated = ensureLoopTurn(loops.get(loopKey), event.room_id, event.agent_id, turnNumber)
+          updated = updateLoopTurn(updated, turnNumber, (turn) => ({
+            ...turn,
+            thinking: (turn.thinking || '') + (event.content || ''),
+          }))
+          loops.set(loopKey, updated)
+          set({ agentLoops: loops })
 
-            // Sync to stream
-            const streams = new Map(state.streams)
-            const streamKey = `${event.room_id}:${event.agent_id}`
-            const stream = streams.get(streamKey)
-            if (stream) {
-              streams.set(streamKey, { ...stream, agentLoop: updated })
-              set({ streams })
-            }
+          // Sync to stream
+          const streams = new Map(state.streams)
+          const streamKey = `${event.room_id}:${event.agent_id}`
+          const stream = streams.get(streamKey)
+          if (stream) {
+            streams.set(streamKey, { ...stream, agentLoop: updated })
+            set({ streams })
           }
+          break
+        }
+
+        case 'agent_turn_start': {
+          const loops = new Map(state.agentLoops)
+          const loopKey = `${event.room_id}:${event.agent_id}`
+          const loop = ensureLoopTurn(loops.get(loopKey), event.room_id, event.agent_id, event.turn)
+          loops.set(loopKey, loop)
+          set({ agentLoops: loops })
+
+          const streams = new Map(state.streams)
+          const stream = streams.get(loopKey)
+          streams.set(loopKey, {
+            agentId: event.agent_id,
+            content: stream?.content || '',
+            thinking: stream?.thinking || '',
+            toolCall: stream?.toolCall,
+            agentLoop: loop,
+          })
+          set({ streams })
           break
         }
 
         case 'agent_progress': {
           const loops = new Map(state.agentLoops)
           const loopKey = `${event.room_id}:${event.agent_id}`
-          const loop = loops.get(loopKey)
-          if (loop) {
-            const updated = { ...loop }
-            const turn = updated.turns[updated.turns.length - 1]
-            if (turn) {
-              turn.progress = event.summary
-              updated.turns = [...updated.turns.slice(0, -1), { ...turn }]
-            }
-            loops.set(loopKey, updated)
-            set({ agentLoops: loops })
+          const turnNumber = eventTurnNumber(event, loops.get(loopKey))
+          let updated = ensureLoopTurn(loops.get(loopKey), event.room_id, event.agent_id, turnNumber)
+          updated = updateLoopTurn(updated, turnNumber, (turn) => ({
+            ...turn,
+            progress: event.summary,
+          }))
+          loops.set(loopKey, updated)
+          set({ agentLoops: loops })
 
-            const streams = new Map(state.streams)
-            const streamKey = `${event.room_id}:${event.agent_id}`
-            const stream = streams.get(streamKey)
-            if (stream) {
-              streams.set(streamKey, { ...stream, agentLoop: updated })
-              set({ streams })
-            }
+          const streams = new Map(state.streams)
+          const streamKey = `${event.room_id}:${event.agent_id}`
+          const stream = streams.get(streamKey)
+          if (stream) {
+            streams.set(streamKey, { ...stream, agentLoop: updated })
+            set({ streams })
           }
 
           const typing = new Map(state.typingStatus)
-          typing.set(event.room_id, event.summary)
+          typing.set(typingKey(event.room_id, event.agent_id), event.summary)
           set({ typingStatus: typing })
           break
         }
@@ -798,28 +955,23 @@ export function createMessagesStore(config: MessagesStoreConfig) {
         case 'agent_waiting_user': {
           const loopKey = `${event.room_id}:${event.agent_id}`
           const loops = new Map(state.agentLoops)
-          const loop = loops.get(loopKey)
-          if (loop) {
-            const turns = loop.turns.map((turn, index) => (
-              index === loop.turns.length - 1
-                ? {
-                    ...turn,
-                    status: 'completed' as const,
-                    progress: event.summary || turn.progress || 'Agent 正在等待用户补充信息。',
-                    completedAt: Date.now(),
-                  }
-                : turn
-            ))
-            loops.set(loopKey, { ...loop, turns, status: 'waiting_for_user' as const, completedAt: Date.now() })
-            set({ agentLoops: loops })
-          }
+          const turnNumber = eventTurnNumber(event, loops.get(loopKey))
+          let updated = ensureLoopTurn(loops.get(loopKey), event.room_id, event.agent_id, turnNumber)
+          updated = updateLoopTurn(updated, turnNumber, (turn) => ({
+            ...turn,
+            status: 'completed',
+            progress: event.summary || turn.progress || 'Agent 正在等待用户补充信息。',
+            completedAt: Date.now(),
+          }))
+          loops.set(loopKey, { ...updated, status: 'waiting_for_user' as const, completedAt: Date.now() })
+          set({ agentLoops: loops })
 
           const streams = new Map(state.streams)
           streams.delete(loopKey)
           set({ streams })
 
           const typing = new Map(state.typingStatus)
-          typing.delete(event.room_id)
+          clearTypingForRoom(typing, event.room_id, event.agent_id)
           set({ typingStatus: typing })
           break
         }
@@ -832,30 +984,24 @@ export function createMessagesStore(config: MessagesStoreConfig) {
           set({ streams })
 
           const loops = new Map(state.agentLoops)
-          const loop = loops.get(loopKey)
-          if (loop) {
-            const turns = loop.turns.map((turn, index) => (
-              index === loop.turns.length - 1
-                ? {
-                    ...turn,
-                    status: 'completed' as const,
-                    progress: event.summary || turn.progress || '用户未在限定时间内回答，Agent 已停止等待。',
-                    completedAt: Date.now(),
-                  }
-                : turn
-            ))
-            loops.set(loopKey, {
-              ...loop,
-              turns,
-              status: 'waiting_expired' as const,
-              error: event.summary || '等待用户回答已超时。',
-              completedAt: Date.now(),
-            })
-            set({ agentLoops: loops })
-          }
+          const turnNumber = eventTurnNumber(event, loops.get(loopKey))
+          let updated = ensureLoopTurn(loops.get(loopKey), event.room_id, event.agent_id, turnNumber)
+          updated = updateLoopTurn(updated, turnNumber, (turn) => ({
+            ...turn,
+            status: 'completed',
+            progress: event.summary || turn.progress || '用户未在限定时间内回答，Agent 已停止等待。',
+            completedAt: Date.now(),
+          }))
+          loops.set(loopKey, {
+            ...updated,
+            status: 'waiting_expired' as const,
+            error: event.summary || '等待用户回答已超时。',
+            completedAt: Date.now(),
+          })
+          set({ agentLoops: loops })
 
           const typing = new Map(state.typingStatus)
-          typing.delete(event.room_id)
+          clearTypingForRoom(typing, event.room_id, event.agent_id)
           set({ typingStatus: typing })
           break
         }
@@ -863,22 +1009,22 @@ export function createMessagesStore(config: MessagesStoreConfig) {
         case 'agent_done': {
           const loops = new Map(state.agentLoops)
           const loopKey = `${event.room_id}:${event.agent_id}`
-          const loop = loops.get(loopKey)
-          if (loop) {
-            const updated = { ...loop }
-            const turn = updated.turns[updated.turns.length - 1]
-            if (turn) {
-              turn.status = 'completed'
-              turn.content = event.content
-              turn.completedAt = Date.now()
-              updated.turns = [...updated.turns.slice(0, -1), { ...turn }]
-            }
-            updated.status = 'completed'
-            updated.finalContent = event.content
-            updated.completedAt = Date.now()
-            loops.set(loopKey, updated)
-            set({ agentLoops: loops })
+          const turnNumber = eventTurnNumber(event, loops.get(loopKey))
+          let updated = ensureLoopTurn(loops.get(loopKey), event.room_id, event.agent_id, turnNumber)
+          updated = updateLoopTurn(updated, turnNumber, (turn) => ({
+            ...turn,
+            status: 'completed',
+            content: event.content,
+            completedAt: Date.now(),
+          }))
+          updated = {
+            ...updated,
+            status: 'completed',
+            finalContent: event.content,
+            completedAt: Date.now(),
           }
+          loops.set(loopKey, updated)
+          set({ agentLoops: loops })
 
           // Clean up stream's agentLoop reference
           const streams = new Map(state.streams)
@@ -887,7 +1033,7 @@ export function createMessagesStore(config: MessagesStoreConfig) {
           set({ streams })
 
           const typing = new Map(state.typingStatus)
-          typing.delete(event.room_id)
+          clearTypingForRoom(typing, event.room_id, event.agent_id)
           set({ typingStatus: typing })
           break
         }
@@ -895,19 +1041,22 @@ export function createMessagesStore(config: MessagesStoreConfig) {
         case 'max_turns_reached': {
           const loops = new Map(state.agentLoops)
           const loopKey = `${event.room_id}:${event.agent_id}`
-          const loop = loops.get(loopKey)
-          if (loop) {
-            const updated = { ...loop, status: 'max_turns_reached' as const, completedAt: Date.now() }
-            loops.set(loopKey, updated)
-            set({ agentLoops: loops })
-          }
+          const turnNumber = eventTurnNumber(event, loops.get(loopKey))
+          let updated = ensureLoopTurn(loops.get(loopKey), event.room_id, event.agent_id, turnNumber)
+          updated = updateLoopTurn(updated, turnNumber, (turn) => ({
+            ...turn,
+            status: 'completed',
+            completedAt: Date.now(),
+          }))
+          loops.set(loopKey, { ...updated, status: 'max_turns_reached' as const, completedAt: Date.now() })
+          set({ agentLoops: loops })
 
           const streams = new Map(state.streams)
           streams.delete(`${event.room_id}:${event.agent_id}`)
           set({ streams })
 
           const typing = new Map(state.typingStatus)
-          typing.delete(event.room_id)
+          clearTypingForRoom(typing, event.room_id, event.agent_id)
           set({ typingStatus: typing })
           break
         }
@@ -922,8 +1071,9 @@ export function createMessagesStore(config: MessagesStoreConfig) {
           const loops = new Map(state.agentLoops)
           const loop = loops.get(loopKey)
           if (loop) {
-            const turns = loop.turns.map((turn, index) => (
-              index === loop.turns.length - 1 && turn.status === 'active'
+            const turnNumber = eventTurnNumber(event, loop)
+            const turns = loop.turns.map((turn) => (
+              turn.turnNumber === turnNumber && turn.status === 'active'
                 ? { ...turn, status: 'completed' as const, progress: event.summary || turn.progress || '任务已停止。', completedAt: Date.now() }
                 : turn
             ))
@@ -932,7 +1082,7 @@ export function createMessagesStore(config: MessagesStoreConfig) {
           }
 
           const typing = new Map(state.typingStatus)
-          typing.delete(event.room_id)
+          clearTypingForRoom(typing, event.room_id, event.agent_id)
           set({ typingStatus: typing })
           break
         }
@@ -940,7 +1090,7 @@ export function createMessagesStore(config: MessagesStoreConfig) {
         case 'error': {
           if (event.room_id) {
             const typing = new Map(state.typingStatus)
-            typing.delete(event.room_id)
+            clearTypingForRoom(typing, event.room_id, event.agent_id)
             set({ typingStatus: typing })
 
             if (event.agent_id) {
@@ -948,7 +1098,13 @@ export function createMessagesStore(config: MessagesStoreConfig) {
               const loops = new Map(state.agentLoops)
               const loop = loops.get(loopKey)
               if (loop && loop.status === 'running') {
-                loops.set(loopKey, { ...loop, status: 'error', error: event.error, completedAt: Date.now() })
+                const turnNumber = eventTurnNumber(event, loop)
+                const turns = loop.turns.map((turn) => (
+                  turn.turnNumber === turnNumber
+                    ? { ...turn, status: 'completed' as const, completedAt: Date.now() }
+                    : turn
+                ))
+                loops.set(loopKey, { ...loop, turns, status: 'error', error: event.error, completedAt: Date.now() })
                 set({ agentLoops: loops })
               }
 
@@ -987,23 +1143,51 @@ export function createMessagesStore(config: MessagesStoreConfig) {
 
     getMessages: (roomId) => get().messages.get(roomId) || [],
 
+    getStreams: (roomId) => {
+      const streams = [...get().streams.entries()]
+        .filter(([key]) => key.startsWith(`${roomId}:`))
+        .map(([, stream]) => stream)
+      streams.sort((a, b) => streamActivityAt(a) - streamActivityAt(b))
+      return streams
+    },
+
     getStream: (roomId) => {
-      for (const [key, stream] of get().streams) {
-        if (key.startsWith(`${roomId}:`)) return stream
-      }
-      return undefined
+      const streams = get().getStreams(roomId)
+      return streams[streams.length - 1]
+    },
+
+    getAgentLoops: (roomId) => {
+      const loops = [...get().agentLoops.entries()]
+        .filter(([key]) => key.startsWith(`${roomId}:`))
+        .map(([, loop]) => loop)
+      loops.sort((a, b) => {
+        return agentLoopActivityAt(b) - agentLoopActivityAt(a)
+      })
+      return loops
     },
 
     getAgentLoop: (roomId) => {
-      for (const [key, loop] of get().agentLoops) {
-        if (key.startsWith(`${roomId}:`)) return loop
-      }
-      return undefined
+      const loops = get().getAgentLoops(roomId)
+      loops.sort((a, b) => {
+        const aRunning = a.status === 'running' || a.status === 'waiting_for_user'
+        const bRunning = b.status === 'running' || b.status === 'waiting_for_user'
+        if (aRunning !== bRunning) return aRunning ? -1 : 1
+        return agentLoopActivityAt(b) - agentLoopActivityAt(a)
+      })
+      return loops[0]
     },
 
     getMembers: (roomId) => get().members.get(roomId) || [],
 
-    getTyping: (roomId) => get().typingStatus.get(roomId) || '',
+    getTypings: (roomId) => {
+      const direct = get().typingStatus.get(roomId)
+      const values = [...get().typingStatus.entries()]
+        .filter(([key]) => key.startsWith(`${roomId}:`))
+        .map(([, value]) => value)
+      return direct ? [direct, ...values] : values
+    },
+
+    getTyping: (roomId) => get().getTypings(roomId)[0] || '',
 
     reset: () => set({
       messages: new Map(),

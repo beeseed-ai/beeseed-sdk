@@ -1,7 +1,8 @@
 import { FileText } from 'lucide-react'
 import { cn } from './cn.js'
 
-export const STORAGE_REF_RE = /storage:\/\/[^\s)\]}>]+/g
+export const STORAGE_REF_RE = /storage:\/\/[^\s)\]}>，。；：！？,;:!?]+/g
+const GENERATED_PREFIX_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}-(.+)$/i
 
 export function storageRefFromKey(key: string) {
   return `storage://${encodeURI(key.replace(/^\/+/, ''))}`
@@ -18,7 +19,30 @@ export function keyFromStorageRef(ref: string) {
 
 export function fileNameFromStorageRef(ref: string) {
   const key = keyFromStorageRef(ref)
-  return key.split('/').filter(Boolean).pop() || '云存储文件'
+  const base = key.split('/').filter(Boolean).pop() || '云存储文件'
+  return base.match(GENERATED_PREFIX_RE)?.[1] || base
+}
+
+export function storageRefsFromText(text: string) {
+  const refs: string[] = []
+  STORAGE_REF_RE.lastIndex = 0
+  let match: RegExpExecArray | null
+  while ((match = STORAGE_REF_RE.exec(text)) !== null) {
+    refs.push(match[0])
+  }
+  return refs
+}
+
+export function stripStorageReferenceBlock(text: string) {
+  const lines = text.split('\n')
+  const out: string[] = []
+  for (const line of lines) {
+    const trimmed = line.trim()
+    if (/^引用文件[:：]?$/.test(trimmed)) continue
+    if (/^-?\s*storage:\/\//.test(trimmed)) continue
+    out.push(line)
+  }
+  return out.join('\n').replace(/\n{3,}/g, '\n\n').trim()
 }
 
 interface StorageRefChipProps {

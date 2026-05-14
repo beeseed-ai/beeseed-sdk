@@ -69,12 +69,25 @@ export function useChat(roomId: string | null) {
     [roomId, ws],
   )
 
+  const streams = roomId ? state.getStreams(roomId) : []
+  const agentLoops = roomId ? state.getAgentLoops(roomId) : []
+  const typings = roomId ? state.getTypings(roomId) : []
+  const stream = streams[streams.length - 1]
+  const agentLoop = roomId
+    ? stream?.agentLoop
+      ?? (stream?.agentId ? state.agentLoops.get(`${roomId}:${stream.agentId}`) : undefined)
+      ?? state.getAgentLoop(roomId)
+    : undefined
+
   return {
     messages: roomId ? state.getMessages(roomId) : [],
-    stream: roomId ? state.getStream(roomId) : undefined,
-    agentLoop: roomId ? state.getAgentLoop(roomId) : undefined,
+    stream,
+    streams,
+    agentLoop,
+    agentLoops,
     members: roomId ? state.getMembers(roomId) : ([] as RoomMemberInfo[]),
     typing: roomId ? state.getTyping(roomId) : '',
+    typings,
     loading: state.loadingRoom === roomId,
     send,
     sendWithQuote,

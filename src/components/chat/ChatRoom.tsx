@@ -17,7 +17,7 @@ interface Props {
 
 export function ChatRoom({ roomId, className, header }: Props) {
   const { user } = useAuth()
-  const { messages, stream, agentLoop, members, typing, send, sendWithQuote, submitAnswer, stopAgent, loading } = useChat(roomId)
+  const { messages, streams, agentLoops, members, typings, send, sendWithQuote, submitAnswer, stopAgent, loading } = useChat(roomId)
   const { composerInsertText, consumeComposerInsert } = useDetailPanel()
   const [quotedMessage, setQuotedMessage] = useState<ChatMessage | null>(null)
 
@@ -40,11 +40,12 @@ export function ChatRoom({ roomId, className, header }: Props) {
         </div>
       ) : (
         <MessageList
+          roomId={roomId}
           messages={messages}
-          stream={stream}
-          agentLoop={agentLoop}
+          streams={streams}
+          agentLoops={agentLoops}
           members={members}
-          typing={typing}
+          typings={typings}
           onQuote={setQuotedMessage}
           currentUserId={user?.id}
           onSubmitAnswer={submitAnswer}
@@ -55,6 +56,7 @@ export function ChatRoom({ roomId, className, header }: Props) {
       {/* Input area — centered at max-width */}
       <div className="shrink-0 mx-auto w-full" style={{ maxWidth: CHAT_MAX_WIDTH }}>
         <MessageInput
+          roomId={roomId}
           onSend={handleSend}
           members={members}
           quotedMessage={quotedMessage}

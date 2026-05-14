@@ -21,11 +21,15 @@ function groupMessages(messages: ChatMessage[]): GroupedItem[] {
 }
 
 interface Props {
+  roomId: string
   messages: ChatMessage[]
   stream?: StreamState
+  streams?: StreamState[]
   agentLoop?: AgentLoopState
+  agentLoops?: AgentLoopState[]
   members?: RoomMemberInfo[]
   typing?: string
+  typings?: string[]
   onQuote?: (message: ChatMessage) => void
   onMentionClick?: (name: string) => void
   currentUserId?: string
@@ -36,6 +40,8 @@ interface Props {
 
 function findAgentLoopAnchorMsgId(messages: ChatMessage[], loop?: AgentLoopState): number | undefined {
   if (!loop || loop.status !== 'completed') return undefined
+  const startedAt = loop.startedAt - 1000
+  const completedAt = (loop.completedAt ?? Number.MAX_SAFE_INTEGER) + 10_000
   for (let i = messages.length - 1; i >= 0; i--) {
     const message = messages[i]
     if (!message?.msgId || message.role !== 'assistant') continue
@@ -43,7 +49,29 @@ function findAgentLoopAnchorMsgId(messages: ChatMessage[], loop?: AgentLoopState
     if (loop.finalContent && message.content !== loop.finalContent) continue
     return message.msgId
   }
+  for (let i = messages.length - 1; i >= 0; i--) {
+    const message = messages[i]
+    if (!message?.msgId || message.role !== 'assistant') continue
+    if (message.senderId !== loop.agentId) continue
+    if (message.timestamp < startedAt || message.timestamp > completedAt) continue
+    return message.msgId
+  }
   return undefined
+}
+
+function agentLoopActivityAt(loop: AgentLoopState): number {
+  let latest = loop.completedAt ?? loop.startedAt ?? 0
+  for (const turn of loop.turns) {
+    latest = Math.max(latest, turn.completedAt ?? turn.startedAt ?? 0)
+    for (const tool of turn.toolCalls) {
+      latest = Math.max(latest, tool.completedAt ?? tool.startedAt ?? 0)
+    }
+  }
+  return latest
+}
+
+function agentLoopKey(loop: AgentLoopState): string {
+  return `${loop.agentId}:${loop.startedAt}`
 }
 
 function agentDisplayName(members: RoomMemberInfo[] | undefined, agentId: string) {
@@ -64,11 +92,58 @@ function AgentLoopBlock({ loop, members }: { loop: AgentLoopState; members?: Roo
   )
 }
 
-export function MessageList({ messages, stream, agentLoop, members, typing, onQuote, onMentionClick, currentUserId, onSubmitAnswer, onStopAgent }: Props) {
+export function MessageList({
+  roomId,
+  messages,
+  stream,
+  streams,
+  agentLoop,
+  agentLoops,
+  members,
+  typing,
+  typings,
+  onQuote,
+  onMentionClick,
+  currentUserId,
+  onSubmitAnswer,
+  onStopAgent,
+}: Props) {
   const containerRef = useRef<HTMLDivElement>(null)
   const shouldAutoScroll = useRef(true)
   const grouped = useMemo(() => groupMessages(messages), [messages])
-  const loopAnchorMsgId = useMemo(() => findAgentLoopAnchorMsgId(messages, agentLoop), [messages, agentLoop])
+  const visibleStreams = useMemo(() => streams ?? (stream ? [stream] : []), [stream, streams])
+  const visibleLoops = useMemo(() => agentLoops ?? (agentLoop ? [agentLoop] : []), [agentLoop, agentLoops])
+  const visibleTypings = useMemo(() => typings ?? (typing ? [typing] : []), [typing, typings])
+  const loopAnchors = useMemo(() => {
+    const anchors = new Map<number, AgentLoopState[]>()
+    for (const loop of visibleLoops) {
+      const msgId = findAgentLoopAnchorMsgId(messages, loop)
+      if (!msgId) continue
+      anchors.set(msgId, [...(anchors.get(msgId) ?? []), loop])
+    }
+    for (const [msgId, loops] of anchors) {
+      loops.sort((a, b) => agentLoopActivityAt(a) - agentLoopActivityAt(b))
+      anchors.set(msgId, loops)
+    }
+    return anchors
+  }, [messages, visibleLoops])
+  const anchoredLoopIds = useMemo(() => {
+    const ids = new Set<string>()
+    for (const loops of loopAnchors.values()) {
+      for (const loop of loops) {
+        ids.add(agentLoopKey(loop))
+      }
+    }
+    return ids
+  }, [loopAnchors])
+  const streamAgentIds = useMemo(() => new Set(visibleStreams.map((s) => s.agentId)), [visibleStreams])
+  const standaloneLoops = useMemo(() => (
+    visibleLoops
+      .filter((loop) => !anchoredLoopIds.has(agentLoopKey(loop)))
+      .filter((loop) => !streamAgentIds.has(loop.agentId))
+      .filter((loop) => loop.status !== 'completed' || !loop.finalContent)
+      .sort((a, b) => agentLoopActivityAt(a) - agentLoopActivityAt(b))
+  ), [anchoredLoopIds, streamAgentIds, visibleLoops])
 
   const scrollToBottom = useCallback(() => {
     const el = containerRef.current
@@ -77,7 +152,7 @@ export function MessageList({ messages, stream, agentLoop, members, typing, onQu
 
   useEffect(() => {
     if (shouldAutoScroll.current) { scrollToBottom(); requestAnimationFrame(scrollToBottom) }
-  }, [messages.length, stream?.content, typing, scrollToBottom])
+  }, [messages.length, visibleStreams.map((s) => s.content).join(''), visibleTypings.join('|'), scrollToBottom])
 
   const handleScroll = useCallback(() => {
     const el = containerRef.current
@@ -109,12 +184,13 @@ export function MessageList({ messages, stream, agentLoop, members, typing, onQu
               }
               return (
                 <div key={item.msgId ?? `m-${i}`}>
-                  {agentLoop && item.msgId === loopAnchorMsgId && (
-                    <AgentLoopBlock loop={agentLoop} members={members} />
-                  )}
+                  {item.msgId && loopAnchors.get(item.msgId)?.map((loop) => (
+                    <AgentLoopBlock key={`loop-${loop.agentId}-${loop.startedAt}`} loop={loop} members={members} />
+                  ))}
                   <MessageBubble
                     message={item}
                     isOwn={item.role === 'user'}
+                    roomId={roomId}
                     currentUserId={currentUserId}
                     onQuote={onQuote}
                     onMentionClick={onMentionClick}
@@ -127,35 +203,38 @@ export function MessageList({ messages, stream, agentLoop, members, typing, onQu
           </div>
         )}
 
-        {/* Completed Agent Loop */}
-        {agentLoop && agentLoop.status !== 'running' && !stream && !loopAnchorMsgId && (
-          <AgentLoopBlock loop={agentLoop} members={members} />
-        )}
+        {standaloneLoops.map((loop) => (
+          <AgentLoopBlock key={`standalone-loop-${loop.agentId}-${loop.startedAt}`} loop={loop} members={members} />
+        ))}
 
         {/* Streaming */}
-        {stream && (
-          <div className="px-4 pb-3 mx-auto" style={{ maxWidth: CHAT_MAX_WIDTH }}>
-            <StreamRenderer
-              stream={stream}
-              agentLoop={agentLoop}
-              agentAvatarUrl={members?.find(m => m.agent_id === stream.agentId)?.avatar_url}
-              agentDisplayName={members?.find(m => m.agent_id === stream.agentId)?.display_name}
-              onStop={onStopAgent}
-            />
-          </div>
-        )}
+        {visibleStreams.map((activeStream) => {
+          const activeLoop = visibleLoops.find((loop) => loop.agentId === activeStream.agentId) ?? activeStream.agentLoop
+          const agent = members?.find(m => m.agent_id === activeStream.agentId)
+          return (
+            <div key={`stream-${activeStream.agentId}`} className="px-4 pb-3 mx-auto" style={{ maxWidth: CHAT_MAX_WIDTH }}>
+              <StreamRenderer
+                stream={activeStream}
+                agentLoop={activeLoop}
+                agentAvatarUrl={agent?.avatar_url}
+                agentDisplayName={agent?.display_name}
+                onStop={onStopAgent}
+              />
+            </div>
+          )
+        })}
 
         {/* Typing indicator */}
-        {typing && !stream?.content && (
-          <div className="flex items-center gap-2 px-16 py-2 text-[#999] text-xs mx-auto" style={{ maxWidth: CHAT_MAX_WIDTH }}>
+        {visibleTypings.length > 0 && visibleStreams.length === 0 && visibleTypings.map((text, i) => (
+          <div key={`typing-${i}-${text}`} className="flex items-center gap-2 px-16 py-2 text-[#999] text-xs mx-auto" style={{ maxWidth: CHAT_MAX_WIDTH }}>
             <span className="inline-flex gap-1">
               <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-[#999] [animation-delay:0ms]" />
               <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-[#999] [animation-delay:150ms]" />
               <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-[#999] [animation-delay:300ms]" />
             </span>
-            <span>{typing}</span>
+            <span>{text}</span>
           </div>
-        )}
+        ))}
       </div>
     </div>
   )
