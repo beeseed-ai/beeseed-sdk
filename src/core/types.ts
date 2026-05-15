@@ -347,17 +347,45 @@ export interface TaskComment {
 
 // ── Knowledge Base ──
 
+export interface KnowledgeBase {
+  id: string
+  scope_type: 'platform' | 'organization' | 'app' | 'channel'
+  organization_id?: string
+  app_id?: string
+  channel_id?: string
+  name: string
+  display_name: string
+  description?: string
+  icon?: string
+  category?: string
+  version?: string
+  tags: string[]
+  source_count: number
+  chunk_count: number
+  is_active: boolean
+  created_at: string
+  updated_at: string
+}
+
 export interface KnowledgeSource {
   id: number
+  organization_id?: string
+  knowledge_base_id?: string
+  channel_id?: string
   title: string
-  source_type: 'file_upload' | 'chat_distillation'
+  source_type: string
+  origin_type?: string
+  origin_ref?: string
   file_key?: string
   file_size: number
   mime_type?: string
-  status: 'pending' | 'processing' | 'ready' | 'error'
+  status: 'pending' | 'processing' | 'ready' | 'error' | 'failed'
   error_message?: string
   summary?: string
   chunk_count: number
+  processing_stage?: string
+  processing_progress?: number
+  processing_message?: string
   tags: string[]
   created_by?: string
   created_at: string

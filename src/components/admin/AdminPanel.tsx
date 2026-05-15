@@ -1,19 +1,21 @@
 import { useEffect, useState } from 'react'
-import { Bot, Users, MessageSquare, Settings } from 'lucide-react'
+import { BookOpen, Bot, Users, MessageSquare, Settings } from 'lucide-react'
 import type { AppBrandingConfig, AppRuntimeConfig } from '../../core/types.js'
 import { applyDocumentBranding, resolveAppBranding } from '../../core/app-config.js'
 import { cn } from '../../lib/cn.js'
 import { AgentManageTab } from './AgentManageTab.js'
 import { UserManageTab } from './UserManageTab.js'
+import { KnowledgeManageTab } from './KnowledgeManageTab.js'
 import { useBeeSeedContext } from '../../provider/BeeSeedProvider.js'
 import { useAppConfig } from '../../hooks/use-app-config.js'
 import { Button } from '../ui/button.js'
 import { Input } from '../ui/input.js'
 
 const tabs = [
-  { id: 'agents', label: 'Agent 模板', icon: Bot },
+  { id: 'agents', label: 'Agent 管理', icon: Bot },
   { id: 'users', label: '用户管理', icon: Users },
   { id: 'channels', label: '频道管理', icon: MessageSquare },
+  { id: 'knowledge', label: '知识库', icon: BookOpen },
   { id: 'settings', label: '设置', icon: Settings },
 ] as const
 
@@ -50,6 +52,7 @@ export function AdminPanel() {
         {activeTab === 'agents' && <AgentManageTab />}
         {activeTab === 'users' && <UserManageTab />}
         {activeTab === 'channels' && <Placeholder label="频道管理" />}
+        {activeTab === 'knowledge' && <KnowledgeManageTab />}
         {activeTab === 'settings' && <AppSettingsPanel />}
       </div>
     </div>
@@ -133,6 +136,7 @@ function BrandSettings() {
     setBranding(updated.branding ?? {})
     updateAppConfig(updated)
     applyDocumentBranding(resolveAppBranding(updated))
+    window.dispatchEvent(new CustomEvent('beeseed:app-config-updated', { detail: updated }))
     setSaved(true)
     window.setTimeout(() => setSaved(false), 1800)
     return updated
@@ -249,7 +253,7 @@ function BrandSettings() {
       <div className="rounded-md border border-border bg-[#fafaf8] p-3">
         <div className="mb-3 flex items-center gap-2">
           {preview.logo ? (
-            <img src={preview.logo} alt={preview.title} className="h-7 w-auto max-w-[160px] rounded-md object-contain" />
+            <img src={preview.logo} alt={preview.title} className="h-10 w-auto max-w-[180px] rounded-md object-contain" />
           ) : (
             <div className="flex size-7 items-center justify-center rounded-md bg-[#181d26] text-xs font-medium text-white">
               {Array.from(preview.title)[0] || 'B'}

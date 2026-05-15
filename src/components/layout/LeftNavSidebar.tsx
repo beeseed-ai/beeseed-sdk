@@ -50,7 +50,7 @@ export function LeftNavSidebar({ activeFeature, onFeatureChange, channels, curre
             <img
               src={branding.logo}
               alt={branding.title}
-              className="h-7 w-auto max-w-[152px] shrink-0 rounded-md object-contain"
+              className="h-10 w-auto max-w-[176px] shrink-0 rounded-md object-contain"
               onError={() => setLogoFailed(true)}
             />
           ) : (

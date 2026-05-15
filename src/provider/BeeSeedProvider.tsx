@@ -158,6 +158,14 @@ export function BeeSeedProvider({ config, children }: Props) {
     return () => current.ws.disconnect()
   }, [])
 
+  useEffect(() => {
+    if (!config.appConfig) return
+    setCtx((current) => ({
+      ...current,
+      config: { ...current.config, appConfig: config.appConfig },
+    }))
+  }, [config.appConfig])
+
   return (
     <BeeSeedContext.Provider value={ctx}>
       {children}

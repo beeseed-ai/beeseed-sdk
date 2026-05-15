@@ -2,34 +2,62 @@ import { useState, useEffect, useCallback } from 'react'
 import { Bot, Save } from 'lucide-react'
 import { cn } from '../../lib/cn.js'
 import { useBeeSeedContext } from '../../provider/BeeSeedProvider.js'
+import type { ChannelMemberInfo, ChannelWithMeta } from '../../core/types.js'
 
-interface AgentTemplateInfo { id: string; name: string; role: string; model: string; provider: string; avatar_url?: string }
+interface AgentInstanceInfo {
+  id: string
+  channelId: string
+  channelName: string
+  name: string
+  model: string
+  provider: string
+  avatar_url?: string
+}
 interface IdentityData { name: string; personality: string; content: string }
 interface AgentConfig {
+  role?: string
   provider: string
   model: string
   temperature: number
   thinking: boolean
   tools: string[]
   avatar_preset: string
+  [key: string]: unknown
 }
 
-const ALL_TOOLS = [
+const FALLBACK_TOOLS = [
   'http_request',
+  'ask_user',
+  'knowledge_search',
   'storage_list',
+  'storage_info',
   'storage_read',
   'storage_write',
   'storage_delete',
   'storage_presign_download',
 ]
-const ALL_TOOL_NAMES = new Set(ALL_TOOLS)
-const sanitizeTools = (tools: string[] = []) => tools.filter((tool) => ALL_TOOL_NAMES.has(tool))
+
+function agentKey(channelId: string, agentId: string) {
+  return `${channelId}:${agentId}`
+}
+
+function splitAgentKey(key: string | null) {
+  if (!key) return null
+  const [channelId, ...agentParts] = key.split(':')
+  const agentId = agentParts.join(':')
+  if (!channelId || !agentId) return null
+  return { channelId, agentId }
+}
+
+function uniqueTools(...groups: Array<string[] | undefined>) {
+  return Array.from(new Set(groups.flatMap((group) => group ?? []).filter(Boolean)))
+}
 
 export function AgentManageTab() {
   const { api } = useBeeSeedContext()
-  const [templates, setTemplates] = useState<AgentTemplateInfo[]>([])
+  const [agents, setAgents] = useState<AgentInstanceInfo[]>([])
   const [loading, setLoading] = useState(true)
-  const [selectedId, setSelectedId] = useState<string | null>(null)
+  const [selectedKey, setSelectedKey] = useState<string | null>(null)
   const [identity, setIdentity] = useState<IdentityData | null>(null)
   const [agentConfig, setAgentConfig] = useState<AgentConfig | null>(null)
   const [models, setModels] = useState<{ id: string; label: string; provider: string }[]>([])
@@ -37,57 +65,101 @@ export function AgentManageTab() {
   const [saving, setSaving] = useState(false)
   const [dirty, setDirty] = useState(false)
   const [presets, setPresets] = useState<string[]>([])
+  const [tools, setTools] = useState<string[]>(FALLBACK_TOOLS)
 
-  useEffect(() => {
-    api.get('admin/agent-templates').json<AgentTemplateInfo[]>().then((data) => { setTemplates(data ?? []); setLoading(false) }).catch(() => setLoading(false))
-    api.get('models').json<{ id: string; label: string; provider: string }[]>().then((d) => setModels(d ?? [])).catch(() => {})
-    api.get('providers').json<{ id: string; label: string }[]>().then((d) => setProviders(d ?? [])).catch(() => {})
-    api.get('agents/presets').json<string[]>().then((d) => setPresets(d ?? [])).catch(() => {})
+  const loadAgents = useCallback(async () => {
+    setLoading(true)
+    try {
+      const channels = await api.get('channels').json<ChannelWithMeta[]>()
+      const instances = await Promise.all((channels ?? []).map(async (channel) => {
+        const members = await api.get(`channels/${channel.id}/members`).json<ChannelMemberInfo[]>().catch(() => [])
+        return members
+          .filter((member) => member.member_type === 'agent' && member.agent_id)
+          .map((member) => ({
+            id: member.agent_id as string,
+            channelId: channel.id,
+            channelName: channel.name || '未命名频道',
+            name: member.display_name || member.nickname || member.agent_id || 'Agent',
+            model: '',
+            provider: '',
+            avatar_url: member.avatar_url,
+          }))
+      }))
+      const flat = instances.flat()
+      const enriched = await Promise.all(flat.map(async (agent) => {
+        const basePath = `channels/${agent.channelId}/agents/${agent.id}`
+        const [id, cfg] = await Promise.all([
+          api.get(`${basePath}/identity`).json<IdentityData>().catch(() => null),
+          api.get(`${basePath}/config`).json<AgentConfig>().catch(() => null),
+        ])
+        return {
+          ...agent,
+          name: id?.name || agent.name,
+          model: cfg?.model || agent.model,
+          provider: cfg?.provider || agent.provider,
+        }
+      }))
+      setAgents(enriched)
+      setLoading(false)
+    } catch {
+      setAgents([])
+      setLoading(false)
+    }
   }, [api])
 
   useEffect(() => {
-    if (templates.length > 0 && (!selectedId || !templates.some((template) => template.id === selectedId))) {
-      setSelectedId(templates[0].id)
+    void loadAgents()
+    api.get('models').json<{ id: string; label: string; provider: string }[]>().then((d) => setModels(d ?? [])).catch(() => {})
+    api.get('providers').json<{ id: string; label: string }[]>().then((d) => setProviders(d ?? [])).catch(() => {})
+    api.get('agents/presets').json<string[]>().then((d) => setPresets(d ?? [])).catch(() => {})
+    api.get('tools').json<string[]>().then((d) => setTools(d?.length ? d : FALLBACK_TOOLS)).catch(() => {})
+  }, [api, loadAgents])
+
+  useEffect(() => {
+    if (agents.length > 0 && (!selectedKey || !agents.some((agent) => agentKey(agent.channelId, agent.id) === selectedKey))) {
+      setSelectedKey(agentKey(agents[0].channelId, agents[0].id))
       return
     }
-    if (templates.length === 0 && selectedId) {
-      setSelectedId(null)
+    if (agents.length === 0 && selectedKey) {
+      setSelectedKey(null)
     }
-  }, [selectedId, templates])
+  }, [selectedKey, agents])
 
-  const loadTemplate = useCallback(async (agentId: string) => {
+  const loadAgent = useCallback(async (key: string) => {
+    const selected = splitAgentKey(key)
+    if (!selected) return
     try {
-      const basePath = `admin/agent-templates/${agentId}`
+      const basePath = `channels/${selected.channelId}/agents/${selected.agentId}`
       const [id, cfg] = await Promise.all([
         api.get(`${basePath}/identity`).json<IdentityData>(),
         api.get(`${basePath}/config`).json<AgentConfig>(),
       ])
       setIdentity(id)
-      setAgentConfig({ ...cfg, tools: sanitizeTools(cfg.tools || []) })
+      setAgentConfig({ ...cfg, tools: cfg.tools || [] })
       setDirty(false)
     } catch {
-      setIdentity({ name: agentId, personality: '', content: '' })
+      setIdentity({ name: selected.agentId, personality: '', content: '' })
       setAgentConfig(null)
     }
   }, [api])
 
   useEffect(() => {
-    if (selectedId) void loadTemplate(selectedId)
-  }, [selectedId, loadTemplate])
+    if (selectedKey) void loadAgent(selectedKey)
+  }, [selectedKey, loadAgent])
 
   const handleSave = async () => {
-    if (!selectedId || !identity) return
+    const selected = splitAgentKey(selectedKey)
+    if (!selected || !identity) return
     setSaving(true)
     try {
-      const basePath = `admin/agent-templates/${selectedId}`
+      const basePath = `channels/${selected.channelId}/agents/${selected.agentId}`
       await api.put(`${basePath}/identity`, { json: identity })
       if (agentConfig) {
         await api.put(`${basePath}/config`, { json: agentConfig })
       }
       setDirty(false)
-      const updated = await api.get('admin/agent-templates').json<AgentTemplateInfo[]>()
-      setTemplates(updated)
-      void loadTemplate(selectedId)
+      await loadAgents()
+      void loadAgent(selectedKey as string)
     } catch (e) {
       console.error('save failed', e)
     } finally {
@@ -97,8 +169,8 @@ export function AgentManageTab() {
 
   const toggleTool = (tool: string) => {
     if (!agentConfig) return
-    const tools = sanitizeTools(agentConfig.tools || [])
-    const next = tools.includes(tool) ? tools.filter((t) => t !== tool) : [...tools, tool]
+    const current = agentConfig.tools || []
+    const next = current.includes(tool) ? current.filter((t) => t !== tool) : [...current, tool]
     setAgentConfig({ ...agentConfig, tools: next })
     setDirty(true)
   }
@@ -113,53 +185,58 @@ export function AgentManageTab() {
         <div className="mx-auto max-w-5xl space-y-6 p-8">
           <div className="flex items-center justify-between">
             <div>
-              <h1 className="text-xl font-bold text-[#1a1a1a]">Agent 模板</h1>
-              <p className="mt-1 text-sm text-muted-foreground">{templates.length} 个模板</p>
+              <h1 className="text-xl font-bold text-[#1a1a1a]">Agent 管理</h1>
+              <p className="mt-1 text-sm text-muted-foreground">{agents.length} 个频道 Agent</p>
             </div>
           </div>
 
           <div className="grid gap-6 lg:grid-cols-[280px_minmax(0,1fr)]">
             <div className="overflow-hidden rounded-xl border border-border bg-white shadow-sm">
               <div className="border-b border-border px-5 py-4">
-                <h3 className="text-sm font-semibold text-[#1a1a1a]">模板列表</h3>
+                <h3 className="text-sm font-semibold text-[#1a1a1a]">Agent 列表</h3>
               </div>
               <div className="max-h-[640px] space-y-2 overflow-y-auto p-3">
-                {templates.length === 0 ? (
+                {agents.length === 0 ? (
                   <div className="rounded-lg border border-border p-3 text-xs leading-5 text-muted-foreground">
-                    暂无 Agent 模板。模板用于决定频道 Agent 的默认能力边界。
+                    当前 App 暂无频道 Agent。创建频道或在频道中添加 Agent 后，可在这里配置其模型与身份。
                   </div>
-                ) : templates.map((template) => (
+                ) : agents.map((agent) => {
+                  const key = agentKey(agent.channelId, agent.id)
+                  return (
                   <button
-                    key={template.id}
-                    onClick={() => setSelectedId(template.id)}
+                    key={key}
+                    onClick={() => setSelectedKey(key)}
                     className={cn(
                       'flex w-full items-center gap-3 rounded-lg border p-3 text-left transition-colors',
-                      selectedId === template.id ? 'border-primary bg-primary/5' : 'border-border hover:bg-muted',
+                      selectedKey === key ? 'border-primary bg-primary/5' : 'border-border hover:bg-muted',
                     )}
                   >
                     <div className="flex h-8 w-8 shrink-0 items-center justify-center overflow-hidden rounded-full bg-[#181d26]/10">
-                      {template.avatar_url ? (
-                        <img src={template.avatar_url} alt="" className="h-8 w-8 rounded-full object-cover" />
+                      {agent.avatar_url ? (
+                        <img src={agent.avatar_url} alt="" className="h-8 w-8 rounded-full object-cover" />
                       ) : (
                         <Bot className="h-4 w-4 text-[#181d26]" />
                       )}
                     </div>
                     <div className="min-w-0 flex-1">
-                      <div className="truncate text-sm font-medium text-[#1a1a1a]">{template.name || template.id}</div>
-                      <div className="mt-0.5 truncate text-xs text-muted-foreground">{template.model}</div>
+                      <div className="truncate text-sm font-medium text-[#1a1a1a]">{agent.name || agent.id}</div>
+                      <div className="mt-0.5 truncate text-xs text-muted-foreground">{agent.channelName}</div>
+                      {agent.model && <div className="mt-0.5 truncate text-xs text-muted-foreground">{agent.model}</div>}
                     </div>
                   </button>
-                ))}
+                )})}
               </div>
             </div>
 
             <div className="overflow-hidden rounded-xl border border-border bg-white shadow-sm">
-              {selectedId && identity ? (
+              {selectedKey && identity ? (
                 <>
                   <div className="flex items-center justify-between border-b border-border px-5 py-4">
                     <div className="min-w-0">
                       <h3 className="truncate text-sm font-semibold text-[#1a1a1a]">{identity.name}</h3>
-                      <span className="text-xs text-muted-foreground">模板 ID: {selectedId}</span>
+                      <span className="text-xs text-muted-foreground">
+                        {agents.find((agent) => agentKey(agent.channelId, agent.id) === selectedKey)?.channelName} · Agent ID: {splitAgentKey(selectedKey)?.agentId}
+                      </span>
                     </div>
                     <button
                       onClick={handleSave}
@@ -206,7 +283,7 @@ export function AgentManageTab() {
                         <label className="mb-1.5 block text-xs font-medium text-[#555]">名字</label>
                         <input
                           type="text"
-                          value={identity.name === selectedId ? '' : identity.name}
+                          value={identity.name === splitAgentKey(selectedKey)?.agentId ? '' : identity.name}
                           onChange={(e) => { setIdentity({ ...identity, name: e.target.value }); setDirty(true) }}
                           placeholder="给 Agent 起个名字"
                           className="h-9 w-full rounded-lg border border-border bg-white px-3 text-sm transition-colors focus:outline-none focus:border-[#9297a0]"
@@ -280,10 +357,10 @@ export function AgentManageTab() {
                           启用 Thinking（深度思考模式）
                         </label>
 
-                        <div>
-                          <label className="mb-2 block text-xs font-medium text-[#555]">工具</label>
-                          <div className="flex flex-wrap gap-2">
-                            {ALL_TOOLS.map((tool) => {
+                          <div>
+                            <label className="mb-2 block text-xs font-medium text-[#555]">工具</label>
+                            <div className="flex flex-wrap gap-2">
+                            {uniqueTools(tools, agentConfig.tools).map((tool) => {
                               const enabled = (agentConfig.tools || []).includes(tool)
                               return (
                                 <button
@@ -317,7 +394,7 @@ export function AgentManageTab() {
                 </>
               ) : (
                 <div className="flex h-[420px] items-center justify-center text-sm text-muted-foreground">
-                  选择一个 Agent 模板进行编辑
+                  选择一个频道 Agent 进行编辑
                 </div>
               )}
             </div>
