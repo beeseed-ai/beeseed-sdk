@@ -75,6 +75,10 @@ function agentLoopKey(loop: AgentLoopState): string {
   return `${loop.agentId}:${loop.startedAt}`
 }
 
+function isStreamLoop(loop?: AgentLoopState): boolean {
+  return !!loop && loop.status === 'running'
+}
+
 function agentDisplayName(members: ChannelMemberInfo[] | undefined, agentId: string) {
   const member = members?.find((m) => m.agent_id === agentId)
   return member?.display_name || agentId
@@ -113,8 +117,14 @@ export function MessageList({
   const containerRef = useRef<HTMLDivElement>(null)
   const shouldAutoScroll = useRef(true)
   const grouped = useMemo(() => groupMessages(messages), [messages])
-  const visibleStreams = useMemo(() => streams ?? (stream ? [stream] : []), [stream, streams])
   const visibleLoops = useMemo(() => agentLoops ?? (agentLoop ? [agentLoop] : []), [agentLoop, agentLoops])
+  const visibleStreams = useMemo(() => (
+    (streams ?? (stream ? [stream] : []))
+      .filter((activeStream) => {
+        if (activeStream.agentLoop?.status === 'completed' && activeStream.agentLoop.finalContent) return false
+        return true
+      })
+  ), [stream, streams])
   const visibleTypings = useMemo(() => typings ?? (typing ? [typing] : []), [typing, typings])
   const loopAnchors = useMemo(() => {
     const anchors = new Map<number, AgentLoopState[]>()
@@ -217,7 +227,7 @@ export function MessageList({
 
         {/* Streaming */}
         {visibleStreams.map((activeStream) => {
-          const activeLoop = visibleLoops.find((loop) => loop.agentId === activeStream.agentId) ?? activeStream.agentLoop
+          const activeLoop = activeStream.agentLoop ?? visibleLoops.find((loop) => loop.agentId === activeStream.agentId && isStreamLoop(loop))
           const agent = members?.find(m => m.agent_id === activeStream.agentId)
           return (
             <div key={`stream-${activeStream.agentId}`} className="px-4 pb-3 mx-auto" style={{ maxWidth: CHAT_MAX_WIDTH }}>

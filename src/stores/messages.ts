@@ -637,6 +637,12 @@ export function createMessagesStore(config: MessagesStoreConfig) {
           }
           map.set(event.channel_id, msgs)
           set({ messages: map })
+
+          if (parsed.senderType === 'agent' && parsed.senderId) {
+            const streams = new Map(get().streams)
+            streams.delete(`${event.channel_id}:${parsed.senderId}`)
+            set({ streams })
+          }
           break
         }
 
