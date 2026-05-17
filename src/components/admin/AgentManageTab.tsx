@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { Bot, Save } from 'lucide-react'
+import { Bot, Plus, Save, Trash2, X } from 'lucide-react'
 import { cn } from '../../lib/cn.js'
 import { useBeeSeedContext } from '../../provider/BeeSeedProvider.js'
 
@@ -13,6 +13,10 @@ interface AgentTemplateInfo {
   avatar_url?: string
   tools?: string[]
   skills?: string[]
+  source?: string
+  usage_count?: number
+  removable?: boolean
+  blocked_reason?: string
 }
 
 interface IdentityData {
@@ -101,6 +105,11 @@ export function AgentManageTab() {
   const [agentConfig, setAgentConfig] = useState<AgentConfig | null>(null)
   const [providers, setProviders] = useState<ProviderOption[]>([])
   const [models, setModels] = useState<ModelOption[]>([])
+  const [availableTemplates, setAvailableTemplates] = useState<AgentTemplateInfo[]>([])
+  const [addModalOpen, setAddModalOpen] = useState(false)
+  const [availableQuery, setAvailableQuery] = useState('')
+  const [templateActionError, setTemplateActionError] = useState('')
+  const [templateActionLoading, setTemplateActionLoading] = useState('')
   const [dirty, setDirty] = useState(false)
   const [saving, setSaving] = useState(false)
   const [saved, setSaved] = useState(false)
@@ -139,6 +148,11 @@ export function AgentManageTab() {
   useEffect(() => {
     void loadTemplates()
   }, [loadTemplates])
+
+  const loadAvailableTemplates = useCallback(async () => {
+    const data = await api.get('admin/agent-templates/available').json<AgentTemplateInfo[]>()
+    setAvailableTemplates(data ?? [])
+  }, [api])
 
   useEffect(() => {
     let active = true
@@ -254,6 +268,56 @@ export function AgentManageTab() {
     }
   }
 
+  const openAddModal = async () => {
+    setTemplateActionError('')
+    setAvailableQuery('')
+    setAddModalOpen(true)
+    try {
+      await loadAvailableTemplates()
+    } catch (err) {
+      setTemplateActionError(err instanceof Error ? err.message : '加载可添加模板失败')
+      setAvailableTemplates([])
+    }
+  }
+
+  const addTemplate = async (templateId: string) => {
+    setTemplateActionLoading(templateId)
+    setTemplateActionError('')
+    try {
+      const template = await api.post(`admin/agent-templates/${templateId}/enable`).json<AgentTemplateInfo>()
+      setTemplates((current) => [...current.filter((item) => item.id !== template.id), template].sort((a, b) => a.id.localeCompare(b.id)))
+      setSelectedId(template.id)
+      setAddModalOpen(false)
+      setAvailableTemplates((current) => current.filter((item) => item.id !== template.id))
+    } catch (err) {
+      setTemplateActionError(err instanceof Error ? err.message : '添加模板失败')
+    } finally {
+      setTemplateActionLoading('')
+    }
+  }
+
+  const deleteTemplate = async (template: AgentTemplateInfo) => {
+    if (template.removable === false) return
+    if (!window.confirm(`删除 Agent 模板「${labelOrFallback(template.name, template.id)}」？`)) return
+    setTemplateActionLoading(template.id)
+    setTemplateActionError('')
+    try {
+      await api.delete(`admin/agent-templates/${template.id}`)
+      setTemplates((current) => {
+        const next = current.filter((item) => item.id !== template.id)
+        setSelectedId((selected) => selected === template.id ? next[0]?.id ?? null : selected)
+        return next
+      })
+      setIdentity(null)
+      setAgentConfig(null)
+      setDirty(false)
+    } catch (err) {
+      setTemplateActionError(err instanceof Error ? err.message : '删除模板失败')
+    } finally {
+      setTemplateActionLoading('')
+    }
+  }
+
   const selectedTemplate = selectedId ? templates.find((template) => template.id === selectedId) ?? null : null
   const displayName = labelOrFallback(identity?.name || selectedTemplate?.name, selectedTemplate?.id || 'Agent')
   const role = labelOrFallback(agentConfig?.role || selectedTemplate?.role, selectedTemplate?.id || 'agent')
@@ -272,6 +336,12 @@ export function AgentManageTab() {
   const modelOptions = filteredModels.some((item) => item.id === model) || !model
     ? filteredModels
     : [{ id: model, label: model, provider }, ...filteredModels]
+  const filteredAvailableTemplates = availableTemplates.filter((template) => {
+    const query = availableQuery.trim().toLowerCase()
+    if (!query) return true
+    return [template.id, template.name, template.model, template.provider]
+      .some((value) => (value ?? '').toLowerCase().includes(query))
+  })
 
   if (loading) {
     return <div className="flex-1 flex items-center justify-center text-sm text-[#999]">加载中...</div>
@@ -290,36 +360,63 @@ export function AgentManageTab() {
 
           <div className="grid gap-6 lg:grid-cols-[280px_minmax(0,1fr)]">
             <div className="overflow-hidden rounded-xl border border-border bg-white shadow-sm">
-              <div className="border-b border-border px-5 py-4">
+              <div className="flex items-center justify-between border-b border-border px-5 py-4">
                 <h3 className="text-sm font-semibold text-[#1a1a1a]">Agent 模板</h3>
+                <button
+                  type="button"
+                  onClick={() => void openAddModal()}
+                  className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-border bg-white text-[#181d26] transition-colors hover:bg-muted"
+                  title="添加 Agent 模板"
+                >
+                  <Plus className="h-4 w-4" />
+                </button>
               </div>
+              {templateActionError && (
+                <div className="mx-3 mt-3 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700">
+                  {templateActionError}
+                </div>
+              )}
               <div className="max-h-[640px] space-y-2 overflow-y-auto p-3">
                 {templates.length === 0 ? (
                   <div className="rounded-lg border border-border p-3 text-xs leading-5 text-muted-foreground">
                     暂无 Agent 模板
                   </div>
                 ) : templates.map((template) => (
-                  <button
+                  <div
                     key={template.id}
-                    onClick={() => setSelectedId(template.id)}
                     className={cn(
-                      'flex w-full items-center gap-3 rounded-lg border p-3 text-left transition-colors',
+                      'flex w-full items-center gap-2 rounded-lg border p-2 transition-colors',
                       selectedId === template.id ? 'border-primary bg-primary/5' : 'border-border hover:bg-muted',
                     )}
                   >
-                    <div className="flex h-8 w-8 shrink-0 items-center justify-center overflow-hidden rounded-full bg-[#181d26]/10">
-                      {templateAvatar(template, selectedId === template.id ? agentConfig : null) ? (
-                        <img src={templateAvatar(template, selectedId === template.id ? agentConfig : null)} alt="" className="h-8 w-8 rounded-full object-cover" />
-                      ) : (
-                        <Bot className="h-4 w-4 text-[#181d26]" />
-                      )}
-                    </div>
-                    <div className="min-w-0 flex-1">
-                      <div className="truncate text-sm font-medium text-[#1a1a1a]">{labelOrFallback(template.name, template.id)}</div>
-                      <div className="mt-0.5 truncate text-xs text-muted-foreground">{labelOrFallback(template.role, template.id)}</div>
-                      {template.model && <div className="mt-0.5 truncate text-xs text-muted-foreground">{template.model}</div>}
-                    </div>
-                  </button>
+                    <button
+                      type="button"
+                      onClick={() => setSelectedId(template.id)}
+                      className="flex min-w-0 flex-1 items-center gap-3 rounded-md p-1 text-left"
+                    >
+                      <div className="flex h-8 w-8 shrink-0 items-center justify-center overflow-hidden rounded-full bg-[#181d26]/10">
+                        {templateAvatar(template, selectedId === template.id ? agentConfig : null) ? (
+                          <img src={templateAvatar(template, selectedId === template.id ? agentConfig : null)} alt="" className="h-8 w-8 rounded-full object-cover" />
+                        ) : (
+                          <Bot className="h-4 w-4 text-[#181d26]" />
+                        )}
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <div className="truncate text-sm font-medium text-[#1a1a1a]">{labelOrFallback(template.name, template.id)}</div>
+                        <div className="mt-0.5 truncate text-xs text-muted-foreground">{labelOrFallback(template.role, template.id)}</div>
+                        {template.model && <div className="mt-0.5 truncate text-xs text-muted-foreground">{template.model}</div>}
+                      </div>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => void deleteTemplate(template)}
+                      disabled={template.removable === false || templateActionLoading === template.id}
+                      className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-white hover:text-red-600 disabled:pointer-events-none disabled:opacity-40"
+                      title={template.blocked_reason || '删除模板'}
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </button>
+                  </div>
                 ))}
               </div>
             </div>
@@ -538,6 +635,72 @@ export function AgentManageTab() {
           </div>
         </div>
       </div>
+      {addModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 px-4">
+          <div className="flex max-h-[80vh] w-full max-w-2xl flex-col overflow-hidden rounded-xl border border-border bg-white shadow-xl">
+            <div className="flex items-center justify-between border-b border-border px-5 py-4">
+              <div>
+                <h3 className="text-sm font-semibold text-[#1a1a1a]">添加 Agent 模板</h3>
+                <p className="mt-1 text-xs text-muted-foreground">从平台模板库添加到当前 App</p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setAddModalOpen(false)}
+                className="inline-flex h-8 w-8 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-muted hover:text-[#181d26]"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+            <div className="border-b border-border p-4">
+              <input
+                type="text"
+                value={availableQuery}
+                onChange={(event) => setAvailableQuery(event.target.value)}
+                placeholder="搜索模板名称、ID、模型..."
+                className="h-9 w-full rounded-lg border border-border bg-white px-3 text-sm text-[#1a1a1a] outline-none focus:border-[#9297a0] focus:ring-2 focus:ring-[#9297a0]/20"
+              />
+            </div>
+            <div className="min-h-0 flex-1 overflow-y-auto p-4">
+              {templateActionError && (
+                <div className="mb-3 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+                  {templateActionError}
+                </div>
+              )}
+              {filteredAvailableTemplates.length === 0 ? (
+                <div className="rounded-lg border border-border p-4 text-sm text-muted-foreground">
+                  暂无可添加模板
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  {filteredAvailableTemplates.map((template) => (
+                    <div key={template.id} className="flex items-center gap-3 rounded-lg border border-border p-3">
+                      <div className="flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded-full bg-[#181d26]/10">
+                        {templateAvatar(template, null) ? (
+                          <img src={templateAvatar(template, null)} alt="" className="h-9 w-9 rounded-full object-cover" />
+                        ) : (
+                          <Bot className="h-4 w-4 text-[#181d26]" />
+                        )}
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <div className="truncate text-sm font-medium text-[#1a1a1a]">{labelOrFallback(template.name, template.id)}</div>
+                        <div className="mt-0.5 truncate text-xs text-muted-foreground">{template.id} · {template.model || '-'}</div>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => void addTemplate(template.id)}
+                        disabled={templateActionLoading === template.id}
+                        className="inline-flex h-8 items-center rounded-lg bg-[#181d26] px-3 text-sm font-medium text-white transition-colors hover:bg-[#0d1218] disabled:pointer-events-none disabled:opacity-50"
+                      >
+                        {templateActionLoading === template.id ? '添加中...' : '添加'}
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
