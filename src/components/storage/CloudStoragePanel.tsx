@@ -9,6 +9,7 @@ import { storageRefFromKey } from '../../lib/storage-ref.js'
 import { Input } from '../ui/input.js'
 import { Button } from '../ui/button.js'
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '../ui/dialog.js'
+import { StorageFileIcon, StoragePreviewDialog, storageFileLabelForRef } from '../chat/StorageAttachmentPreview.js'
 
 interface Props {
   channelId: string | null
@@ -43,6 +44,7 @@ export function CloudStoragePanel({ channelId, className, onReference }: Props) 
   const [createOpen, setCreateOpen] = useState(false)
   const [directoryName, setDirectoryName] = useState('')
   const [creatingDirectory, setCreatingDirectory] = useState(false)
+  const [previewRef, setPreviewRef] = useState<string | null>(null)
 
   if (!channelId) {
     return <div className="flex-1 flex items-center justify-center text-muted-foreground text-sm">选择一个对话查看文件</div>
@@ -180,38 +182,48 @@ export function CloudStoragePanel({ channelId, className, onReference }: Props) 
                 <span className="text-sm">{dir.replace(/\/$/, '').split('/').pop()}</span>
               </button>
             ))}
-            {objects.map((obj) => (
-              <div key={obj.key} className="flex items-center gap-3 px-4 py-2 group">
-                <File className="w-4 h-4 text-blue-500" />
-                <div className="flex-1 min-w-0">
-                  <div className="text-sm truncate">{storageDisplayName(obj)}</div>
-                  <div className="text-[10px] text-muted-foreground">
-                    {formatBytes(obj.size)} · {new Date(obj.last_modified).toLocaleDateString('zh-CN')}
-                  </div>
+            {objects.map((obj) => {
+              const refText = storageRefFromKey(obj.key)
+              return (
+                <div key={obj.key} className="group flex items-center gap-3 px-4 py-2">
+                  <button
+                    type="button"
+                    className="flex min-w-0 flex-1 items-center gap-3 rounded-sm text-left outline-none transition-colors hover:text-[#181d26] focus-visible:ring-2 focus-visible:ring-[#9297a0]"
+                    onClick={() => setPreviewRef(refText)}
+                    title="预览文件"
+                  >
+                    <StorageFileIcon refText={refText} className="h-4 w-4 shrink-0 text-[#254fad]" />
+                    <span className="min-w-0 flex-1">
+                      <span className="block truncate text-sm">{storageDisplayName(obj)}</span>
+                      <span className="block text-[10px] text-muted-foreground">
+                        {storageFileLabelForRef(refText)} · {formatBytes(obj.size)} · {new Date(obj.last_modified).toLocaleDateString('zh-CN')}
+                      </span>
+                    </span>
+                  </button>
+                  <button
+                    title="引用到聊天"
+                    onClick={() => handleReference(obj.key)}
+                    className="hidden group-hover:block p-1 rounded hover:bg-muted transition-colors"
+                  >
+                    <MessageSquareQuote className="w-3.5 h-3.5 text-muted-foreground" />
+                  </button>
+                  <button
+                    title="下载"
+                    onClick={() => void handleDownload(obj.key)}
+                    className="hidden group-hover:block p-1 rounded hover:bg-muted transition-colors"
+                  >
+                    <Download className="w-3.5 h-3.5 text-muted-foreground" />
+                  </button>
+                  <button
+                    title="删除"
+                    onClick={() => deleteFile(obj.key)}
+                    className="hidden group-hover:block p-1 rounded hover:bg-destructive/10 transition-colors"
+                  >
+                    <Trash2 className="w-3.5 h-3.5 text-destructive" />
+                  </button>
                 </div>
-                <button
-                  title="引用到聊天"
-                  onClick={() => handleReference(obj.key)}
-                  className="hidden group-hover:block p-1 rounded hover:bg-muted transition-colors"
-                >
-                  <MessageSquareQuote className="w-3.5 h-3.5 text-muted-foreground" />
-                </button>
-                <button
-                  title="下载"
-                  onClick={() => void handleDownload(obj.key)}
-                  className="hidden group-hover:block p-1 rounded hover:bg-muted transition-colors"
-                >
-                  <Download className="w-3.5 h-3.5 text-muted-foreground" />
-                </button>
-                <button
-                  title="删除"
-                  onClick={() => deleteFile(obj.key)}
-                  className="hidden group-hover:block p-1 rounded hover:bg-destructive/10 transition-colors"
-                >
-                  <Trash2 className="w-3.5 h-3.5 text-destructive" />
-                </button>
-              </div>
-            ))}
+              )
+            })}
           </div>
         )}
       </div>
@@ -239,6 +251,7 @@ export function CloudStoragePanel({ channelId, className, onReference }: Props) 
           </form>
         </DialogContent>
       </Dialog>
+      {previewRef && <StoragePreviewDialog channelId={channelId} refText={previewRef} onClose={() => setPreviewRef(null)} />}
     </div>
   )
 }

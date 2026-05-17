@@ -5,6 +5,7 @@ import { cn } from '../../lib/cn.js'
 import { fileNameFromStorageRef, storageRefFromKey } from '../../lib/storage-ref.js'
 import { useStorage } from '../../hooks/use-storage.js'
 import { MentionMenu, getFilteredCount, getFilteredMember } from './MentionMenu.js'
+import { StorageFileIcon, storageFileLabelForRef } from './StorageAttachmentPreview.js'
 
 const CHAT_UPLOAD_PREFIX = '__chat_uploads/'
 
@@ -244,7 +245,9 @@ export function MessageInput({
                 title={item.replace(/^storage:\/\//, '')}
                 className="inline-flex max-w-full items-center gap-1.5 rounded-md border border-[#d8dde6] bg-[#f8fafc] px-2 py-1 text-xs font-medium text-[#333840]"
               >
-                <span className="min-w-0 max-w-[260px] truncate">{fileNameFromStorageRef(item)}</span>
+                <StorageFileIcon refText={item} className="h-3.5 w-3.5 shrink-0 text-[#254fad]" />
+                <span className="min-w-0 max-w-[220px] truncate">{fileNameFromStorageRef(item)}</span>
+                <span className="shrink-0 rounded-sm bg-white px-1 text-[10px] font-medium text-[#777169]">{storageFileLabelForRef(item)}</span>
                 <button
                   type="button"
                   className="shrink-0 rounded p-0.5 text-[#888] hover:bg-black/5 hover:text-[#333]"

@@ -11,7 +11,7 @@ interface Props {
   compact?: boolean
 }
 
-type FileKind = 'image' | 'pdf' | 'text' | 'code' | 'spreadsheet' | 'archive' | 'audio' | 'video' | 'file'
+export type StorageFileKind = 'image' | 'pdf' | 'text' | 'code' | 'spreadsheet' | 'archive' | 'audio' | 'video' | 'file'
 
 const IMAGE_EXTS = new Set(['png', 'jpg', 'jpeg', 'webp', 'gif', 'svg'])
 const TEXT_EXTS = new Set(['txt', 'md', 'markdown', 'csv', 'json', 'yaml', 'yml', 'toml', 'log'])
@@ -31,7 +31,7 @@ function extOf(ref: string) {
   return idx >= 0 ? name.slice(idx + 1).toLowerCase() : ''
 }
 
-function kindOf(ref: string): FileKind {
+export function storageFileKindForRef(ref: string): StorageFileKind {
   const ext = extOf(ref)
   if (IMAGE_EXTS.has(ext)) return 'image'
   if (ext === 'pdf') return 'pdf'
@@ -44,7 +44,7 @@ function kindOf(ref: string): FileKind {
   return 'file'
 }
 
-function iconFor(kind: FileKind) {
+export function storageFileIconForKind(kind: StorageFileKind) {
   switch (kind) {
   case 'image': return FileImage
   case 'pdf':
@@ -58,7 +58,7 @@ function iconFor(kind: FileKind) {
   }
 }
 
-function labelFor(kind: FileKind, ext: string) {
+export function storageFileLabel(kind: StorageFileKind, ext: string) {
   if (kind === 'pdf') return 'PDF'
   if (kind === 'image') return ext.toUpperCase() || '图片'
   if (kind === 'code') return ext.toUpperCase() || '代码'
@@ -70,16 +70,25 @@ function labelFor(kind: FileKind, ext: string) {
   return ext.toUpperCase() || '文件'
 }
 
-function canPreview(kind: FileKind) {
+export function storageFileCanPreview(kind: StorageFileKind) {
   return kind === 'image' || kind === 'pdf' || kind === 'text' || kind === 'code' || kind === 'audio' || kind === 'video'
 }
 
-function StoragePreviewDialog({ channelId, refText, onClose }: { channelId: string; refText: string; onClose: () => void }) {
+export function StorageFileIcon({ refText, className }: { refText: string; className?: string }) {
+  const Icon = storageFileIconForKind(storageFileKindForRef(refText))
+  return <Icon className={className} />
+}
+
+export function storageFileLabelForRef(refText: string) {
+  return storageFileLabel(storageFileKindForRef(refText), extOf(refText))
+}
+
+export function StoragePreviewDialog({ channelId, refText, onClose }: { channelId: string; refText: string; onClose: () => void }) {
   const { api, config } = useBeeSeedContext()
   const name = fileNameFromStorageRef(refText)
-  const kind = kindOf(refText)
+  const kind = storageFileKindForRef(refText)
   const ext = extOf(refText)
-  const Icon = iconFor(kind)
+  const Icon = storageFileIconForKind(kind)
   const [url, setUrl] = useState<string | null>(null)
   const [text, setText] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
@@ -94,7 +103,7 @@ function StoragePreviewDialog({ channelId, refText, onClose }: { channelId: stri
 
     if (config.useMockData) {
       setLoading(false)
-      setError(canPreview(kind) ? '当前是模拟数据，无法加载文件内容。' : '此文件类型暂不支持预览。')
+      setError(storageFileCanPreview(kind) ? '当前是模拟数据，无法加载文件内容。' : '此文件类型暂不支持预览。')
       return
     }
 
@@ -137,7 +146,7 @@ function StoragePreviewDialog({ channelId, refText, onClose }: { channelId: stri
           </span>
           <div className="min-w-0 flex-1">
             <div className="truncate text-sm font-medium text-[#1a1a1a]">{name}</div>
-            <div className="text-[10px] text-[#777169]">{labelFor(kind, ext)}</div>
+            <div className="text-[10px] text-[#777169]">{storageFileLabel(kind, ext)}</div>
           </div>
           {url && (
             <button
@@ -255,9 +264,9 @@ function StorageImageAttachment({ channelId, refText }: { channelId: string; ref
 function StorageFileAttachment({ channelId, refText }: { channelId: string; refText: string }) {
   const [previewOpen, setPreviewOpen] = useState(false)
   const name = fileNameFromStorageRef(refText)
-  const kind = kindOf(refText)
+  const kind = storageFileKindForRef(refText)
   const ext = extOf(refText)
-  const Icon = iconFor(kind)
+  const Icon = storageFileIconForKind(kind)
 
   return (
     <>
@@ -274,7 +283,7 @@ function StorageFileAttachment({ channelId, refText }: { channelId: string; refT
         </span>
         <span className="min-w-0 flex-1">
           <span className="block truncate text-sm font-medium text-[#333840]">{name}</span>
-          <span className="block text-[10px] text-[#777169]">{canPreview(kind) ? labelFor(kind, ext) : `${labelFor(kind, ext)} · 无法预览`}</span>
+          <span className="block text-[10px] text-[#777169]">{storageFileCanPreview(kind) ? storageFileLabel(kind, ext) : `${storageFileLabel(kind, ext)} · 无法预览`}</span>
         </span>
         <ExternalLink className="h-4 w-4 shrink-0 text-[#888]" />
       </button>
@@ -290,7 +299,7 @@ export function StorageAttachmentPreview({ channelId, refs, compact }: Props) {
   return (
     <div className={cn('flex flex-col gap-2', compact ? 'mt-1' : 'mt-2')}>
       {items.map((refText) => (
-        kindOf(refText) === 'image'
+        storageFileKindForRef(refText) === 'image'
           ? <StorageImageAttachment key={refText} channelId={channelId} refText={refText} />
           : <StorageFileAttachment key={refText} channelId={channelId} refText={refText} />
       ))}
