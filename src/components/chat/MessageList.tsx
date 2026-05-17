@@ -34,7 +34,7 @@ interface Props {
   onMentionClick?: (name: string) => void
   currentUserId?: string
   onSubmitAnswer?: (askId: string, answers: Record<string, unknown>) => void
-  onStopAgent?: (agentId: string, reason?: string) => void
+  onStopAgent?: (agentId: string, reason?: string, runId?: string) => void
   welcomeMessage?: string
   className?: string
 }

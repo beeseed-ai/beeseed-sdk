@@ -562,7 +562,7 @@ export type WSCommand =
 	| { type: 'leave_channel'; channel_id: string }
 	| { type: 'read_ack'; channel_id: string; msg_id: number }
 	| { type: 'ask_user_answer'; channel_id: string; ask_id: string; answers: Record<string, unknown> }
-	| { type: 'stop_agent'; channel_id: string; agent_id: string; reason?: string }
+	| { type: 'stop_agent'; channel_id: string; agent_id: string; run_id?: string; reason?: string }
 
 // ── Auth ──
 

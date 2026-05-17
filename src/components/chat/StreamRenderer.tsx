@@ -14,7 +14,7 @@ interface Props {
   agentLoop?: AgentLoopState
   agentAvatarUrl?: string
   agentDisplayName?: string
-  onStop?: (agentId: string, reason?: string) => void
+  onStop?: (agentId: string, reason?: string, runId?: string) => void
   className?: string
 }
 
@@ -25,7 +25,7 @@ export function StreamRenderer({ stream, agentLoop, agentAvatarUrl, agentDisplay
   const displayName = agentDisplayName || stream.agentId
 
   const handleStop = () => {
-    onStop?.(stream.agentId, stopReason)
+    onStop?.(stream.agentId, stopReason, stream.runId || agentLoop?.runId)
     setStopOpen(false)
     setStopReason('')
   }

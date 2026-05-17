@@ -62,13 +62,15 @@ export function useChat(channelId: string | null) {
   )
 
   const stopAgent = useCallback(
-    (agentId: string, reason?: string) => {
+    (agentId: string, reason?: string, runId?: string) => {
       if (!channelId || !agentId) return
       const cleanReason = reason?.trim()
+      const cleanRunId = runId?.trim()
       ws.send({
         type: 'stop_agent',
         channel_id: channelId,
         agent_id: agentId,
+        ...(cleanRunId ? { run_id: cleanRunId } : {}),
         ...(cleanReason ? { reason: cleanReason } : {}),
       })
     },
@@ -86,7 +88,7 @@ export function useChat(channelId: string | null) {
   const stream = streams[streams.length - 1]
   const agentLoop = channelId
     ? stream?.agentLoop
-      ?? (stream?.agentId ? state.agentLoops.get(`${channelId}:${stream.agentId}`) : undefined)
+      ?? (stream?.agentId ? state.agentLoops.get(`${channelId}:${stream.agentId}:${stream.runId || stream.agentLoop?.runId || '_legacy'}`) : undefined)
       ?? state.getAgentLoop(channelId)
     : undefined
 
