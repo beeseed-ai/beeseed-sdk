@@ -547,6 +547,7 @@ export type WSEvent =
   | { type: 'agent_stopped'; channel_id: string; agent_id: string; turn?: number; summary?: string }
   // UI events
   | { type: 'routing_info'; channel_id: string; routing_info: { routing_method: string; target_agent_ids: string[]; reason: string } }
+  | { type: 'channels_updated'; channel_id?: string }
   | { type: 'typing'; channel_id: string; agent_id?: string }
   | { type: 'task_updated'; channel_id: string; task: Task }
 

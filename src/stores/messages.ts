@@ -547,6 +547,31 @@ export interface MessagesStoreConfig {
   sendWsCommand: (cmd: unknown) => void
 }
 
+function latestUserMessageAt(messages: ChatMessage[] | undefined): number {
+  let latest = 0
+  for (const message of messages ?? []) {
+    if (message.role === 'user') {
+      latest = Math.max(latest, message.timestamp)
+    }
+  }
+  return latest
+}
+
+function isTerminalAgentLoop(loop: AgentLoopState | undefined): boolean {
+  if (!loop) return false
+  return loop.status !== 'running' && loop.status !== 'waiting_for_user'
+}
+
+function shouldIgnoreStaleLiveAgentEvent(
+  state: MessagesState,
+  event: { channel_id: string; agent_id: string },
+): boolean {
+  const loop = state.agentLoops.get(`${event.channel_id}:${event.agent_id}`)
+  if (!isTerminalAgentLoop(loop) || !loop?.completedAt) return false
+  const latestUserAt = latestUserMessageAt(state.messages.get(event.channel_id))
+  return latestUserAt === 0 || loop.completedAt >= latestUserAt
+}
+
 export function createMessagesStore(config: MessagesStoreConfig) {
   return createStore<MessagesState>()((set, get) => ({
     messages: new Map(),
@@ -670,6 +695,7 @@ export function createMessagesStore(config: MessagesStoreConfig) {
         }
 
         case 'chunk': {
+          if (shouldIgnoreStaleLiveAgentEvent(state, event)) break
           const streams = new Map(state.streams)
           const key = `${event.channel_id}:${event.agent_id}`
           const existing = streams.get(key)
@@ -693,6 +719,7 @@ export function createMessagesStore(config: MessagesStoreConfig) {
         }
 
         case 'thinking': {
+          if (shouldIgnoreStaleLiveAgentEvent(state, event)) break
           const streams = new Map(state.streams)
           const key = `${event.channel_id}:${event.agent_id}`
           const existing = streams.get(key)
@@ -707,6 +734,7 @@ export function createMessagesStore(config: MessagesStoreConfig) {
         }
 
         case 'thinking_content': {
+          if (shouldIgnoreStaleLiveAgentEvent(state, event)) break
           const streams = new Map(state.streams)
           const key = `${event.channel_id}:${event.agent_id}`
           const existing = streams.get(key)
@@ -746,6 +774,7 @@ export function createMessagesStore(config: MessagesStoreConfig) {
         }
 
         case 'tool_call': {
+          if (shouldIgnoreStaleLiveAgentEvent(state, event)) break
           const streams = new Map(state.streams)
           const key = `${event.channel_id}:${event.agent_id}`
           const existing = streams.get(key)
@@ -786,6 +815,7 @@ export function createMessagesStore(config: MessagesStoreConfig) {
         }
 
         case 'tool_result': {
+          if (shouldIgnoreStaleLiveAgentEvent(state, event)) break
           const streams = new Map(state.streams)
           const key = `${event.channel_id}:${event.agent_id}`
           const existing = streams.get(key)
@@ -850,6 +880,7 @@ export function createMessagesStore(config: MessagesStoreConfig) {
         }
 
         case 'skill_use': {
+          if (shouldIgnoreStaleLiveAgentEvent(state, event)) break
           const streams = new Map(state.streams)
           const key = `${event.channel_id}:${event.agent_id}`
           const existing = streams.get(key)
@@ -892,9 +923,13 @@ export function createMessagesStore(config: MessagesStoreConfig) {
         // ── Agent Loop events ──
 
         case 'agent_ack': {
+          if (shouldIgnoreStaleLiveAgentEvent(state, event)) break
           const loops = new Map(state.agentLoops)
           const loopKey = `${event.channel_id}:${event.agent_id}`
           const existing = loops.get(loopKey)
+          if (existing?.status === 'running' && event.turn <= existing.currentTurn) {
+            break
+          }
           const shouldContinueExisting = existing?.status === 'running' || existing?.status === 'waiting_for_user'
           const turnNumber = shouldContinueExisting && existing && event.turn <= existing.currentTurn
             ? existing.currentTurn + 1
@@ -949,6 +984,7 @@ export function createMessagesStore(config: MessagesStoreConfig) {
         }
 
         case 'agent_thinking': {
+          if (shouldIgnoreStaleLiveAgentEvent(state, event)) break
           const loops = new Map(state.agentLoops)
           const loopKey = `${event.channel_id}:${event.agent_id}`
           const turnNumber = eventTurnNumber(event, loops.get(loopKey))
@@ -972,6 +1008,7 @@ export function createMessagesStore(config: MessagesStoreConfig) {
         }
 
         case 'agent_turn_start': {
+          if (shouldIgnoreStaleLiveAgentEvent(state, event)) break
           const loops = new Map(state.agentLoops)
           const loopKey = `${event.channel_id}:${event.agent_id}`
           const loop = ensureLoopTurn(loops.get(loopKey), event.channel_id, event.agent_id, event.turn)
@@ -992,6 +1029,7 @@ export function createMessagesStore(config: MessagesStoreConfig) {
         }
 
         case 'agent_progress': {
+          if (shouldIgnoreStaleLiveAgentEvent(state, event)) break
           const loops = new Map(state.agentLoops)
           const loopKey = `${event.channel_id}:${event.agent_id}`
           const turnNumber = eventTurnNumber(event, loops.get(loopKey))

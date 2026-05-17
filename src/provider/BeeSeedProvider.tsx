@@ -125,6 +125,14 @@ function createBeeSeedContext(config: BeeSeedConfig, updateAppConfig: (appConfig
         void channelsStore.getState().fetchChannels()
       }
     }
+    if (event.type === 'channels_updated') {
+      const currentChannelId = channelsStore.getState().currentChannelId
+      void channelsStore.getState().fetchChannels().finally(() => {
+        if (event.channel_id && event.channel_id === currentChannelId) {
+          channelsStore.getState().markRead(event.channel_id)
+        }
+      })
+    }
     if (event.type === 'task_updated') {
       void tasksStore.getState().fetchTasks(event.channel_id)
       void tasksStore.getState().fetchMetrics(event.channel_id)
