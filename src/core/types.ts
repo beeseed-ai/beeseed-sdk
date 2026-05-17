@@ -113,6 +113,7 @@ export interface ChatMessage {
   senderAvatarUrl?: string
   senderType?: 'user' | 'agent'
   senderId?: string
+  agentRunId?: string
   isAgent?: boolean
   // Content variants
   contentType?: string
@@ -205,6 +206,7 @@ export interface AgentLoopTurn {
 }
 
 export interface AgentLoopState {
+  runId?: string
   agentId: string
   channelId: string
   turns: AgentLoopTurn[]
@@ -516,6 +518,7 @@ export type FeatureView = 'chat' | 'tasks' | 'knowledge' | 'storage' | 'cron' | 
 
 export interface StreamState {
   agentId: string
+  runId?: string
   content: string
   thinking: string
   toolCall?: { name: string; args?: unknown; status?: AgentLoopToolCallStatus }
@@ -527,28 +530,28 @@ export interface StreamState {
 export type WSEvent =
   | { type: 'auth_ok'; user: User; channels: ChannelWithMeta[] }
   | { type: 'message'; channel_id: string; message: Message }
-  | { type: 'chunk'; channel_id: string; agent_id: string; content: string; turn?: number }
-  | { type: 'message_end'; channel_id: string; agent_id: string; message: Message }
-  | { type: 'thinking'; channel_id: string; agent_id: string; content: string }
-  | { type: 'thinking_content'; channel_id: string; agent_id: string; content: string }
-  | { type: 'tool_call'; channel_id: string; agent_id: string; name: string; args?: unknown; batch_id?: string; parallel?: boolean; turn?: number }
-  | { type: 'tool_result'; channel_id: string; agent_id: string; name: string; success?: boolean; output?: string; duration_secs?: number; turn?: number }
-  | { type: 'skill_use'; channel_id: string; agent_id: string; name: string; display_name?: string; description?: string; status?: AgentLoopSkillUse['status']; reason?: string; turn?: number }
-  | { type: 'error'; channel_id?: string; agent_id?: string; error: string; turn?: number }
+  | { type: 'chunk'; channel_id: string; agent_id: string; run_id?: string; content: string; turn?: number }
+  | { type: 'message_end'; channel_id: string; agent_id: string; run_id?: string; turn?: number; message: Message }
+  | { type: 'thinking'; channel_id: string; agent_id: string; run_id?: string; content: string }
+  | { type: 'thinking_content'; channel_id: string; agent_id: string; run_id?: string; content: string }
+  | { type: 'tool_call'; channel_id: string; agent_id: string; run_id?: string; name: string; args?: unknown; batch_id?: string; parallel?: boolean; turn?: number }
+  | { type: 'tool_result'; channel_id: string; agent_id: string; run_id?: string; name: string; success?: boolean; output?: string; duration_secs?: number; turn?: number }
+  | { type: 'skill_use'; channel_id: string; agent_id: string; run_id?: string; name: string; display_name?: string; description?: string; status?: AgentLoopSkillUse['status']; reason?: string; turn?: number }
+  | { type: 'error'; channel_id?: string; agent_id?: string; run_id?: string; error: string; turn?: number }
   // Agent Loop events
-  | { type: 'agent_ack'; channel_id: string; agent_id: string; turn: number; content?: string }
-  | { type: 'agent_turn_start'; channel_id: string; agent_id: string; turn: number }
-  | { type: 'agent_thinking'; channel_id: string; agent_id: string; turn: number; content?: string }
-  | { type: 'agent_progress'; channel_id: string; agent_id: string; turn: number; summary: string }
-  | { type: 'agent_waiting_user'; channel_id: string; agent_id: string; turn: number; summary: string }
-  | { type: 'agent_ask_user_expired'; channel_id: string; agent_id: string; turn: number; summary: string }
-  | { type: 'agent_done'; channel_id: string; agent_id: string; turn: number; content: string }
-  | { type: 'max_turns_reached'; channel_id: string; agent_id: string; turn: number }
-  | { type: 'agent_stopped'; channel_id: string; agent_id: string; turn?: number; summary?: string }
+  | { type: 'agent_ack'; channel_id: string; agent_id: string; run_id?: string; turn: number; content?: string }
+  | { type: 'agent_turn_start'; channel_id: string; agent_id: string; run_id?: string; turn: number }
+  | { type: 'agent_thinking'; channel_id: string; agent_id: string; run_id?: string; turn: number; content?: string }
+  | { type: 'agent_progress'; channel_id: string; agent_id: string; run_id?: string; turn: number; summary: string }
+  | { type: 'agent_waiting_user'; channel_id: string; agent_id: string; run_id?: string; turn: number; summary: string }
+  | { type: 'agent_ask_user_expired'; channel_id: string; agent_id: string; run_id?: string; turn: number; summary: string }
+  | { type: 'agent_done'; channel_id: string; agent_id: string; run_id?: string; turn: number; content: string }
+  | { type: 'max_turns_reached'; channel_id: string; agent_id: string; run_id?: string; turn: number }
+  | { type: 'agent_stopped'; channel_id: string; agent_id: string; run_id?: string; turn?: number; summary?: string }
   // UI events
   | { type: 'routing_info'; channel_id: string; routing_info: { routing_method: string; target_agent_ids: string[]; reason: string } }
   | { type: 'channels_updated'; channel_id?: string }
-  | { type: 'typing'; channel_id: string; agent_id?: string }
+  | { type: 'typing'; channel_id: string; agent_id?: string; run_id?: string }
   | { type: 'task_updated'; channel_id: string; task: Task }
 
 // ── WebSocket Commands — Client to Server ──

@@ -47,6 +47,7 @@ function findAgentLoopAnchorMsgId(messages: ChatMessage[], loop?: AgentLoopState
     const message = messages[i]
     if (!message?.msgId || message.role !== 'assistant') continue
     if (message.senderId !== loop.agentId) continue
+    if (loop.runId && message.agentRunId && message.agentRunId !== loop.runId) continue
     if (loop.finalContent && message.content !== loop.finalContent) continue
     return message.msgId
   }
@@ -72,7 +73,7 @@ function agentLoopActivityAt(loop: AgentLoopState): number {
 }
 
 function agentLoopKey(loop: AgentLoopState): string {
-  return `${loop.agentId}:${loop.startedAt}`
+  return `${loop.agentId}:${loop.runId || loop.startedAt}`
 }
 
 function isStreamLoop(loop?: AgentLoopState): boolean {
@@ -148,14 +149,14 @@ export function MessageList({
     }
     return ids
   }, [loopAnchors])
-  const streamAgentIds = useMemo(() => new Set(visibleStreams.map((s) => s.agentId)), [visibleStreams])
+  const streamLoopIds = useMemo(() => new Set(visibleStreams.map((s) => `${s.agentId}:${s.runId || s.agentLoop?.runId || '_legacy'}`)), [visibleStreams])
   const standaloneLoops = useMemo(() => (
     visibleLoops
       .filter((loop) => !anchoredLoopIds.has(agentLoopKey(loop)))
-      .filter((loop) => !streamAgentIds.has(loop.agentId))
+      .filter((loop) => !streamLoopIds.has(`${loop.agentId}:${loop.runId || '_legacy'}`))
       .filter((loop) => loop.status !== 'completed' || !loop.finalContent)
       .sort((a, b) => agentLoopActivityAt(a) - agentLoopActivityAt(b))
-  ), [anchoredLoopIds, streamAgentIds, visibleLoops])
+  ), [anchoredLoopIds, streamLoopIds, visibleLoops])
 
   const scrollToBottom = useCallback(() => {
     const el = containerRef.current
@@ -203,7 +204,7 @@ export function MessageList({
               return (
                 <div key={item.msgId ?? `m-${i}`}>
                   {item.msgId && loopAnchors.get(item.msgId)?.map((loop) => (
-                    <AgentLoopBlock key={`loop-${loop.agentId}-${loop.startedAt}`} loop={loop} members={members} />
+                    <AgentLoopBlock key={`loop-${agentLoopKey(loop)}`} loop={loop} members={members} />
                   ))}
                   <MessageBubble
                     message={item}
@@ -222,15 +223,19 @@ export function MessageList({
         )}
 
         {standaloneLoops.map((loop) => (
-          <AgentLoopBlock key={`standalone-loop-${loop.agentId}-${loop.startedAt}`} loop={loop} members={members} />
+          <AgentLoopBlock key={`standalone-loop-${agentLoopKey(loop)}`} loop={loop} members={members} />
         ))}
 
         {/* Streaming */}
         {visibleStreams.map((activeStream) => {
-          const activeLoop = activeStream.agentLoop ?? visibleLoops.find((loop) => loop.agentId === activeStream.agentId && isStreamLoop(loop))
+          const activeLoop = activeStream.agentLoop ?? visibleLoops.find((loop) => (
+            loop.agentId === activeStream.agentId
+            && (activeStream.runId ? loop.runId === activeStream.runId : true)
+            && isStreamLoop(loop)
+          ))
           const agent = members?.find(m => m.agent_id === activeStream.agentId)
           return (
-            <div key={`stream-${activeStream.agentId}`} className="px-4 pb-3 mx-auto" style={{ maxWidth: CHAT_MAX_WIDTH }}>
+            <div key={`stream-${activeStream.agentId}-${activeStream.runId || activeStream.agentLoop?.runId || 'legacy'}`} className="px-4 pb-3 mx-auto" style={{ maxWidth: CHAT_MAX_WIDTH }}>
               <StreamRenderer
                 stream={activeStream}
                 agentLoop={activeLoop}
