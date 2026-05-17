@@ -33,25 +33,63 @@ interface AgentConfig {
   [key: string]: unknown
 }
 
+interface ProviderOption {
+  id: string
+  label?: string
+}
+
+interface ModelOption {
+  id: string
+  label?: string
+  provider: string
+}
+
 const FALLBACK_TEMPERATURE = 0.7
+const AVATAR_PRESETS = [
+  'bot-amber',
+  'bot-blue',
+  'bot-emerald',
+  'bot-rose',
+  'bot-violet',
+  'owl',
+  'rocket',
+  'star',
+  'leaf',
+  'lightning',
+]
+const TOOL_OPTIONS = [
+  'http_request',
+  'ask_user',
+  'knowledge_search',
+  'storage_list',
+  'storage_info',
+  'storage_read',
+  'storage_write',
+  'storage_delete',
+  'storage_presign_download',
+]
 
 function labelOrFallback(value: string | undefined, fallback: string) {
   const text = value?.trim()
   return text || fallback
 }
 
-function uniqueItems(...groups: Array<string[] | undefined>) {
-  return Array.from(new Set(groups.flatMap((group) => group ?? []).filter(Boolean)))
-}
-
 function parseListInput(value: string) {
   return value.split(/[\n,，]/).map((item) => item.trim()).filter(Boolean)
+}
+
+function toggleItem(items: string[], item: string) {
+  return items.includes(item) ? items.filter((value) => value !== item) : [...items, item]
+}
+
+function avatarPresetUrl(preset: string | undefined) {
+  return preset ? `/avatars/agents/${preset}.svg` : ''
 }
 
 function templateAvatar(template: AgentTemplateInfo, config: AgentConfig | null) {
   if (template.avatar_url) return template.avatar_url
   const preset = config?.avatar_preset || template.avatar_preset
-  return preset ? `/avatars/agents/${preset}.svg` : ''
+  return avatarPresetUrl(preset)
 }
 
 export function AgentManageTab() {
@@ -61,6 +99,9 @@ export function AgentManageTab() {
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [identity, setIdentity] = useState<IdentityData | null>(null)
   const [agentConfig, setAgentConfig] = useState<AgentConfig | null>(null)
+  const [providers, setProviders] = useState<ProviderOption[]>([])
+  const [models, setModels] = useState<ModelOption[]>([])
+  const [dirty, setDirty] = useState(false)
   const [saving, setSaving] = useState(false)
   const [saved, setSaved] = useState(false)
   const [saveError, setSaveError] = useState('')
@@ -100,6 +141,21 @@ export function AgentManageTab() {
   }, [loadTemplates])
 
   useEffect(() => {
+    let active = true
+    Promise.all([
+      api.get('providers').json<ProviderOption[]>().catch(() => []),
+      api.get('models').json<ModelOption[]>().catch(() => []),
+    ]).then(([providerData, modelData]) => {
+      if (!active) return
+      setProviders([...providerData].sort((a, b) => a.id.localeCompare(b.id)))
+      setModels([...modelData].sort((a, b) => a.provider.localeCompare(b.provider) || a.id.localeCompare(b.id)))
+    })
+    return () => {
+      active = false
+    }
+  }, [api])
+
+  useEffect(() => {
     if (!selectedId) {
       setIdentity(null)
       setAgentConfig(null)
@@ -110,6 +166,7 @@ export function AgentManageTab() {
     detailSeqRef.current = detailSeq
     setIdentity(null)
     setAgentConfig(null)
+    setDirty(false)
     setSaved(false)
     setSaveError('')
 
@@ -125,18 +182,34 @@ export function AgentManageTab() {
 
   const updateIdentity = (patch: Partial<IdentityData>) => {
     setIdentity((current) => ({ name: '', personality: '', content: '', ...(current ?? {}), ...patch }))
+    setDirty(true)
     setSaved(false)
     setSaveError('')
   }
 
   const updateConfig = (patch: Partial<AgentConfig>) => {
     setAgentConfig((current) => ({ ...(current ?? {}), ...patch }))
+    setDirty(true)
+    setSaved(false)
+    setSaveError('')
+  }
+
+  const updateProvider = (nextProvider: string) => {
+    setAgentConfig((current) => {
+      const nextModels = models.filter((item) => item.provider === nextProvider)
+      const currentModel = current?.model ?? selectedTemplate?.model ?? ''
+      const nextModel = nextModels.some((item) => item.id === currentModel)
+        ? currentModel
+        : nextModels[0]?.id ?? currentModel
+      return { ...(current ?? {}), provider: nextProvider, model: nextModel }
+    })
+    setDirty(true)
     setSaved(false)
     setSaveError('')
   }
 
   const saveTemplate = async () => {
-    if (!selectedId || !identity || !agentConfig) return
+    if (!selectedId || !identity || !agentConfig || !dirty) return
     setSaving(true)
     setSaved(false)
     setSaveError('')
@@ -166,9 +239,12 @@ export function AgentManageTab() {
               model: String(configPayload.model || template.model),
               tools: configPayload.tools ?? template.tools,
               skills: configPayload.skills ?? template.skills,
+              avatar_preset: configPayload.avatar_preset || '',
+              avatar_url: avatarPresetUrl(configPayload.avatar_preset),
             }
           : template
       )))
+      setDirty(false)
       setSaved(true)
       window.setTimeout(() => setSaved(false), 1800)
     } catch (err) {
@@ -184,9 +260,18 @@ export function AgentManageTab() {
   const provider = labelOrFallback(agentConfig?.provider || selectedTemplate?.provider, '-')
   const model = labelOrFallback(agentConfig?.model || selectedTemplate?.model, '-')
   const temperature = typeof agentConfig?.temperature === 'number' ? agentConfig.temperature : FALLBACK_TEMPERATURE
-  const tools = uniqueItems(agentConfig?.tools, selectedTemplate?.tools)
-  const skills = uniqueItems(agentConfig?.skills, selectedTemplate?.skills)
+  const tools = agentConfig?.tools ?? selectedTemplate?.tools ?? []
+  const skills = agentConfig?.skills ?? selectedTemplate?.skills ?? []
+  const extraTools = tools.filter((tool) => !TOOL_OPTIONS.includes(tool))
+  const selectedAvatarPreset = agentConfig?.avatar_preset || selectedTemplate?.avatar_preset || ''
   const avatarUrl = selectedTemplate ? templateAvatar(selectedTemplate, agentConfig) : ''
+  const providerOptions = providers.length > 0 || !provider
+    ? providers
+    : [{ id: provider, label: provider }]
+  const filteredModels = models.filter((item) => item.provider === provider)
+  const modelOptions = filteredModels.some((item) => item.id === model) || !model
+    ? filteredModels
+    : [{ id: model, label: model, provider }, ...filteredModels]
 
   if (loading) {
     return <div className="flex-1 flex items-center justify-center text-sm text-[#999]">加载中...</div>
@@ -223,8 +308,8 @@ export function AgentManageTab() {
                     )}
                   >
                     <div className="flex h-8 w-8 shrink-0 items-center justify-center overflow-hidden rounded-full bg-[#181d26]/10">
-                      {template.avatar_url ? (
-                        <img src={template.avatar_url} alt="" className="h-8 w-8 rounded-full object-cover" />
+                      {templateAvatar(template, selectedId === template.id ? agentConfig : null) ? (
+                        <img src={templateAvatar(template, selectedId === template.id ? agentConfig : null)} alt="" className="h-8 w-8 rounded-full object-cover" />
                       ) : (
                         <Bot className="h-4 w-4 text-[#181d26]" />
                       )}
@@ -252,7 +337,7 @@ export function AgentManageTab() {
                     <button
                       type="button"
                       onClick={() => void saveTemplate()}
-                      disabled={saving || !identity || !agentConfig}
+                      disabled={saving || !dirty || !identity || !agentConfig}
                       className="inline-flex h-9 items-center gap-2 rounded-lg bg-[#181d26] px-3 text-sm font-medium text-white transition-colors hover:bg-[#0d1218] disabled:pointer-events-none disabled:opacity-50"
                     >
                       <Save className="h-4 w-4" />
@@ -267,14 +352,46 @@ export function AgentManageTab() {
                       </div>
                     )}
 
-                    {avatarUrl && (
-                      <div>
-                        <label className="mb-2 block text-xs font-medium text-[#555]">头像</label>
-                        <div className="flex h-10 w-10 overflow-hidden rounded-full border border-border bg-[#181d26]/10">
-                          <img src={avatarUrl} alt="" className="h-full w-full object-cover" />
-                        </div>
+                    <div>
+                      <label className="mb-2 block text-xs font-medium text-[#555]">头像</label>
+                      <div className="flex flex-wrap gap-2">
+                        <button
+                          type="button"
+                          onClick={() => updateConfig({ avatar_preset: '' })}
+                          className={cn(
+                            'flex h-10 w-10 items-center justify-center rounded-full border bg-white transition-colors hover:bg-muted',
+                            selectedAvatarPreset === '' ? 'border-[#181d26] ring-2 ring-[#181d26]/15' : 'border-border',
+                          )}
+                          title="默认头像"
+                        >
+                          <Bot className="h-4 w-4 text-[#181d26]" />
+                        </button>
+                        {AVATAR_PRESETS.map((preset) => (
+                          <button
+                            key={preset}
+                            type="button"
+                            onClick={() => updateConfig({ avatar_preset: preset })}
+                            className={cn(
+                              'h-10 w-10 overflow-hidden rounded-full border bg-white transition-colors hover:bg-muted',
+                              selectedAvatarPreset === preset ? 'border-[#181d26] ring-2 ring-[#181d26]/15' : 'border-border',
+                            )}
+                            title={preset}
+                          >
+                            <img src={avatarPresetUrl(preset)} alt="" className="h-full w-full object-cover" />
+                          </button>
+                        ))}
                       </div>
-                    )}
+                      <div className="mt-3 flex items-center gap-3">
+                        <div className="flex h-10 w-10 overflow-hidden rounded-full border border-border bg-[#181d26]/10">
+                          {avatarUrl ? (
+                            <img src={avatarUrl} alt="" className="h-full w-full object-cover" />
+                          ) : (
+                            <Bot className="m-auto h-4 w-4 text-[#181d26]" />
+                          )}
+                        </div>
+                        <span className="text-xs text-muted-foreground">{selectedAvatarPreset || '默认'}</span>
+                      </div>
+                    </div>
 
                     <div className="grid gap-4 sm:grid-cols-2">
                       <div>
@@ -289,12 +406,19 @@ export function AgentManageTab() {
 
                       <div>
                         <label className="mb-1.5 block text-xs font-medium text-[#555]">模型</label>
-                        <input
-                          type="text"
+                        <select
                           value={model}
                           onChange={(event) => updateConfig({ model: event.target.value })}
                           className="h-9 w-full rounded-lg border border-border bg-white px-3 text-sm text-[#1a1a1a] outline-none focus:border-[#9297a0] focus:ring-2 focus:ring-[#9297a0]/20"
-                        />
+                        >
+                          {modelOptions.length === 0 ? (
+                            <option value={model}>{model}</option>
+                          ) : modelOptions.map((option) => (
+                            <option key={`${option.provider}:${option.id}`} value={option.id}>
+                              {option.label || option.id}
+                            </option>
+                          ))}
+                        </select>
                       </div>
                     </div>
 
@@ -311,12 +435,19 @@ export function AgentManageTab() {
                     <div className="grid gap-4 sm:grid-cols-2">
                       <div>
                         <label className="mb-1.5 block text-xs font-medium text-[#555]">Provider</label>
-                        <input
-                          type="text"
+                        <select
                           value={provider}
-                          onChange={(event) => updateConfig({ provider: event.target.value })}
+                          onChange={(event) => updateProvider(event.target.value)}
                           className="h-9 w-full rounded-lg border border-border bg-white px-3 text-sm text-[#1a1a1a] outline-none focus:border-[#9297a0] focus:ring-2 focus:ring-[#9297a0]/20"
-                        />
+                        >
+                          {providerOptions.length === 0 ? (
+                            <option value={provider}>{provider}</option>
+                          ) : providerOptions.map((option) => (
+                            <option key={option.id} value={option.id}>
+                              {option.label || option.id}
+                            </option>
+                          ))}
+                        </select>
                       </div>
 
                       <div>
@@ -346,12 +477,37 @@ export function AgentManageTab() {
                     </label>
 
                     <div>
-                      <label className="mb-1.5 block text-xs font-medium text-[#555]">工具</label>
-                      <textarea
-                        value={tools.join(', ')}
-                        onChange={(event) => updateConfig({ tools: parseListInput(event.target.value) })}
-                        className="h-20 w-full resize-y rounded-lg border border-border bg-white px-3 py-2 font-mono text-sm text-[#1a1a1a] outline-none focus:border-[#9297a0] focus:ring-2 focus:ring-[#9297a0]/20"
-                      />
+                      <label className="mb-2 block text-xs font-medium text-[#555]">工具</label>
+                      <div className="flex flex-wrap gap-2">
+                        {TOOL_OPTIONS.map((tool) => {
+                          const active = tools.includes(tool)
+                          return (
+                            <button
+                              key={tool}
+                              type="button"
+                              onClick={() => updateConfig({ tools: toggleItem(tools, tool) })}
+                              className={cn(
+                                'rounded-md border px-2.5 py-1 font-mono text-xs transition-colors',
+                                active
+                                  ? 'border-[#181d26] bg-[#181d26] text-white'
+                                  : 'border-border bg-white text-[#555] hover:border-[#9297a0] hover:bg-muted',
+                              )}
+                            >
+                              {tool}
+                            </button>
+                          )
+                        })}
+                        {extraTools.map((tool) => (
+                          <button
+                            key={tool}
+                            type="button"
+                            onClick={() => updateConfig({ tools: tools.filter((value) => value !== tool) })}
+                            className="rounded-md border border-[#181d26] bg-[#181d26] px-2.5 py-1 font-mono text-xs text-white transition-colors hover:bg-[#0d1218]"
+                          >
+                            {tool}
+                          </button>
+                        ))}
+                      </div>
                     </div>
 
                     <div>
