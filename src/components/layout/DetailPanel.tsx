@@ -1,4 +1,4 @@
-import { AlertTriangle, ArrowUpRight, CalendarClock, CheckCircle2, ChevronDown, ChevronRight, Circle, Clock, FileText, FolderOpen, ListChecks, Maximize2, MessageSquareQuote, PauseCircle, Repeat2, Save, Search, Upload, Users } from 'lucide-react'
+import { AlertTriangle, ArrowUpRight, CalendarClock, CheckCircle2, ChevronDown, ChevronRight, Circle, Clock, FileText, FolderOpen, ListChecks, Maximize2, MessageSquareQuote, PauseCircle, Plus, Repeat2, Save, Search, Trash2, Upload, Users } from 'lucide-react'
 import { useMemo, useState } from 'react'
 import type { CalendarEvent, ChannelMemberInfo, Task, StorageObject } from '../../core/types.js'
 import { cn } from '../../lib/cn.js'
@@ -36,6 +36,25 @@ interface AgentIdentityForm {
   content: string
 }
 
+interface AgentConfigForm {
+  role?: string
+  provider?: string
+  model?: string
+  temperature?: number
+  thinking?: boolean
+  tools?: string[]
+  skills?: string[]
+  [key: string]: unknown
+}
+
+interface SkillSummary {
+  name: string
+  display_name?: string
+  category?: string
+  description?: string
+  triggers?: string[]
+}
+
 export function DetailPanel({ channelId, members = [], tasks = [], files = [], onCreateTask, onMembersChanged, className }: Props) {
   const { api } = useBeeSeedContext()
   const { user } = useAuth()
@@ -59,6 +78,10 @@ export function DetailPanel({ channelId, members = [], tasks = [], files = [], o
   const [agentSettingsOpen, setAgentSettingsOpen] = useState(false)
   const [selectedAgent, setSelectedAgent] = useState<ChannelMemberInfo | null>(null)
   const [agentIdentity, setAgentIdentity] = useState<AgentIdentityForm>({ name: '', personality: '', content: '' })
+  const [agentConfig, setAgentConfig] = useState<AgentConfigForm | null>(null)
+  const [skillModalOpen, setSkillModalOpen] = useState(false)
+  const [availableSkills, setAvailableSkills] = useState<SkillSummary[]>([])
+  const [skillQuery, setSkillQuery] = useState('')
   const [agentSettingsLoading, setAgentSettingsLoading] = useState(false)
   const [agentSettingsSaving, setAgentSettingsSaving] = useState(false)
 
@@ -129,14 +152,19 @@ export function DetailPanel({ channelId, members = [], tasks = [], files = [], o
     setAgentSettingsOpen(true)
     setAgentSettingsLoading(true)
     try {
-      const identity = await api.get(`channels/${channelId}/agents/${member.agent_id}/identity`).json<AgentIdentityForm>()
+      const [identity, cfg] = await Promise.all([
+        api.get(`channels/${channelId}/agents/${member.agent_id}/identity`).json<AgentIdentityForm>(),
+        api.get(`channels/${channelId}/agents/${member.agent_id}/config`).json<AgentConfigForm>().catch(() => null),
+      ])
       setAgentIdentity({
         name: identity.name || member.display_name || member.agent_id,
         personality: identity.personality || '',
         content: identity.content || '',
       })
+      setAgentConfig(cfg ? { ...cfg, skills: cfg.skills ?? [] } : null)
     } catch {
       setAgentIdentity({ name: member.display_name || member.agent_id, personality: '', content: '' })
+      setAgentConfig(null)
     } finally {
       setAgentSettingsLoading(false)
     }
@@ -147,11 +175,44 @@ export function DetailPanel({ channelId, members = [], tasks = [], files = [], o
     setAgentSettingsSaving(true)
     try {
       await api.put(`channels/${channelId}/agents/${selectedAgent.agent_id}/identity`, { json: agentIdentity })
+      if (agentConfig) {
+        await api.put(`channels/${channelId}/agents/${selectedAgent.agent_id}/config`, {
+          json: { ...agentConfig, role: agentConfig.role || selectedAgent.agent_id },
+        })
+      }
       onMembersChanged?.()
       setAgentSettingsOpen(false)
     } finally {
       setAgentSettingsSaving(false)
     }
+  }
+
+  async function openSkillModal() {
+    setSkillQuery('')
+    setSkillModalOpen(true)
+    try {
+      const data = await api.get('admin/skills').json<SkillSummary[]>()
+      setAvailableSkills(data ?? [])
+    } catch {
+      setAvailableSkills([])
+    }
+  }
+
+  function addAgentSkill(skillName: string) {
+    if (!skillName) return
+    setAgentConfig((current) => {
+      const cfg = current ?? { role: selectedAgent?.agent_id, skills: [] }
+      const skills = cfg.skills ?? []
+      if (skills.includes(skillName)) return cfg
+      return { ...cfg, skills: [...skills, skillName] }
+    })
+  }
+
+  function removeAgentSkill(skillName: string) {
+    setAgentConfig((current) => {
+      if (!current) return current
+      return { ...current, skills: (current.skills ?? []).filter((skill) => skill !== skillName) }
+    })
   }
 
   return (
@@ -420,6 +481,31 @@ export function DetailPanel({ channelId, members = [], tasks = [], files = [], o
                     className="min-h-20 w-full resize-y rounded-lg border border-input bg-transparent px-2.5 py-2 text-sm outline-none transition-colors placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
                   />
                 </div>
+                <div>
+                  <div className="mb-2 flex items-center justify-between gap-3">
+                    <label className="block text-xs font-medium text-muted-foreground">技能</label>
+                    <Button variant="outline" size="sm" onClick={() => void openSkillModal()}>
+                      <Plus className="h-3.5 w-3.5" />
+                      添加技能
+                    </Button>
+                  </div>
+                  {(agentConfig?.skills ?? []).length === 0 ? (
+                    <div className="rounded-lg border border-dashed border-border px-3 py-3 text-sm text-muted-foreground">
+                      未配置技能
+                    </div>
+                  ) : (
+                    <div className="flex flex-wrap gap-2">
+                      {(agentConfig?.skills ?? []).map((skill) => (
+                        <span key={skill} className="inline-flex items-center gap-1.5 rounded-md border border-border bg-background px-2.5 py-1 font-mono text-xs">
+                          {skill}
+                          <button type="button" onClick={() => removeAgentSkill(skill)} className="text-muted-foreground hover:text-destructive" title="移除技能">
+                            <Trash2 className="h-3 w-3" />
+                          </button>
+                        </span>
+                      ))}
+                    </div>
+                  )}
+                </div>
               </div>
             )}
           </div>
@@ -430,6 +516,55 @@ export function DetailPanel({ channelId, members = [], tasks = [], files = [], o
               {agentSettingsSaving ? '保存中...' : '保存'}
             </Button>
           </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={skillModalOpen} onOpenChange={setSkillModalOpen}>
+        <DialogContent className="w-[min(680px,calc(100vw-2rem))] max-w-[calc(100vw-2rem)] p-0" onClose={() => setSkillModalOpen(false)}>
+          <div className="border-b border-border p-4">
+            <DialogHeader>
+              <DialogTitle>添加技能</DialogTitle>
+            </DialogHeader>
+            <div className="relative mt-4">
+              <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+              <Input
+                value={skillQuery}
+                onChange={(event) => setSkillQuery(event.target.value)}
+                placeholder="搜索技能名称、分类、触发词..."
+                className="pl-9"
+              />
+            </div>
+          </div>
+          <div className="max-h-[55vh] overflow-y-auto p-4">
+            <div className="space-y-2">
+              {availableSkills.filter((skill) => {
+                const query = skillQuery.trim().toLowerCase()
+                if (!query) return true
+                return [skill.name, skill.display_name, skill.category, skill.description, ...(skill.triggers ?? [])]
+                  .some((value) => (value ?? '').toLowerCase().includes(query))
+              }).map((skill) => {
+                const added = (agentConfig?.skills ?? []).includes(skill.name)
+                return (
+                  <div key={skill.name} className="flex items-start gap-3 rounded-lg border border-border p-3">
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-center gap-2">
+                        <span className="truncate text-sm font-medium">{skill.display_name || skill.name}</span>
+                        {skill.category && <Badge variant="outline" className="text-[10px]">{skill.category}</Badge>}
+                      </div>
+                      <div className="mt-0.5 truncate font-mono text-xs text-muted-foreground">{skill.name}</div>
+                      {skill.description && <p className="mt-1 line-clamp-2 text-xs leading-5 text-muted-foreground">{skill.description}</p>}
+                    </div>
+                    <Button size="sm" onClick={() => addAgentSkill(skill.name)} disabled={added}>
+                      {added ? '已添加' : '添加'}
+                    </Button>
+                  </div>
+                )
+              })}
+              {availableSkills.length === 0 && (
+                <div className="rounded-lg border border-border p-4 text-sm text-muted-foreground">暂无可添加技能</div>
+              )}
+            </div>
+          </div>
         </DialogContent>
       </Dialog>
     </div>

@@ -2,7 +2,7 @@ import { createStore } from 'zustand/vanilla'
 import type { KyInstance } from 'ky'
 import type {
   Message, ChatMessage, StreamState, WSEvent,
-  ChannelMemberInfo, AgentLoopState, AgentLoopTurn, AgentLoopToolCall,
+  ChannelMemberInfo, AgentLoopState, AgentLoopTurn, AgentLoopToolCall, AgentLoopSkillUse,
   AskUserQuestion,
 } from '../core/types.js'
 
@@ -228,6 +228,7 @@ function buildAgentLoopsFromMessages(channelId: string, messages: Message[]): Ma
       turn = {
         turnNumber,
         toolCalls: [],
+        skillUses: [],
         status: 'active',
         startedAt: timestamp,
       }
@@ -235,7 +236,23 @@ function buildAgentLoopsFromMessages(channelId: string, messages: Message[]): Ma
       loops.set(key, loop)
     }
 
-    if (message.msg_type === 'thinking') {
+    if (meta.event === 'skill_use') {
+      turn = {
+        ...turn,
+        skillUses: [
+          ...(turn.skillUses ?? []),
+          {
+            id: `${message.id}`,
+            name: (meta.name as string) || 'unknown',
+            displayName: meta.display_name as string | undefined,
+            description: meta.description as string | undefined,
+            status: ((meta.status as string) || 'injected') as AgentLoopSkillUse['status'],
+            reason: meta.reason as string | undefined,
+            startedAt: timestamp,
+          },
+        ],
+      }
+    } else if (message.msg_type === 'thinking') {
       turn = { ...turn, progress: message.content }
     } else if (message.msg_type === 'tool_call') {
       const tool: AgentLoopToolCall = {
@@ -433,6 +450,7 @@ function ensureLoopTurn(
     turns.push({
       turnNumber,
       toolCalls: [],
+      skillUses: [],
       status: 'active',
       startedAt: now,
     })
@@ -825,6 +843,46 @@ export function createMessagesStore(config: MessagesStoreConfig) {
           break
         }
 
+        case 'skill_use': {
+          const streams = new Map(state.streams)
+          const key = `${event.channel_id}:${event.agent_id}`
+          const existing = streams.get(key)
+          const loops = new Map(state.agentLoops)
+          const turnNumber = eventTurnNumber(event, existing?.agentLoop ?? loops.get(key))
+          let agentLoop = ensureLoopTurn(existing?.agentLoop ?? loops.get(key), event.channel_id, event.agent_id, turnNumber)
+          agentLoop = updateLoopTurn(agentLoop, turnNumber, (turn) => ({
+            ...turn,
+            skillUses: [
+              ...(turn.skillUses ?? []),
+              {
+                id: `${event.name}-${Date.now()}`,
+                name: event.name,
+                displayName: event.display_name,
+                description: event.description,
+                status: event.status || 'injected',
+                reason: event.reason,
+                startedAt: Date.now(),
+              },
+            ],
+          }))
+          loops.set(key, agentLoop)
+          set({ agentLoops: loops })
+
+          streams.set(key, {
+            agentId: event.agent_id,
+            content: existing?.content || '',
+            thinking: existing?.thinking || '',
+            toolCall: existing?.toolCall,
+            agentLoop,
+          })
+          set({ streams })
+
+          const typing = new Map(state.typingStatus)
+          typing.set(typingKey(event.channel_id, event.agent_id), `${event.agent_id} 启用技能 ${event.display_name || event.name}`)
+          set({ typingStatus: typing })
+          break
+        }
+
         // ── Agent Loop events ──
 
         case 'agent_ack': {
@@ -839,6 +897,7 @@ export function createMessagesStore(config: MessagesStoreConfig) {
           const newTurn: AgentLoopTurn = {
             turnNumber,
             toolCalls: [],
+            skillUses: [],
             status: 'active',
             startedAt: Date.now(),
           }

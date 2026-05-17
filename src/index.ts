@@ -10,7 +10,7 @@ export type {
   // Ask-User
   AskUserQuestion, AskUserData,
   // Agent Loop
-  AgentLoopToolCallStatus, AgentLoopToolCall, AgentLoopTurn, AgentLoopState,
+  AgentLoopToolCallStatus, AgentLoopToolCall, AgentLoopSkillUse, AgentLoopTurn, AgentLoopState,
   // Task System
   Project, Task, TaskComment, TaskSchedule, CalendarEvent,
   // Knowledge Base

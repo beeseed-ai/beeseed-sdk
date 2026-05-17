@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { Bot, Plus, Save, Trash2, X } from 'lucide-react'
+import { Bot, Plus, Save, Search, Trash2, X } from 'lucide-react'
 import { cn } from '../../lib/cn.js'
 import { useBeeSeedContext } from '../../provider/BeeSeedProvider.js'
 
@@ -48,6 +48,15 @@ interface ModelOption {
   provider: string
 }
 
+interface SkillSummary {
+  name: string
+  display_name?: string
+  category?: string
+  description?: string
+  version?: string
+  triggers?: string[]
+}
+
 const FALLBACK_TEMPERATURE = 0.7
 const AVATAR_PRESETS = [
   'bot-amber',
@@ -78,10 +87,6 @@ function labelOrFallback(value: string | undefined, fallback: string) {
   return text || fallback
 }
 
-function parseListInput(value: string) {
-  return value.split(/[\n,，]/).map((item) => item.trim()).filter(Boolean)
-}
-
 function toggleItem(items: string[], item: string) {
   return items.includes(item) ? items.filter((value) => value !== item) : [...items, item]
 }
@@ -106,9 +111,12 @@ export function AgentManageTab() {
   const [providers, setProviders] = useState<ProviderOption[]>([])
   const [models, setModels] = useState<ModelOption[]>([])
   const [availableTemplates, setAvailableTemplates] = useState<AgentTemplateInfo[]>([])
+  const [availableSkills, setAvailableSkills] = useState<SkillSummary[]>([])
   const [addModalOpen, setAddModalOpen] = useState(false)
+  const [skillModalOpen, setSkillModalOpen] = useState(false)
   const [deleteTarget, setDeleteTarget] = useState<AgentTemplateInfo | null>(null)
   const [availableQuery, setAvailableQuery] = useState('')
+  const [skillQuery, setSkillQuery] = useState('')
   const [templateActionError, setTemplateActionError] = useState('')
   const [templateActionLoading, setTemplateActionLoading] = useState('')
   const [dirty, setDirty] = useState(false)
@@ -297,6 +305,28 @@ export function AgentManageTab() {
     }
   }
 
+  const openSkillModal = async () => {
+    setSkillQuery('')
+    setSkillModalOpen(true)
+    setTemplateActionError('')
+    try {
+      const data = await api.get('admin/skills').json<SkillSummary[]>()
+      setAvailableSkills(data ?? [])
+    } catch (err) {
+      setAvailableSkills([])
+      setTemplateActionError(err instanceof Error ? err.message : '加载技能失败')
+    }
+  }
+
+  const addSkill = (skillName: string) => {
+    if (!skillName || skills.includes(skillName)) return
+    updateConfig({ skills: [...skills, skillName] })
+  }
+
+  const removeSkill = (skillName: string) => {
+    updateConfig({ skills: skills.filter((skill) => skill !== skillName) })
+  }
+
   const deleteTemplate = async (template: AgentTemplateInfo) => {
     if (template.removable === false) return
     setTemplateActionLoading(template.id)
@@ -341,6 +371,12 @@ export function AgentManageTab() {
     const query = availableQuery.trim().toLowerCase()
     if (!query) return true
     return [template.id, template.name, template.model, template.provider]
+      .some((value) => (value ?? '').toLowerCase().includes(query))
+  })
+  const filteredSkills = availableSkills.filter((skill) => {
+    const query = skillQuery.trim().toLowerCase()
+    if (!query) return true
+    return [skill.name, skill.display_name, skill.category, skill.description, ...(skill.triggers ?? [])]
       .some((value) => (value ?? '').toLowerCase().includes(query))
   })
 
@@ -609,12 +645,38 @@ export function AgentManageTab() {
                     </div>
 
                     <div>
-                      <label className="mb-1.5 block text-xs font-medium text-[#555]">技能</label>
-                      <textarea
-                        value={skills.join(', ')}
-                        onChange={(event) => updateConfig({ skills: parseListInput(event.target.value) })}
-                        className="h-16 w-full resize-y rounded-lg border border-border bg-white px-3 py-2 font-mono text-sm text-[#1a1a1a] outline-none focus:border-[#9297a0] focus:ring-2 focus:ring-[#9297a0]/20"
-                      />
+                      <div className="mb-2 flex items-center justify-between gap-3">
+                        <label className="block text-xs font-medium text-[#555]">技能</label>
+                        <button
+                          type="button"
+                          onClick={() => void openSkillModal()}
+                          className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-border bg-white px-2.5 text-xs font-medium text-[#181d26] transition-colors hover:bg-muted"
+                        >
+                          <Plus className="h-3.5 w-3.5" />
+                          添加技能
+                        </button>
+                      </div>
+                      {skills.length === 0 ? (
+                        <div className="rounded-lg border border-dashed border-border px-3 py-3 text-sm text-muted-foreground">
+                          未配置技能
+                        </div>
+                      ) : (
+                        <div className="flex flex-wrap gap-2">
+                          {skills.map((skill) => (
+                            <span key={skill} className="inline-flex items-center gap-1.5 rounded-md border border-border bg-white px-2.5 py-1 font-mono text-xs text-[#181d26]">
+                              {skill}
+                              <button
+                                type="button"
+                                onClick={() => removeSkill(skill)}
+                                className="rounded-sm text-muted-foreground hover:text-red-600"
+                                title="移除技能"
+                              >
+                                <X className="h-3 w-3" />
+                              </button>
+                            </span>
+                          ))}
+                        </div>
+                      )}
                     </div>
 
                     <details className="text-xs">
@@ -765,6 +827,70 @@ export function AgentManageTab() {
                   </button>
                 )}
               </div>
+            </div>
+          </div>
+        </div>
+      )}
+      {skillModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 px-4">
+          <div className="flex max-h-[80vh] w-full max-w-2xl flex-col overflow-hidden rounded-xl border border-border bg-white shadow-xl">
+            <div className="flex items-center justify-between border-b border-border px-5 py-4">
+              <div>
+                <h3 className="text-sm font-semibold text-[#1a1a1a]">添加技能</h3>
+                <p className="mt-1 text-xs text-muted-foreground">技能会写入当前 Agent 配置</p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setSkillModalOpen(false)}
+                className="inline-flex h-8 w-8 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-muted hover:text-[#181d26]"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+            <div className="border-b border-border p-4">
+              <div className="relative">
+                <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                <input
+                  type="text"
+                  value={skillQuery}
+                  onChange={(event) => setSkillQuery(event.target.value)}
+                  placeholder="搜索技能名称、分类、触发词..."
+                  className="h-9 w-full rounded-lg border border-border bg-white pl-9 pr-3 text-sm text-[#1a1a1a] outline-none focus:border-[#9297a0] focus:ring-2 focus:ring-[#9297a0]/20"
+                />
+              </div>
+            </div>
+            <div className="min-h-0 flex-1 overflow-y-auto p-4">
+              {filteredSkills.length === 0 ? (
+                <div className="rounded-lg border border-border p-4 text-sm text-muted-foreground">
+                  暂无可添加技能
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  {filteredSkills.map((skill) => {
+                    const added = skills.includes(skill.name)
+                    return (
+                      <div key={skill.name} className="flex items-start gap-3 rounded-lg border border-border p-3">
+                        <div className="min-w-0 flex-1">
+                          <div className="flex items-center gap-2">
+                            <span className="truncate text-sm font-medium text-[#1a1a1a]">{skill.display_name || skill.name}</span>
+                            {skill.category && <span className="rounded-md border border-border px-1.5 py-0.5 text-[10px] text-muted-foreground">{skill.category}</span>}
+                          </div>
+                          <div className="mt-0.5 truncate font-mono text-xs text-muted-foreground">{skill.name}</div>
+                          {skill.description && <p className="mt-1 line-clamp-2 text-xs leading-5 text-muted-foreground">{skill.description}</p>}
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => addSkill(skill.name)}
+                          disabled={added}
+                          className="inline-flex h-8 items-center rounded-lg bg-[#181d26] px-3 text-sm font-medium text-white transition-colors hover:bg-[#0d1218] disabled:pointer-events-none disabled:bg-muted disabled:text-muted-foreground"
+                        >
+                          {added ? '已添加' : '添加'}
+                        </button>
+                      </div>
+                    )
+                  })}
+                </div>
+              )}
             </div>
           </div>
         </div>

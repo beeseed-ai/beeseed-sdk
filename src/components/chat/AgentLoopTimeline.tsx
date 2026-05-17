@@ -1,6 +1,6 @@
 import { useState } from 'react'
-import { Check, ChevronRight, Circle, Clock3, Wrench } from 'lucide-react'
-import type { AgentLoopState, AgentLoopTurn, AgentLoopToolCall } from '../../core/types.js'
+import { Check, ChevronRight, Circle, Clock3, Sparkles, Wrench } from 'lucide-react'
+import type { AgentLoopState, AgentLoopTurn, AgentLoopToolCall, AgentLoopSkillUse } from '../../core/types.js'
 import { cn } from '../../lib/cn.js'
 import { ThinkingBlock } from './ThinkingBlock.js'
 import { MarkdownRenderer } from './MarkdownRenderer.js'
@@ -84,6 +84,33 @@ function ToolCallLine({ tool }: { tool: AgentLoopToolCall }) {
   )
 }
 
+function SkillUseLine({ skill }: { skill: AgentLoopSkillUse }) {
+  const [detailOpen, setDetailOpen] = useState(false)
+  const failed = skill.status === 'missing' || skill.status === 'error'
+  const label = skill.displayName || skill.name
+  return (
+    <div className="py-0.5">
+      <div
+        className="flex cursor-pointer items-center gap-2 rounded-md px-1.5 py-1 text-xs text-[#555] hover:bg-black/[0.04]"
+        onClick={() => setDetailOpen(!detailOpen)}
+      >
+        <ChevronRight className={cn('size-3 shrink-0 transition-transform text-[#999]', detailOpen && 'rotate-90')} />
+        <Sparkles className={cn('size-3 shrink-0', failed ? 'text-red-600' : 'text-[#254fad]')} />
+        <span className="font-medium text-[#181d26]">{label}</span>
+        <span>{failed ? '不可用' : '已启用'}</span>
+        <span className="rounded border border-[#dddddd] px-1.5 py-0.5 text-[10px] text-[#777169]">{skill.status}</span>
+      </div>
+      {detailOpen && (
+        <div className="ml-5 mt-1 mb-1 space-y-1 border-l-2 border-[#dddddd] pl-2 text-[11px]">
+          <div className="font-mono text-[#181d26]">{skill.name}</div>
+          {skill.description && <div className="leading-5 text-[#555]">{skill.description}</div>}
+          {skill.reason && <div className="text-muted-foreground">原因：{skill.reason}</div>}
+        </div>
+      )}
+    </div>
+  )
+}
+
 function TurnItem({
   turn,
   isRunning,
@@ -99,10 +126,12 @@ function TurnItem({
 }) {
   const [open, setOpen] = useState(defaultOpen)
 
-  const parallelBatches = groupParallelTools(turn.toolCalls)
+  const skillUses = turn.skillUses ?? []
+  const toolCalls = turn.toolCalls ?? []
+  const parallelBatches = groupParallelTools(toolCalls)
   const shouldShowContent = showContent === 'all' || (showContent === 'intermediate' && !isFinalTurn)
   const visibleContent = shouldShowContent ? turn.content : undefined
-  const hasContent = turn.thinking || turn.toolCalls.length > 0 || turn.progress || visibleContent
+  const hasContent = turn.thinking || skillUses.length > 0 || toolCalls.length > 0 || turn.progress || visibleContent
   const label = turn.turnNumber === 1 ? '开始处理' : `继续处理 ${turn.turnNumber}`
 
   return (
@@ -118,8 +147,12 @@ function TurnItem({
         {!open && turn.progress && (
           <span className="text-[10px] text-[#777169] truncate">{turn.progress}</span>
         )}
-        {!open && turn.toolCalls.length > 0 && (
-          <span className="text-[10px] text-[#999]">{turn.toolCalls.length} 个工具</span>
+        {!open && (skillUses.length > 0 || toolCalls.length > 0) && (
+          <span className="text-[10px] text-[#999]">
+            {skillUses.length > 0 ? `${skillUses.length} 个技能` : ''}
+            {skillUses.length > 0 && toolCalls.length > 0 ? ' · ' : ''}
+            {toolCalls.length > 0 ? `${toolCalls.length} 个工具` : ''}
+          </span>
         )}
       </button>
 
@@ -142,6 +175,13 @@ function TurnItem({
               {turn.status === 'active' && isRunning && (
                 <span className="inline-block w-1.5 h-4 bg-[#181d26]/50 animate-pulse ml-0.5 align-text-bottom" />
               )}
+            </div>
+          )}
+
+          {/* Skills */}
+          {skillUses.length > 0 && (
+            <div className="mt-1">
+              {skillUses.map((skill) => <SkillUseLine key={skill.id} skill={skill} />)}
             </div>
           )}
 
@@ -169,7 +209,7 @@ function TurnItem({
           )}
 
           {/* Active indicator */}
-          {turn.status === 'active' && isRunning && !turn.thinking && turn.toolCalls.length === 0 && (
+          {turn.status === 'active' && isRunning && !turn.thinking && toolCalls.length === 0 && (
             <div className="flex items-center gap-1.5 py-1 text-xs text-[#777169]">
               <span className="inline-flex size-2 rounded-full bg-[#181d26]/60 animate-pulse" />
               <span>等待 LLM 响应...</span>

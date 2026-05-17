@@ -182,10 +182,21 @@ export interface AgentLoopToolCall {
   batchId?: string
 }
 
+export interface AgentLoopSkillUse {
+  id: string
+  name: string
+  displayName?: string
+  description?: string
+  status: 'available' | 'suggested' | 'approved' | 'triggered' | 'injected' | 'missing' | 'error'
+  reason?: string
+  startedAt: number
+}
+
 export interface AgentLoopTurn {
   turnNumber: number
   thinking?: string
   toolCalls: AgentLoopToolCall[]
+  skillUses: AgentLoopSkillUse[]
   progress?: string
   content?: string
   status: 'active' | 'completed'
@@ -522,6 +533,7 @@ export type WSEvent =
   | { type: 'thinking_content'; channel_id: string; agent_id: string; content: string }
   | { type: 'tool_call'; channel_id: string; agent_id: string; name: string; args?: unknown; batch_id?: string; parallel?: boolean; turn?: number }
   | { type: 'tool_result'; channel_id: string; agent_id: string; name: string; success?: boolean; output?: string; duration_secs?: number; turn?: number }
+  | { type: 'skill_use'; channel_id: string; agent_id: string; name: string; display_name?: string; description?: string; status?: AgentLoopSkillUse['status']; reason?: string; turn?: number }
   | { type: 'error'; channel_id?: string; agent_id?: string; error: string; turn?: number }
   // Agent Loop events
   | { type: 'agent_ack'; channel_id: string; agent_id: string; turn: number; content?: string }
