@@ -742,7 +742,7 @@ export function AgentManageTab() {
                 </div>
               ) : (
                 <div className="rounded-lg border border-border bg-[#fafafa] px-3 py-2 text-sm leading-5 text-[#555]">
-                  删除后只会从当前 App 的模板列表移除，不会删除平台模板库。
+                  删除后将无法在新频道中选择该模板，已有频道不受影响。
                 </div>
               )}
 
