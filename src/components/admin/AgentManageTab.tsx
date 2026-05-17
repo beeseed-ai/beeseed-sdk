@@ -107,6 +107,7 @@ export function AgentManageTab() {
   const [models, setModels] = useState<ModelOption[]>([])
   const [availableTemplates, setAvailableTemplates] = useState<AgentTemplateInfo[]>([])
   const [addModalOpen, setAddModalOpen] = useState(false)
+  const [deleteTarget, setDeleteTarget] = useState<AgentTemplateInfo | null>(null)
   const [availableQuery, setAvailableQuery] = useState('')
   const [templateActionError, setTemplateActionError] = useState('')
   const [templateActionLoading, setTemplateActionLoading] = useState('')
@@ -298,7 +299,6 @@ export function AgentManageTab() {
 
   const deleteTemplate = async (template: AgentTemplateInfo) => {
     if (template.removable === false) return
-    if (!window.confirm(`删除 Agent 模板「${labelOrFallback(template.name, template.id)}」？`)) return
     setTemplateActionLoading(template.id)
     setTemplateActionError('')
     try {
@@ -311,6 +311,7 @@ export function AgentManageTab() {
       setIdentity(null)
       setAgentConfig(null)
       setDirty(false)
+      setDeleteTarget(null)
     } catch (err) {
       setTemplateActionError(err instanceof Error ? err.message : '删除模板失败')
     } finally {
@@ -409,8 +410,8 @@ export function AgentManageTab() {
                     </button>
                     <button
                       type="button"
-                      onClick={() => void deleteTemplate(template)}
-                      disabled={template.removable === false || templateActionLoading === template.id}
+                      onClick={() => setDeleteTarget(template)}
+                      disabled={templateActionLoading === template.id}
                       className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-white hover:text-red-600 disabled:pointer-events-none disabled:opacity-40"
                       title={template.blocked_reason || '删除模板'}
                     >
@@ -697,6 +698,73 @@ export function AgentManageTab() {
                   ))}
                 </div>
               )}
+            </div>
+          </div>
+        </div>
+      )}
+      {deleteTarget && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 px-4">
+          <div className="w-full max-w-md overflow-hidden rounded-xl border border-border bg-white shadow-xl">
+            <div className="flex items-center justify-between border-b border-border px-5 py-4">
+              <div>
+                <h3 className="text-sm font-semibold text-[#1a1a1a]">删除 Agent 模板</h3>
+                <p className="mt-1 text-xs text-muted-foreground">{deleteTarget.id}</p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setDeleteTarget(null)}
+                className="inline-flex h-8 w-8 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-muted hover:text-[#181d26]"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+            <div className="space-y-4 p-5">
+              <div className="flex items-start gap-3">
+                <div className="flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded-full bg-[#181d26]/10">
+                  {templateAvatar(deleteTarget, null) ? (
+                    <img src={templateAvatar(deleteTarget, null)} alt="" className="h-9 w-9 rounded-full object-cover" />
+                  ) : (
+                    <Bot className="h-4 w-4 text-[#181d26]" />
+                  )}
+                </div>
+                <div className="min-w-0">
+                  <div className="truncate text-sm font-medium text-[#1a1a1a]">{labelOrFallback(deleteTarget.name, deleteTarget.id)}</div>
+                  <div className="mt-0.5 text-xs text-muted-foreground">{deleteTarget.model || '-'}</div>
+                </div>
+              </div>
+
+              {deleteTarget.removable === false ? (
+                <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm leading-5 text-amber-800">
+                  {deleteTarget.blocked_reason || '当前模板仍在使用，暂时不能删除。'}
+                  {typeof deleteTarget.usage_count === 'number' && deleteTarget.usage_count > 0 && (
+                    <span> 已有 {deleteTarget.usage_count} 个频道使用该模板。</span>
+                  )}
+                </div>
+              ) : (
+                <div className="rounded-lg border border-border bg-[#fafafa] px-3 py-2 text-sm leading-5 text-[#555]">
+                  删除后只会从当前 App 的模板列表移除，不会删除平台模板库。
+                </div>
+              )}
+
+              <div className="flex justify-end gap-2">
+                <button
+                  type="button"
+                  onClick={() => setDeleteTarget(null)}
+                  className="inline-flex h-9 items-center rounded-lg border border-border bg-white px-3 text-sm font-medium text-[#181d26] transition-colors hover:bg-muted"
+                >
+                  关闭
+                </button>
+                {deleteTarget.removable !== false && (
+                  <button
+                    type="button"
+                    onClick={() => void deleteTemplate(deleteTarget)}
+                    disabled={templateActionLoading === deleteTarget.id}
+                    className="inline-flex h-9 items-center rounded-lg bg-red-600 px-3 text-sm font-medium text-white transition-colors hover:bg-red-700 disabled:pointer-events-none disabled:opacity-50"
+                  >
+                    {templateActionLoading === deleteTarget.id ? '删除中...' : '确认删除'}
+                  </button>
+                )}
+              </div>
             </div>
           </div>
         </div>
