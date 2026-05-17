@@ -12,6 +12,7 @@ export interface ChannelsState {
   setChannels: (channels: ChannelWithMeta[]) => void
   createChannel: (input: { name: string; purpose?: string }) => Promise<{ channel: ChannelWithMeta; members: ChannelMember[] } | null>
   updateUnread: (channelId: string, count: number) => void
+  markRead: (channelId: string) => void
   reset: () => void
 }
 
@@ -57,11 +58,18 @@ export function createChannelsStore(config: ChannelsStoreConfig) {
     },
 
     updateUnread: (channelId, count) => {
+      const channels = get().channels
+      const changed = channels.some((r) => r.id === channelId && r.unread_count !== count)
+      if (!changed) return
       set({
-        channels: get().channels.map((r) =>
+        channels: channels.map((r) =>
           r.id === channelId ? { ...r, unread_count: count } : r,
         ),
       })
+    },
+
+    markRead: (channelId) => {
+      get().updateUnread(channelId, 0)
     },
 
     reset: () => set({ channels: [], currentChannelId: null, loading: false }),

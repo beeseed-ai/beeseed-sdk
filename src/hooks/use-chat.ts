@@ -4,19 +4,25 @@ import { useBeeSeedContext } from '../provider/BeeSeedProvider.js'
 import type { ChatMessage, ChannelMemberInfo } from '../core/types.js'
 
 export function useChat(channelId: string | null) {
-  const { messagesStore, ws } = useBeeSeedContext()
+  const { channelsStore, messagesStore, ws } = useBeeSeedContext()
   const state = useStore(messagesStore)
 
   useEffect(() => {
     if (!channelId) return
     const s = messagesStore.getState()
-    void s.fetchMessages(channelId)
+    void s.fetchMessages(channelId).then(() => {
+      const latestMsgId = latestMessageId(s.getMessages(channelId))
+      if (latestMsgId > 0) {
+        ws.send({ type: 'read_ack', channel_id: channelId, msg_id: latestMsgId })
+        channelsStore.getState().markRead(channelId)
+      }
+    })
     void s.fetchMembers(channelId)
     ws.send({ type: 'join_channel', channel_id: channelId })
     return () => {
       ws.send({ type: 'leave_channel', channel_id: channelId })
     }
-  }, [channelId])
+  }, [channelId, channelsStore, messagesStore, ws])
 
   const send = useCallback(
     (content: string, metadata?: Record<string, unknown>) => {
@@ -101,4 +107,12 @@ export function useChat(channelId: string | null) {
     ack,
     refreshMembers,
   }
+}
+
+function latestMessageId(messages: ChatMessage[]): number {
+  return messages.reduce((latest, message) => (
+    typeof message.msgId === 'number' && Number.isFinite(message.msgId)
+      ? Math.max(latest, message.msgId)
+      : latest
+  ), 0)
 }
