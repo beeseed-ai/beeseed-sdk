@@ -9,8 +9,10 @@ export function useChat(channelId: string | null) {
 
   useEffect(() => {
     if (!channelId) return
+    let cancelled = false
     const s = messagesStore.getState()
     void s.fetchMessages(channelId).then(() => {
+      if (cancelled || channelsStore.getState().currentChannelId !== channelId) return
       const latestMsgId = latestMessageId(s.getMessages(channelId))
       if (latestMsgId > 0) {
         ws.send({ type: 'read_ack', channel_id: channelId, msg_id: latestMsgId })
@@ -20,6 +22,7 @@ export function useChat(channelId: string | null) {
     void s.fetchMembers(channelId)
     ws.send({ type: 'join_channel', channel_id: channelId })
     return () => {
+      cancelled = true
       ws.send({ type: 'leave_channel', channel_id: channelId })
     }
   }, [channelId, channelsStore, messagesStore, ws])
