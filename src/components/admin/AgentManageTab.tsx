@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { Bot } from 'lucide-react'
+import { Bot, Save } from 'lucide-react'
 import { cn } from '../../lib/cn.js'
 import { useBeeSeedContext } from '../../provider/BeeSeedProvider.js'
 
@@ -44,6 +44,10 @@ function uniqueItems(...groups: Array<string[] | undefined>) {
   return Array.from(new Set(groups.flatMap((group) => group ?? []).filter(Boolean)))
 }
 
+function parseListInput(value: string) {
+  return value.split(/[\n,，]/).map((item) => item.trim()).filter(Boolean)
+}
+
 function templateAvatar(template: AgentTemplateInfo, config: AgentConfig | null) {
   if (template.avatar_url) return template.avatar_url
   const preset = config?.avatar_preset || template.avatar_preset
@@ -57,6 +61,9 @@ export function AgentManageTab() {
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [identity, setIdentity] = useState<IdentityData | null>(null)
   const [agentConfig, setAgentConfig] = useState<AgentConfig | null>(null)
+  const [saving, setSaving] = useState(false)
+  const [saved, setSaved] = useState(false)
+  const [saveError, setSaveError] = useState('')
   const loadSeqRef = useRef(0)
   const detailSeqRef = useRef(0)
 
@@ -103,6 +110,8 @@ export function AgentManageTab() {
     detailSeqRef.current = detailSeq
     setIdentity(null)
     setAgentConfig(null)
+    setSaved(false)
+    setSaveError('')
 
     Promise.all([
       api.get(`admin/agent-templates/${selectedId}/identity`).json<IdentityData>().catch(() => null),
@@ -113,6 +122,61 @@ export function AgentManageTab() {
       setAgentConfig(cfg ? { ...cfg, tools: cfg.tools ?? [], skills: cfg.skills ?? [] } : null)
     })
   }, [api, selectedId])
+
+  const updateIdentity = (patch: Partial<IdentityData>) => {
+    setIdentity((current) => ({ name: '', personality: '', content: '', ...(current ?? {}), ...patch }))
+    setSaved(false)
+    setSaveError('')
+  }
+
+  const updateConfig = (patch: Partial<AgentConfig>) => {
+    setAgentConfig((current) => ({ ...(current ?? {}), ...patch }))
+    setSaved(false)
+    setSaveError('')
+  }
+
+  const saveTemplate = async () => {
+    if (!selectedId || !identity || !agentConfig) return
+    setSaving(true)
+    setSaved(false)
+    setSaveError('')
+    try {
+      const identityPayload = {
+        name: identity.name.trim(),
+        personality: identity.personality.trim(),
+        content: identity.content,
+      }
+      const configPayload = {
+        ...agentConfig,
+        role: selectedId,
+        identity: {
+          ...((agentConfig.identity as Record<string, unknown> | undefined) ?? {}),
+          ...identityPayload,
+        },
+      }
+      await api.put(`admin/agent-templates/${selectedId}/config`, { json: configPayload })
+      await api.put(`admin/agent-templates/${selectedId}/identity`, { json: identityPayload })
+      setTemplates((current) => current.map((template) => (
+        template.id === selectedId
+          ? {
+              ...template,
+              name: identityPayload.name || template.name,
+              role: String(configPayload.role || template.role),
+              provider: String(configPayload.provider || template.provider),
+              model: String(configPayload.model || template.model),
+              tools: configPayload.tools ?? template.tools,
+              skills: configPayload.skills ?? template.skills,
+            }
+          : template
+      )))
+      setSaved(true)
+      window.setTimeout(() => setSaved(false), 1800)
+    } catch (err) {
+      setSaveError(err instanceof Error ? err.message : '保存失败')
+    } finally {
+      setSaving(false)
+    }
+  }
 
   const selectedTemplate = selectedId ? templates.find((template) => template.id === selectedId) ?? null : null
   const displayName = labelOrFallback(identity?.name || selectedTemplate?.name, selectedTemplate?.id || 'Agent')
@@ -185,9 +249,24 @@ export function AgentManageTab() {
                         {role} · Template ID: {selectedTemplate.id}
                       </span>
                     </div>
+                    <button
+                      type="button"
+                      onClick={() => void saveTemplate()}
+                      disabled={saving || !identity || !agentConfig}
+                      className="inline-flex h-9 items-center gap-2 rounded-lg bg-[#181d26] px-3 text-sm font-medium text-white transition-colors hover:bg-[#0d1218] disabled:pointer-events-none disabled:opacity-50"
+                    >
+                      <Save className="h-4 w-4" />
+                      {saving ? '保存中...' : saved ? '已保存' : '保存'}
+                    </button>
                   </div>
 
                   <div className="space-y-5 p-5">
+                    {saveError && (
+                      <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+                        {saveError}
+                      </div>
+                    )}
+
                     {avatarUrl && (
                       <div>
                         <label className="mb-2 block text-xs font-medium text-[#555]">头像</label>
@@ -202,9 +281,9 @@ export function AgentManageTab() {
                         <label className="mb-1.5 block text-xs font-medium text-[#555]">名字</label>
                         <input
                           type="text"
-                          value={displayName}
-                          readOnly
-                          className="h-9 w-full rounded-lg border border-border bg-[#fafafa] px-3 text-sm text-[#1a1a1a]"
+                          value={identity?.name ?? displayName}
+                          onChange={(event) => updateIdentity({ name: event.target.value })}
+                          className="h-9 w-full rounded-lg border border-border bg-white px-3 text-sm text-[#1a1a1a] outline-none focus:border-[#9297a0] focus:ring-2 focus:ring-[#9297a0]/20"
                         />
                       </div>
 
@@ -213,8 +292,8 @@ export function AgentManageTab() {
                         <input
                           type="text"
                           value={model}
-                          readOnly
-                          className="h-9 w-full rounded-lg border border-border bg-[#fafafa] px-3 text-sm text-[#1a1a1a]"
+                          onChange={(event) => updateConfig({ model: event.target.value })}
+                          className="h-9 w-full rounded-lg border border-border bg-white px-3 text-sm text-[#1a1a1a] outline-none focus:border-[#9297a0] focus:ring-2 focus:ring-[#9297a0]/20"
                         />
                       </div>
                     </div>
@@ -224,8 +303,8 @@ export function AgentManageTab() {
                       <input
                         type="text"
                         value={identity?.personality ?? ''}
-                        readOnly
-                        className="h-9 w-full rounded-lg border border-border bg-[#fafafa] px-3 text-sm text-[#1a1a1a]"
+                        onChange={(event) => updateIdentity({ personality: event.target.value })}
+                        className="h-9 w-full rounded-lg border border-border bg-white px-3 text-sm text-[#1a1a1a] outline-none focus:border-[#9297a0] focus:ring-2 focus:ring-[#9297a0]/20"
                       />
                     </div>
 
@@ -235,8 +314,8 @@ export function AgentManageTab() {
                         <input
                           type="text"
                           value={provider}
-                          readOnly
-                          className="h-9 w-full rounded-lg border border-border bg-[#fafafa] px-3 text-sm text-[#1a1a1a]"
+                          onChange={(event) => updateConfig({ provider: event.target.value })}
+                          className="h-9 w-full rounded-lg border border-border bg-white px-3 text-sm text-[#1a1a1a] outline-none focus:border-[#9297a0] focus:ring-2 focus:ring-[#9297a0]/20"
                         />
                       </div>
 
@@ -250,8 +329,7 @@ export function AgentManageTab() {
                           max="2"
                           step="0.1"
                           value={temperature}
-                          disabled
-                          readOnly
+                          onChange={(event) => updateConfig({ temperature: Number(event.target.value) })}
                           className="h-9 w-full"
                         />
                       </div>
@@ -261,51 +339,36 @@ export function AgentManageTab() {
                       <input
                         type="checkbox"
                         checked={Boolean(agentConfig?.thinking)}
-                        disabled
-                        readOnly
+                        onChange={(event) => updateConfig({ thinking: event.target.checked })}
                         className="h-4 w-4 rounded border-border"
                       />
                       启用 Thinking（深度思考模式）
                     </label>
 
                     <div>
-                      <label className="mb-2 block text-xs font-medium text-[#555]">工具</label>
-                      <div className="flex flex-wrap gap-2">
-                        {tools.length === 0 ? (
-                          <span className="text-xs text-muted-foreground">-</span>
-                        ) : tools.map((tool) => (
-                          <span
-                            key={tool}
-                            className="rounded-md border border-[#181d26] bg-[#181d26] px-2.5 py-1 font-mono text-xs text-white"
-                          >
-                            {tool}
-                          </span>
-                        ))}
-                      </div>
+                      <label className="mb-1.5 block text-xs font-medium text-[#555]">工具</label>
+                      <textarea
+                        value={tools.join(', ')}
+                        onChange={(event) => updateConfig({ tools: parseListInput(event.target.value) })}
+                        className="h-20 w-full resize-y rounded-lg border border-border bg-white px-3 py-2 font-mono text-sm text-[#1a1a1a] outline-none focus:border-[#9297a0] focus:ring-2 focus:ring-[#9297a0]/20"
+                      />
                     </div>
 
-                    {skills.length > 0 && (
-                      <div>
-                        <label className="mb-2 block text-xs font-medium text-[#555]">技能</label>
-                        <div className="flex flex-wrap gap-2">
-                          {skills.map((skill) => (
-                            <span
-                              key={skill}
-                              className="rounded-md border border-border bg-[#fafafa] px-2.5 py-1 font-mono text-xs text-[#555]"
-                            >
-                              {skill}
-                            </span>
-                          ))}
-                        </div>
-                      </div>
-                    )}
+                    <div>
+                      <label className="mb-1.5 block text-xs font-medium text-[#555]">技能</label>
+                      <textarea
+                        value={skills.join(', ')}
+                        onChange={(event) => updateConfig({ skills: parseListInput(event.target.value) })}
+                        className="h-16 w-full resize-y rounded-lg border border-border bg-white px-3 py-2 font-mono text-sm text-[#1a1a1a] outline-none focus:border-[#9297a0] focus:ring-2 focus:ring-[#9297a0]/20"
+                      />
+                    </div>
 
                     <details className="text-xs">
                       <summary className="mb-1.5 cursor-pointer select-none text-muted-foreground">Identity 原始内容（高级）</summary>
                       <textarea
                         value={identity?.content ?? ''}
-                        readOnly
-                        className="h-36 w-full resize-y rounded-lg border border-border bg-[#fafafa] px-3 py-2 font-mono text-sm text-[#1a1a1a]"
+                        onChange={(event) => updateIdentity({ content: event.target.value })}
+                        className="h-36 w-full resize-y rounded-lg border border-border bg-white px-3 py-2 font-mono text-sm text-[#1a1a1a] outline-none focus:border-[#9297a0] focus:ring-2 focus:ring-[#9297a0]/20"
                       />
                     </details>
                   </div>
