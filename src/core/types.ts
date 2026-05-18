@@ -233,10 +233,24 @@ export interface AgentMeta {
 export interface AgentConfig {
   model: string
   provider: string
+  model_tier?: ModelTierName | ''
   tools: string[]
   temperature: number
   system_prompt?: string
   identity?: string
+}
+
+export type ModelTierName = 'fast' | 'thinking' | 'pro'
+
+export interface ModelTierConfig {
+  provider: string
+  model: string
+  thinking: boolean
+}
+
+export interface ModelTierSettings {
+  default_tier: ModelTierName
+  tiers: Record<ModelTierName, ModelTierConfig>
 }
 
 // ── Task System ──

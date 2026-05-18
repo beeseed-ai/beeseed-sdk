@@ -1,6 +1,6 @@
 import { AlertTriangle, ArrowUpRight, CalendarClock, CheckCircle2, ChevronDown, ChevronRight, Circle, Clock, FileText, FolderOpen, ListChecks, Maximize2, MessageSquareQuote, PauseCircle, Plus, Repeat2, Save, Search, Trash2, Upload, Users } from 'lucide-react'
 import { useMemo, useState } from 'react'
-import type { CalendarEvent, ChannelMemberInfo, Task, StorageObject } from '../../core/types.js'
+import type { CalendarEvent, ChannelMemberInfo, ModelTierName, Task, StorageObject } from '../../core/types.js'
 import { cn } from '../../lib/cn.js'
 import { formatBytes, formatTime } from '../../lib/format.js'
 import { storageDisplayName } from '../../lib/storage-display.js'
@@ -40,6 +40,7 @@ interface AgentConfigForm {
   role?: string
   provider?: string
   model?: string
+  model_tier?: ModelTierName | ''
   temperature?: number
   thinking?: boolean
   tools?: string[]
@@ -53,6 +54,16 @@ interface SkillSummary {
   category?: string
   description?: string
   triggers?: string[]
+}
+
+const MODEL_TIER_OPTIONS: { value: ModelTierName; label: string }[] = [
+  { value: 'fast', label: '快速' },
+  { value: 'thinking', label: '思考' },
+  { value: 'pro', label: '专业' },
+]
+
+function normalizeModelTier(value: unknown): ModelTierName | '' {
+  return value === 'fast' || value === 'thinking' || value === 'pro' ? value : ''
 }
 
 export function DetailPanel({ channelId, members = [], tasks = [], files = [], onCreateTask, onMembersChanged, className }: Props) {
@@ -91,6 +102,7 @@ export function DetailPanel({ channelId, members = [], tasks = [], files = [], o
   const channelFiles = storageObjects.length > 0 ? storageObjects : files
   const currentMember = user ? users.find((m) => m.user_id === user.id) : null
   const canEditAgents = currentMember?.role === 'owner' || currentMember?.role === 'coordinator'
+  const canConfigureAgentTier = Boolean(currentMember)
   const agentNames = new Map(agents.map((agent) => [agent.agent_id, agent.display_name || agent.agent_id || 'Agent']))
   const selectedTask = selectedTaskId ? channelTasks.find((task) => task.id === selectedTaskId) || null : null
   const now = Date.now()
@@ -147,7 +159,7 @@ export function DetailPanel({ channelId, members = [], tasks = [], files = [], o
   }
 
   async function openAgentSettings(member: ChannelMemberInfo) {
-    if (!member.agent_id || !canEditAgents) return
+    if (!member.agent_id || !canConfigureAgentTier) return
     setSelectedAgent(member)
     setAgentSettingsOpen(true)
     setAgentSettingsLoading(true)
@@ -161,7 +173,7 @@ export function DetailPanel({ channelId, members = [], tasks = [], files = [], o
         personality: identity.personality || '',
         content: identity.content || '',
       })
-      setAgentConfig(cfg ? { ...cfg, skills: cfg.skills ?? [] } : null)
+      setAgentConfig(cfg ? { ...cfg, model_tier: normalizeModelTier(cfg.model_tier), skills: cfg.skills ?? [] } : null)
     } catch {
       setAgentIdentity({ name: member.display_name || member.agent_id, personality: '', content: '' })
       setAgentConfig(null)
@@ -174,10 +186,16 @@ export function DetailPanel({ channelId, members = [], tasks = [], files = [], o
     if (!selectedAgent?.agent_id) return
     setAgentSettingsSaving(true)
     try {
-      await api.put(`channels/${channelId}/agents/${selectedAgent.agent_id}/identity`, { json: agentIdentity })
-      if (agentConfig) {
+      if (canEditAgents) {
+        await api.put(`channels/${channelId}/agents/${selectedAgent.agent_id}/identity`, { json: agentIdentity })
+      }
+      if (agentConfig && canEditAgents) {
         await api.put(`channels/${channelId}/agents/${selectedAgent.agent_id}/config`, {
           json: { ...agentConfig, role: agentConfig.role || selectedAgent.agent_id },
+        })
+      } else {
+        await api.put(`channels/${channelId}/agents/${selectedAgent.agent_id}/model-tier`, {
+          json: { model_tier: normalizeModelTier(agentConfig?.model_tier) },
         })
       }
       onMembersChanged?.()
@@ -213,6 +231,10 @@ export function DetailPanel({ channelId, members = [], tasks = [], files = [], o
       if (!current) return current
       return { ...current, skills: (current.skills ?? []).filter((skill) => skill !== skillName) }
     })
+  }
+
+  function updateAgentModelTier(modelTier: ModelTierName | '') {
+    setAgentConfig((current) => ({ ...(current ?? { role: selectedAgent?.agent_id, skills: [] }), model_tier: modelTier }))
   }
 
   return (
@@ -389,10 +411,10 @@ export function DetailPanel({ channelId, members = [], tasks = [], files = [], o
                       <div key={m.id} className="flex items-center gap-2.5">
                         <button
                           type="button"
-                          title={canEditAgents ? '设置 Agent' : undefined}
+                          title={canConfigureAgentTier ? '设置 Agent' : undefined}
                           onClick={() => { void openAgentSettings(m) }}
-                          className={cn('rounded-full', canEditAgents && 'hover:ring-2 hover:ring-foreground/15')}
-                          disabled={!canEditAgents}
+                          className={cn('rounded-full', canConfigureAgentTier && 'hover:ring-2 hover:ring-foreground/15')}
+                          disabled={!canConfigureAgentTier}
                         >
                           <Avatar className="size-7 shrink-0">
                             {m.avatar_url ? <AvatarImage src={m.avatar_url} /> : null}
@@ -465,6 +487,22 @@ export function DetailPanel({ channelId, members = [], tasks = [], files = [], o
             ) : (
               <div className="mt-4 space-y-4">
                 <div>
+                  <label className="mb-1.5 block text-xs font-medium text-muted-foreground">模型等级</label>
+                  <select
+                    value={normalizeModelTier(agentConfig?.model_tier)}
+                    onChange={(event) => updateAgentModelTier(normalizeModelTier(event.target.value))}
+                    className="h-9 w-full rounded-lg border border-input bg-background px-2.5 text-sm outline-none transition-colors focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
+                  >
+                    <option value="">继承应用默认</option>
+                    {MODEL_TIER_OPTIONS.map((option) => (
+                      <option key={option.value} value={option.value}>{option.label}</option>
+                    ))}
+                  </select>
+                  <p className="mt-1 text-xs text-muted-foreground">仅选择等级，底层模型由 App 管理员配置。</p>
+                </div>
+                {canEditAgents ? (
+                  <>
+                <div>
                   <label className="mb-1.5 block text-xs font-medium text-muted-foreground">名称</label>
                   <Input
                     value={agentIdentity.name}
@@ -506,6 +544,12 @@ export function DetailPanel({ channelId, members = [], tasks = [], files = [], o
                     </div>
                   )}
                 </div>
+                  </>
+                ) : (
+                  <div className="rounded-lg border border-border bg-muted/30 px-3 py-2 text-xs leading-5 text-muted-foreground">
+                    当前账号可调整该 Agent 的模型等级；名称和技能由频道管理员维护。
+                  </div>
+                )}
               </div>
             )}
           </div>

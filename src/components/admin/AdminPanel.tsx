@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { BookOpen, Bot, Users, MessageSquare, Settings } from 'lucide-react'
-import type { AppBrandingConfig, AppRuntimeConfig } from '../../core/types.js'
+import type { AppBrandingConfig, AppRuntimeConfig, ModelTierName, ModelTierSettings } from '../../core/types.js'
 import { applyDocumentBranding, resolveAppBranding } from '../../core/app-config.js'
 import { cn } from '../../lib/cn.js'
 import { AgentManageTab } from './AgentManageTab.js'
@@ -101,13 +101,204 @@ function AppSettingsPanel() {
         <div className="mx-auto max-w-5xl space-y-6 p-8">
           <div>
             <h1 className="text-xl font-bold text-[#1a1a1a]">设置</h1>
-            <p className="mt-1 text-sm text-muted-foreground">配置标准模板的品牌和频道策略。</p>
+            <p className="mt-1 text-sm text-muted-foreground">配置标准模板的品牌、模型等级和频道策略。</p>
           </div>
-        <BrandSettings />
-        <ChannelPolicySettings />
+          <BrandSettings />
+          <ModelTierSettingsPanel />
+          <ChannelPolicySettings />
         </div>
       </div>
     </div>
+  )
+}
+
+interface ProviderOption {
+  id: string
+  label?: string
+}
+
+interface ModelOption {
+  id: string
+  label?: string
+  provider: string
+}
+
+const MODEL_TIER_OPTIONS: { value: ModelTierName; label: string; description: string }[] = [
+  { value: 'fast', label: '快速', description: '日常任务' },
+  { value: 'thinking', label: '思考', description: '复杂问题' },
+  { value: 'pro', label: '专业', description: '研究级思考' },
+]
+
+function emptyModelTierSettings(): ModelTierSettings {
+  return {
+    default_tier: 'fast',
+    tiers: {
+      fast: { provider: '', model: '', thinking: false },
+      thinking: { provider: '', model: '', thinking: true },
+      pro: { provider: '', model: '', thinking: true },
+    },
+  }
+}
+
+function normalizeModelTierSettings(value: Partial<ModelTierSettings> | null | undefined): ModelTierSettings {
+  const fallback = emptyModelTierSettings()
+  const defaultTier = value?.default_tier === 'thinking' || value?.default_tier === 'pro' ? value.default_tier : 'fast'
+  return {
+    default_tier: defaultTier,
+    tiers: {
+      fast: { ...fallback.tiers.fast, ...(value?.tiers?.fast ?? {}) },
+      thinking: { ...fallback.tiers.thinking, ...(value?.tiers?.thinking ?? {}) },
+      pro: { ...fallback.tiers.pro, ...(value?.tiers?.pro ?? {}) },
+    },
+  }
+}
+
+function ModelTierSettingsPanel() {
+  const { api } = useBeeSeedContext()
+  const [settings, setSettings] = useState<ModelTierSettings>(emptyModelTierSettings)
+  const [providers, setProviders] = useState<ProviderOption[]>([])
+  const [models, setModels] = useState<ModelOption[]>([])
+  const [loading, setLoading] = useState(true)
+  const [saving, setSaving] = useState(false)
+  const [saved, setSaved] = useState(false)
+
+  useEffect(() => {
+    let active = true
+    Promise.all([
+      api.get('admin/settings/model-tiers').json<ModelTierSettings>().catch(() => emptyModelTierSettings()),
+      api.get('providers').json<ProviderOption[]>().catch(() => []),
+      api.get('models').json<ModelOption[]>().catch(() => []),
+    ]).then(([tierSettings, providerData, modelData]) => {
+      if (!active) return
+      setSettings(normalizeModelTierSettings(tierSettings))
+      setProviders([...providerData].sort((a, b) => a.id.localeCompare(b.id)))
+      setModels([...modelData].sort((a, b) => a.provider.localeCompare(b.provider) || a.id.localeCompare(b.id)))
+      setLoading(false)
+    })
+    return () => {
+      active = false
+    }
+  }, [api])
+
+  function updateTier(tier: ModelTierName, patch: Partial<ModelTierSettings['tiers'][ModelTierName]>) {
+    setSettings((current) => ({
+      ...current,
+      tiers: {
+        ...current.tiers,
+        [tier]: { ...current.tiers[tier], ...patch },
+      },
+    }))
+    setSaved(false)
+  }
+
+  function updateTierProvider(tier: ModelTierName, provider: string) {
+    const nextModels = models.filter((item) => item.provider === provider)
+    const currentModel = settings.tiers[tier].model
+    const nextModel = nextModels.some((item) => item.id === currentModel) ? currentModel : nextModels[0]?.id ?? currentModel
+    updateTier(tier, { provider, model: nextModel })
+  }
+
+  async function save() {
+    setSaving(true)
+    setSaved(false)
+    try {
+      const updated = await api.patch('admin/settings/model-tiers', { json: settings }).json<ModelTierSettings>()
+      setSettings(normalizeModelTierSettings(updated))
+      setSaved(true)
+      window.setTimeout(() => setSaved(false), 1800)
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  if (loading) {
+    return <div className="rounded-xl border border-border bg-white p-5 text-sm text-muted-foreground shadow-sm">加载模型等级...</div>
+  }
+
+  return (
+    <section className="space-y-5 rounded-xl border border-border bg-white p-5 shadow-sm">
+      <div>
+        <h3 className="text-sm font-semibold">模型等级</h3>
+        <p className="mt-1 text-xs text-[#777]">配置 App 默认等级，以及快速、思考、专业三档对应的底层模型。</p>
+      </div>
+
+      <div className="space-y-2">
+        <label className="text-xs font-medium text-[#555]">默认等级</label>
+        <select
+          value={settings.default_tier}
+          onChange={(e) => {
+            setSettings((current) => ({ ...current, default_tier: e.target.value as ModelTierName }))
+            setSaved(false)
+          }}
+          className="h-9 w-full rounded-lg border border-border bg-white px-3 text-sm outline-none focus:border-[#999]"
+        >
+          {MODEL_TIER_OPTIONS.map((option) => (
+            <option key={option.value} value={option.value}>{option.label}</option>
+          ))}
+        </select>
+      </div>
+
+      <div className="space-y-3">
+        {MODEL_TIER_OPTIONS.map((option) => {
+          const tierConfig = settings.tiers[option.value]
+          const providerOptions = providers.length > 0 || !tierConfig.provider ? providers : [{ id: tierConfig.provider, label: tierConfig.provider }]
+          const filteredModels = models.filter((item) => item.provider === tierConfig.provider)
+          const modelOptions = filteredModels.some((item) => item.id === tierConfig.model) || !tierConfig.model
+            ? filteredModels
+            : [{ id: tierConfig.model, label: tierConfig.model, provider: tierConfig.provider }, ...filteredModels]
+
+          return (
+            <div key={option.value} className="grid gap-3 rounded-lg border border-border bg-[#fafafa] p-3 md:grid-cols-[120px_1fr_1fr_auto] md:items-end">
+              <div>
+                <div className="text-sm font-medium text-[#181d26]">{option.label}</div>
+                <div className="mt-0.5 text-xs text-[#777]">{option.description}</div>
+              </div>
+              <div className="space-y-1.5">
+                <label className="text-xs font-medium text-[#555]">Provider</label>
+                <select
+                  value={tierConfig.provider}
+                  onChange={(e) => updateTierProvider(option.value, e.target.value)}
+                  className="h-9 w-full rounded-lg border border-border bg-white px-3 text-sm outline-none focus:border-[#999]"
+                >
+                  {providerOptions.length === 0 ? (
+                    <option value={tierConfig.provider}>{tierConfig.provider || '-'}</option>
+                  ) : providerOptions.map((provider) => (
+                    <option key={provider.id} value={provider.id}>{provider.label || provider.id}</option>
+                  ))}
+                </select>
+              </div>
+              <div className="space-y-1.5">
+                <label className="text-xs font-medium text-[#555]">模型</label>
+                <select
+                  value={tierConfig.model}
+                  onChange={(e) => updateTier(option.value, { model: e.target.value })}
+                  className="h-9 w-full rounded-lg border border-border bg-white px-3 text-sm outline-none focus:border-[#999]"
+                >
+                  {modelOptions.length === 0 ? (
+                    <option value={tierConfig.model}>{tierConfig.model || '-'}</option>
+                  ) : modelOptions.map((model) => (
+                    <option key={`${model.provider}:${model.id}`} value={model.id}>{model.label || model.id}</option>
+                  ))}
+                </select>
+              </div>
+              <label className="flex h-9 items-center gap-2 text-sm text-[#555]">
+                <input
+                  type="checkbox"
+                  checked={tierConfig.thinking}
+                  onChange={(e) => updateTier(option.value, { thinking: e.target.checked })}
+                  className="h-4 w-4 rounded border-border"
+                />
+                Thinking
+              </label>
+            </div>
+          )
+        })}
+      </div>
+
+      <Button onClick={save} disabled={saving}>
+        {saving ? '保存中...' : saved ? '已保存' : '保存模型等级'}
+      </Button>
+    </section>
   )
 }
 
