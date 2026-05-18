@@ -234,6 +234,7 @@ export interface AgentConfig {
   model: string
   provider: string
   model_tier?: ModelTierName | ''
+  model_tiers?: ModelTierSettings
   tools: string[]
   temperature: number
   system_prompt?: string

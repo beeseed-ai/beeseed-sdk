@@ -493,12 +493,12 @@ export function DetailPanel({ channelId, members = [], tasks = [], files = [], o
                     onChange={(event) => updateAgentModelTier(normalizeModelTier(event.target.value))}
                     className="h-9 w-full rounded-lg border border-input bg-background px-2.5 text-sm outline-none transition-colors focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
                   >
-                    <option value="">继承应用默认</option>
+                    <option value="">继承 Agent 默认等级</option>
                     {MODEL_TIER_OPTIONS.map((option) => (
                       <option key={option.value} value={option.value}>{option.label}</option>
                     ))}
                   </select>
-                  <p className="mt-1 text-xs text-muted-foreground">仅选择等级，底层模型由 App 管理员配置。</p>
+                  <p className="mt-1 text-xs text-muted-foreground">仅选择等级，底层模型使用该 Agent 在管理后台配置的三档映射。</p>
                 </div>
                 {canEditAgents ? (
                   <>

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { Bot, Plus, Save, Search, Trash2, X } from 'lucide-react'
-import type { ModelTierName } from '../../core/types.js'
+import type { ModelTierName, ModelTierSettings } from '../../core/types.js'
 import { cn } from '../../lib/cn.js'
 import { useBeeSeedContext } from '../../provider/BeeSeedProvider.js'
 
@@ -11,6 +11,7 @@ interface AgentTemplateInfo {
   provider: string
   model: string
   model_tier?: ModelTierName | ''
+  model_tiers?: ModelTierSettings
   avatar_preset?: string
   avatar_url?: string
   tools?: string[]
@@ -32,6 +33,7 @@ interface AgentConfig {
   provider?: string
   model?: string
   model_tier?: ModelTierName | ''
+  model_tiers?: ModelTierSettings
   temperature?: number
   thinking?: boolean
   tools?: string[]
@@ -47,6 +49,17 @@ interface SkillSummary {
   description?: string
   version?: string
   triggers?: string[]
+}
+
+interface ProviderOption {
+  id: string
+  label?: string
+}
+
+interface ModelOption {
+  id: string
+  label?: string
+  provider: string
 }
 
 const FALLBACK_TEMPERATURE = 0.7
@@ -98,6 +111,30 @@ function modelTierLabel(value: unknown) {
   return MODEL_TIER_OPTIONS.find((option) => option.value === tier)?.label ?? tier
 }
 
+function emptyModelTierSettings(provider = '', model = ''): ModelTierSettings {
+  return {
+    default_tier: 'fast',
+    tiers: {
+      fast: { provider, model, thinking: false },
+      thinking: { provider, model, thinking: true },
+      pro: { provider, model, thinking: true },
+    },
+  }
+}
+
+function normalizeModelTierSettings(value: Partial<ModelTierSettings> | null | undefined, provider = '', model = ''): ModelTierSettings {
+  const fallback = emptyModelTierSettings(provider, model)
+  const defaultTier = normalizeModelTier(value?.default_tier) || fallback.default_tier
+  return {
+    default_tier: defaultTier,
+    tiers: {
+      fast: { ...fallback.tiers.fast, ...(value?.tiers?.fast ?? {}) },
+      thinking: { ...fallback.tiers.thinking, ...(value?.tiers?.thinking ?? {}) },
+      pro: { ...fallback.tiers.pro, ...(value?.tiers?.pro ?? {}) },
+    },
+  }
+}
+
 function avatarPresetUrl(preset: string | undefined) {
   return preset ? `/avatars/agents/${preset}.svg` : ''
 }
@@ -115,6 +152,8 @@ export function AgentManageTab() {
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [identity, setIdentity] = useState<IdentityData | null>(null)
   const [agentConfig, setAgentConfig] = useState<AgentConfig | null>(null)
+  const [providers, setProviders] = useState<ProviderOption[]>([])
+  const [models, setModels] = useState<ModelOption[]>([])
   const [availableTemplates, setAvailableTemplates] = useState<AgentTemplateInfo[]>([])
   const [availableSkills, setAvailableSkills] = useState<SkillSummary[]>([])
   const [addModalOpen, setAddModalOpen] = useState(false)
@@ -169,6 +208,21 @@ export function AgentManageTab() {
   }, [api])
 
   useEffect(() => {
+    let active = true
+    Promise.all([
+      api.get('providers').json<ProviderOption[]>().catch(() => []),
+      api.get('models').json<ModelOption[]>().catch(() => []),
+    ]).then(([providerData, modelData]) => {
+      if (!active) return
+      setProviders([...providerData].sort((a, b) => a.id.localeCompare(b.id)))
+      setModels([...modelData].sort((a, b) => a.provider.localeCompare(b.provider) || a.id.localeCompare(b.id)))
+    })
+    return () => {
+      active = false
+    }
+  }, [api])
+
+  useEffect(() => {
     if (!selectedId) {
       setIdentity(null)
       setAgentConfig(null)
@@ -189,7 +243,13 @@ export function AgentManageTab() {
     ]).then(([id, cfg]) => {
       if (detailSeqRef.current !== detailSeq) return
       setIdentity(id)
-      setAgentConfig(cfg ? { ...cfg, model_tier: normalizeModelTier(cfg.model_tier), tools: cfg.tools ?? [], skills: cfg.skills ?? [] } : null)
+      setAgentConfig(cfg ? {
+        ...cfg,
+        model_tier: normalizeModelTier(cfg.model_tier),
+        model_tiers: normalizeModelTierSettings(cfg.model_tiers, cfg.provider, cfg.model),
+        tools: cfg.tools ?? [],
+        skills: cfg.skills ?? [],
+      } : null)
     })
   }, [api, selectedId])
 
@@ -207,6 +267,47 @@ export function AgentManageTab() {
     setSaveError('')
   }
 
+  const updateModelTierSettings = (patch: Partial<ModelTierSettings>) => {
+    setAgentConfig((current) => {
+      const provider = current?.provider ?? selectedTemplate?.provider ?? ''
+      const model = current?.model ?? selectedTemplate?.model ?? ''
+      const currentSettings = normalizeModelTierSettings(current?.model_tiers, provider, model)
+      return { ...(current ?? {}), model_tiers: { ...currentSettings, ...patch } }
+    })
+    setDirty(true)
+    setSaved(false)
+    setSaveError('')
+  }
+
+  const updateModelTierConfig = (tier: ModelTierName, patch: Partial<ModelTierSettings['tiers'][ModelTierName]>) => {
+    setAgentConfig((current) => {
+      const provider = current?.provider ?? selectedTemplate?.provider ?? ''
+      const model = current?.model ?? selectedTemplate?.model ?? ''
+      const currentSettings = normalizeModelTierSettings(current?.model_tiers, provider, model)
+      return {
+        ...(current ?? {}),
+        model_tiers: {
+          ...currentSettings,
+          tiers: {
+            ...currentSettings.tiers,
+            [tier]: { ...currentSettings.tiers[tier], ...patch },
+          },
+        },
+      }
+    })
+    setDirty(true)
+    setSaved(false)
+    setSaveError('')
+  }
+
+  const updateTierProvider = (tier: ModelTierName, provider: string) => {
+    const currentSettings = normalizeModelTierSettings(agentConfig?.model_tiers, agentConfig?.provider, agentConfig?.model)
+    const nextModels = models.filter((item) => item.provider === provider)
+    const currentModel = currentSettings.tiers[tier].model
+    const nextModel = nextModels.some((item) => item.id === currentModel) ? currentModel : nextModels[0]?.id ?? currentModel
+    updateModelTierConfig(tier, { provider, model: nextModel })
+  }
+
   const saveTemplate = async () => {
     if (!selectedId || !identity || !agentConfig || !dirty) return
     setSaving(true)
@@ -220,6 +321,7 @@ export function AgentManageTab() {
       }
       const configPayload = {
         ...agentConfig,
+        model_tier: '',
         role: selectedId,
         identity: {
           ...((agentConfig.identity as Record<string, unknown> | undefined) ?? {}),
@@ -236,7 +338,8 @@ export function AgentManageTab() {
               role: String(configPayload.role || template.role),
               provider: String(configPayload.provider || template.provider),
               model: String(configPayload.model || template.model),
-              model_tier: normalizeModelTier(configPayload.model_tier),
+              model_tier: '',
+              model_tiers: configPayload.model_tiers ?? template.model_tiers,
               tools: configPayload.tools ?? template.tools,
               skills: configPayload.skills ?? template.skills,
               avatar_preset: configPayload.avatar_preset || '',
@@ -329,7 +432,7 @@ export function AgentManageTab() {
   const selectedTemplate = selectedId ? templates.find((template) => template.id === selectedId) ?? null : null
   const displayName = labelOrFallback(identity?.name || selectedTemplate?.name, selectedTemplate?.id || 'Agent')
   const role = labelOrFallback(agentConfig?.role || selectedTemplate?.role, selectedTemplate?.id || 'agent')
-  const modelTier = normalizeModelTier(agentConfig?.model_tier)
+  const modelTierSettings = normalizeModelTierSettings(agentConfig?.model_tiers ?? selectedTemplate?.model_tiers, agentConfig?.provider ?? selectedTemplate?.provider, agentConfig?.model ?? selectedTemplate?.model)
   const temperature = typeof agentConfig?.temperature === 'number' ? agentConfig.temperature : FALLBACK_TEMPERATURE
   const tools = agentConfig?.tools ?? selectedTemplate?.tools ?? []
   const skills = agentConfig?.skills ?? selectedTemplate?.skills ?? []
@@ -410,7 +513,7 @@ export function AgentManageTab() {
                       <div className="min-w-0 flex-1">
                         <div className="truncate text-sm font-medium text-[#1a1a1a]">{labelOrFallback(template.name, template.id)}</div>
                         <div className="mt-0.5 truncate text-xs text-muted-foreground">{labelOrFallback(template.role, template.id)}</div>
-                        <div className="mt-0.5 truncate text-xs text-muted-foreground">{modelTierLabel(template.model_tier)}</div>
+                        <div className="mt-0.5 truncate text-xs text-muted-foreground">默认：{modelTierLabel(template.model_tiers?.default_tier)}</div>
                       </div>
                     </button>
                     <button
@@ -508,13 +611,12 @@ export function AgentManageTab() {
                       </div>
 
                       <div>
-                        <label className="mb-1.5 block text-xs font-medium text-[#555]">模型等级</label>
+                        <label className="mb-1.5 block text-xs font-medium text-[#555]">默认等级</label>
                         <select
-                          value={modelTier}
-                          onChange={(event) => updateConfig({ model_tier: normalizeModelTier(event.target.value) })}
+                          value={modelTierSettings.default_tier}
+                          onChange={(event) => updateModelTierSettings({ default_tier: normalizeModelTier(event.target.value) || 'fast' })}
                           className="h-9 w-full rounded-lg border border-border bg-white px-3 text-sm text-[#1a1a1a] outline-none focus:border-[#9297a0] focus:ring-2 focus:ring-[#9297a0]/20"
                         >
-                          <option value="">继承 App 默认等级</option>
                           {MODEL_TIER_OPTIONS.map((option) => (
                             <option key={option.value} value={option.value}>
                               {option.label} - {option.description}
@@ -534,11 +636,72 @@ export function AgentManageTab() {
                       />
                     </div>
 
+                    <div className="space-y-3 rounded-lg border border-border bg-[#fafafa] p-3">
+                      <div>
+                        <div className="text-sm font-medium text-[#181d26]">模型等级映射</div>
+                        <div className="mt-0.5 text-xs text-muted-foreground">为当前 Agent 单独配置快速、思考、专业三档对应的底层模型。</div>
+                      </div>
+                      {MODEL_TIER_OPTIONS.map((option) => {
+                        const tierConfig = modelTierSettings.tiers[option.value]
+                        const providerOptions = providers.length > 0 || !tierConfig.provider ? providers : [{ id: tierConfig.provider, label: tierConfig.provider }]
+                        const filteredModels = models.filter((item) => item.provider === tierConfig.provider)
+                        const modelOptions = filteredModels.some((item) => item.id === tierConfig.model) || !tierConfig.model
+                          ? filteredModels
+                          : [{ id: tierConfig.model, label: tierConfig.model, provider: tierConfig.provider }, ...filteredModels]
+
+                        return (
+                          <div key={option.value} className="grid gap-3 rounded-lg border border-border bg-white p-3 md:grid-cols-[96px_1fr_1fr_auto] md:items-end">
+                            <div>
+                              <div className="text-sm font-medium text-[#181d26]">{option.label}</div>
+                              <div className="mt-0.5 text-xs text-muted-foreground">{option.description}</div>
+                            </div>
+                            <div>
+                              <label className="mb-1.5 block text-xs font-medium text-[#555]">Provider</label>
+                              <select
+                                value={tierConfig.provider}
+                                onChange={(event) => updateTierProvider(option.value, event.target.value)}
+                                className="h-9 w-full rounded-lg border border-border bg-white px-3 text-sm text-[#1a1a1a] outline-none focus:border-[#9297a0] focus:ring-2 focus:ring-[#9297a0]/20"
+                              >
+                                {providerOptions.length === 0 ? (
+                                  <option value={tierConfig.provider}>{tierConfig.provider || '-'}</option>
+                                ) : providerOptions.map((provider) => (
+                                  <option key={provider.id} value={provider.id}>{provider.label || provider.id}</option>
+                                ))}
+                              </select>
+                            </div>
+                            <div>
+                              <label className="mb-1.5 block text-xs font-medium text-[#555]">模型</label>
+                              <select
+                                value={tierConfig.model}
+                                onChange={(event) => updateModelTierConfig(option.value, { model: event.target.value })}
+                                className="h-9 w-full rounded-lg border border-border bg-white px-3 text-sm text-[#1a1a1a] outline-none focus:border-[#9297a0] focus:ring-2 focus:ring-[#9297a0]/20"
+                              >
+                                {modelOptions.length === 0 ? (
+                                  <option value={tierConfig.model}>{tierConfig.model || '-'}</option>
+                                ) : modelOptions.map((model) => (
+                                  <option key={`${model.provider}:${model.id}`} value={model.id}>{model.label || model.id}</option>
+                                ))}
+                              </select>
+                            </div>
+                            <label className="flex h-9 items-center gap-2 text-sm text-[#555]">
+                              <input
+                                type="checkbox"
+                                checked={tierConfig.thinking}
+                                onChange={(event) => updateModelTierConfig(option.value, { thinking: event.target.checked })}
+                                className="h-4 w-4 rounded border-border"
+                              />
+                              Thinking
+                            </label>
+                          </div>
+                        )
+                      })}
+                    </div>
+
                     <div className="grid gap-4 sm:grid-cols-2">
                       <div>
-                        <label className="mb-1.5 block text-xs font-medium text-[#555]">当前等级</label>
+                        <label className="mb-1.5 block text-xs font-medium text-[#555]">默认等级</label>
                         <div className="flex h-9 items-center rounded-lg border border-border bg-[#fafafa] px-3 text-sm text-[#1a1a1a]">
-                          {modelTierLabel(modelTier)}
+                          {modelTierLabel(modelTierSettings.default_tier)}
                         </div>
                       </div>
 
@@ -556,10 +719,6 @@ export function AgentManageTab() {
                           className="h-9 w-full"
                         />
                       </div>
-                    </div>
-
-                    <div className="rounded-lg border border-border bg-[#fafafa] px-3 py-2 text-xs leading-5 text-muted-foreground">
-                      底层 Provider、模型和 Thinking 由“设置”里的模型等级映射统一维护；这里仅为当前 Agent 选择等级。
                     </div>
 
                     <div>

@@ -5,6 +5,7 @@ export { BeeSeedProvider, useBeeSeedContext, type BeeSeedContextValue } from './
 export type {
   User, Channel, ChannelWithMeta, ChannelMember, ChannelMemberInfo,
   Message, ChatMessage, AgentMeta, AgentConfig,
+  ModelTierName, ModelTierConfig, ModelTierSettings,
   WSEvent, WSCommand, AuthResponse, BeeSeedConfig, StreamState,
   AppBrandingConfig, AppRuntimeConfig,
   // Ask-User
