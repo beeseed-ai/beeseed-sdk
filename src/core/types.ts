@@ -130,6 +130,33 @@ export interface ChatMessage {
   systemSource?: string
   // Routing (multi-agent)
   routingInfo?: { targets: string[]; method: string }
+  // Explicit skill intents selected by the user before sending.
+  selectedSkills?: SelectedSkillIntent[]
+}
+
+// ── Skill Shortcut ──
+
+export interface SkillShortcutAgent {
+  agent_id: string
+  agent_name: string
+}
+
+export interface SkillShortcutOption {
+  name: string
+  display_name?: string
+  description?: string
+  agents?: SkillShortcutAgent[]
+  source?: 'agent' | 'recent' | 'general'
+}
+
+export interface SelectedSkillIntent {
+  skill_id: string
+  skill_name: string
+  skill_display_name?: string
+  skill_description?: string
+  agent_id: string
+  agent_name: string
+  source?: 'skill_button' | 'slash'
 }
 
 // ── Ask-User ──

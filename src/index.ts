@@ -6,6 +6,7 @@ export type {
   User, Channel, ChannelWithMeta, ChannelMember, ChannelMemberInfo,
   Message, ChatMessage, AgentMeta, AgentConfig,
   ModelTierName, ModelTierConfig, ModelTierSettings,
+  SkillShortcutAgent, SkillShortcutOption, SelectedSkillIntent,
   WSEvent, WSCommand, AuthResponse, BeeSeedConfig, StreamState,
   AppBrandingConfig, AppRuntimeConfig,
   // Ask-User

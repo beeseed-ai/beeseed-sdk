@@ -30,20 +30,20 @@ export function useChat(channelId: string | null) {
   const send = useCallback(
     (content: string, metadata?: Record<string, unknown>) => {
       if (!channelId || !content.trim()) return
-      messagesStore.getState().addOptimisticMessage(channelId, content.trim())
+      messagesStore.getState().addOptimisticMessage(channelId, content.trim(), metadata)
       ws.send({ type: 'message', channel_id: channelId, content: content.trim(), metadata })
     },
     [channelId, ws, messagesStore],
   )
 
   const sendWithQuote = useCallback(
-    (content: string, quoted: ChatMessage) => {
+    (content: string, quoted: ChatMessage, metadata?: Record<string, unknown>) => {
       if (!channelId || !content.trim()) return
       const prefix = quoted.senderName
         ? `> ${quoted.senderName}: ${quoted.content.slice(0, 100)}\n\n`
         : ''
-      messagesStore.getState().addOptimisticMessage(channelId, prefix + content.trim())
-      ws.send({ type: 'message', channel_id: channelId, content: prefix + content.trim() })
+      messagesStore.getState().addOptimisticMessage(channelId, prefix + content.trim(), metadata)
+      ws.send({ type: 'message', channel_id: channelId, content: prefix + content.trim(), metadata })
     },
     [channelId, ws, messagesStore],
   )

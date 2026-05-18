@@ -3,7 +3,7 @@ import type { KyInstance } from 'ky'
 import type {
   Message, ChatMessage, StreamState, WSEvent,
   ChannelMemberInfo, AgentLoopState, AgentLoopTurn, AgentLoopToolCall, AgentLoopSkillUse,
-  AskUserQuestion,
+  AskUserQuestion, SelectedSkillIntent,
 } from '../core/types.js'
 
 const AGENT_LOOP_STALE_AFTER_MS = 30 * 60 * 1000
@@ -28,6 +28,30 @@ function metadataRunId(meta: Record<string, unknown>): string | undefined {
   return typeof meta.run_id === 'string' && meta.run_id.trim() !== ''
     ? meta.run_id
     : undefined
+}
+
+function parseSelectedSkills(meta: Record<string, unknown>): SelectedSkillIntent[] | undefined {
+  const raw = meta.selected_skills
+  if (!Array.isArray(raw)) return undefined
+  const skills = raw.flatMap((item) => {
+    if (!item || typeof item !== 'object') return []
+    const record = item as Record<string, unknown>
+    const skillID = typeof record.skill_id === 'string' ? record.skill_id.trim() : ''
+    const skillName = typeof record.skill_name === 'string' ? record.skill_name.trim() : skillID
+    const agentID = typeof record.agent_id === 'string' ? record.agent_id.trim() : ''
+    const agentName = typeof record.agent_name === 'string' ? record.agent_name.trim() : agentID
+    if (!skillID || !agentID) return []
+    return [{
+      skill_id: skillID,
+      skill_name: skillName || skillID,
+      skill_display_name: typeof record.skill_display_name === 'string' ? record.skill_display_name : undefined,
+      skill_description: typeof record.skill_description === 'string' ? record.skill_description : undefined,
+      agent_id: agentID,
+      agent_name: agentName || agentID,
+      source: record.source === 'slash' ? 'slash' as const : record.source === 'skill_button' ? 'skill_button' as const : undefined,
+    }]
+  })
+  return skills.length > 0 ? skills : undefined
 }
 
 function agentLoopStoreKey(channelId: string, agentId: string, runId?: string): string {
@@ -188,6 +212,7 @@ export function parseMessage(m: Message, myUserId?: string): ChatMessage | null 
     contentType: m.msg_type !== 'text' ? m.msg_type : undefined,
     suggestions: Array.isArray(meta.suggestions) ? meta.suggestions as string[] : undefined,
     thinkingContent: (meta.thinking_content as string) || undefined,
+    selectedSkills: parseSelectedSkills(meta),
     routingInfo: meta.routing_info ? {
       targets: ((meta.routing_info as Record<string, unknown>).target_agent_ids as string[]) ?? [],
       method: ((meta.routing_info as Record<string, unknown>).routing_method as string) ?? '',
@@ -555,7 +580,7 @@ export interface MessagesState {
   fetchMessages: (channelId: string) => Promise<void>
   fetchMembers: (channelId: string) => Promise<void>
   handleEvent: (event: WSEvent) => void
-  addOptimisticMessage: (channelId: string, content: string) => void
+  addOptimisticMessage: (channelId: string, content: string, metadata?: Record<string, unknown>) => void
   submitAskUserAnswer: (channelId: string, askId: string, answers: Record<string, unknown>) => void
   getMessages: (channelId: string) => ChatMessage[]
   getStream: (channelId: string) => StreamState | undefined
@@ -650,14 +675,16 @@ export function createMessagesStore(config: MessagesStoreConfig) {
       }
     },
 
-    addOptimisticMessage: (channelId, content) => {
+    addOptimisticMessage: (channelId, content, metadata) => {
       const map = new Map(get().messages)
       const msgs = [...(map.get(channelId) || [])]
+      const meta = metadata ?? {}
       msgs.push({
         role: 'user',
         content,
         timestamp: Date.now(),
         senderType: 'user',
+        selectedSkills: parseSelectedSkills(meta),
       })
       map.set(channelId, msgs)
       set({ messages: map })

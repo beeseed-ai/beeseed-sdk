@@ -23,12 +23,12 @@ export function ChatChannel({ channelId, className, header }: Props) {
   const { composerInsertText, consumeComposerInsert } = useDetailPanel()
   const [quotedMessage, setQuotedMessage] = useState<ChatMessage | null>(null)
 
-  const handleSend = useCallback((content: string) => {
+  const handleSend = useCallback((content: string, metadata?: Record<string, unknown>) => {
     if (quotedMessage) {
-      sendWithQuote(content, quotedMessage)
+      sendWithQuote(content, quotedMessage, metadata)
       setQuotedMessage(null)
     } else {
-      send(content)
+      send(content, metadata)
     }
   }, [quotedMessage, send, sendWithQuote])
 

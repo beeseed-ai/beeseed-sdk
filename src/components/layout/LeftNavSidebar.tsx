@@ -112,12 +112,15 @@ export function LeftNavSidebar({ activeFeature, onFeatureChange, channels, curre
           </div>
         </div>
 
-        <div className="flex-1 overflow-y-auto px-2 space-y-px">
+        <div className="flex-1 overflow-y-auto px-2 space-y-px" data-testid="app-channel-list">
           {channels.map((channel) => {
             const active = channel.id === currentChannelId
             return (
               <button
                 key={channel.id}
+                data-testid="app-channel-item"
+                data-channel-id={channel.id}
+                data-channel-name={channel.name || '对话'}
                 onClick={() => { onChannelSelect(channel.id); onFeatureChange('chat') }}
                 className={cn(
                   'flex items-center gap-2 w-full rounded-md px-2 py-1.5 text-sm transition-colors group',

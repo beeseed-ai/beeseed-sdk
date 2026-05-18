@@ -1,5 +1,5 @@
 import { useState, useCallback } from 'react'
-import { Copy, Check, CornerDownLeft } from 'lucide-react'
+import { Copy, Check, CornerDownLeft, Zap } from 'lucide-react'
 import type { ChatMessage } from '../../core/types.js'
 import { cn } from '../../lib/cn.js'
 import { storageRefsFromText, stripStorageReferenceBlock } from '../../lib/storage-ref.js'
@@ -66,6 +66,7 @@ export function MessageBubble({
 }: Props) {
   const [copied, setCopied] = useState(false)
   const [previewImage, setPreviewImage] = useState<string | null>(null)
+  const [openSkillId, setOpenSkillId] = useState<string | null>(null)
 
   const handleCopy = useCallback(() => {
     void navigator.clipboard.writeText(message.content)
@@ -284,6 +285,36 @@ export function MessageBubble({
                 → {message.routingInfo.targets.join(', ')} ({message.routingInfo.method})
               </span>
             )}
+          </div>
+        )}
+
+        {isUser && message.selectedSkills && message.selectedSkills.length > 0 && (
+          <div className="mt-1.5 flex max-w-full flex-wrap justify-end gap-1.5">
+            {message.selectedSkills.map((skill) => {
+              const key = `${skill.skill_id}:${skill.agent_id}`
+              const open = openSkillId === key
+              return (
+                <span key={key} className="relative inline-flex">
+                  <button
+                    type="button"
+                    title={skill.skill_description || skill.skill_name}
+                    className="inline-flex max-w-[220px] items-center gap-1 rounded-md border border-[#d8dde6] bg-white px-2 py-1 text-[10px] font-medium text-[#333840] hover:border-[#9297a0]"
+                    onClick={() => setOpenSkillId(open ? null : key)}
+                  >
+                    <Zap className="h-3 w-3 shrink-0 text-[#254fad]" />
+                    <span className="min-w-0 truncate">/{skill.skill_display_name || skill.skill_name}</span>
+                    <span className="shrink-0 text-[#777169]">@{skill.agent_name}</span>
+                  </button>
+                  {open && (
+                    <span className="absolute right-0 top-full z-20 mt-1 w-64 rounded-md border border-[#dddddd] bg-white p-3 text-left text-xs text-[#333840] shadow-lg">
+                      <span className="block font-medium text-[#181d26]">/{skill.skill_display_name || skill.skill_name}</span>
+                      <span className="mt-1 block text-[#777169]">{skill.skill_description || '暂无技能描述'}</span>
+                      <span className="mt-2 block font-mono text-[10px] text-[#777169]">执行 Agent：{skill.agent_name}</span>
+                    </span>
+                  )}
+                </span>
+              )
+            })}
           </div>
         )}
 

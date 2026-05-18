@@ -88,7 +88,7 @@ export function CloudStoragePanel({ channelId, className, onReference }: Props) 
   }
 
   return (
-    <div className={cn('flex-1 flex flex-col overflow-hidden', className)}>
+    <div className={cn('flex-1 flex flex-col overflow-hidden', className)} data-testid="cloud-storage-panel">
       <div className="flex items-center gap-2 px-4 py-3 border-b border-border">
         <div>
           <h2 className="text-sm font-semibold">云存储</h2>
@@ -101,11 +101,11 @@ export function CloudStoragePanel({ channelId, className, onReference }: Props) 
           <FolderPlus className="w-3.5 h-3.5 mr-1" />
           新建文件夹
         </Button>
-        <Button size="sm" variant="outline" className="h-7 px-2 text-xs" disabled={uploading || !canUpload} onClick={() => fileRef.current?.click()}>
+        <Button data-testid="storage-upload-button" size="sm" variant="outline" className="h-7 px-2 text-xs" disabled={uploading || !canUpload} onClick={() => fileRef.current?.click()}>
           <Upload className="w-3.5 h-3.5 mr-1" />
           {uploading ? '上传中' : canUpload ? '上传' : '只读'}
         </Button>
-        <input ref={fileRef} type="file" className="hidden" onChange={(e) => void handleUpload(e.target.files?.[0])} />
+        <input ref={fileRef} data-testid="storage-upload-input" type="file" className="hidden" onChange={(e) => void handleUpload(e.target.files?.[0])} />
         <div className="relative w-48">
           <Search className="absolute left-2 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground" />
           <Input
@@ -157,7 +157,7 @@ export function CloudStoragePanel({ channelId, className, onReference }: Props) 
         {loading ? (
           <div className="text-center text-sm text-muted-foreground py-8">加载中...</div>
         ) : directories.length === 0 && objects.length === 0 ? (
-          <div className="flex h-full flex-col items-center justify-center gap-3 px-6 text-center">
+          <div className="flex h-full flex-col items-center justify-center gap-3 px-6 text-center" data-testid="storage-empty-state">
             <div className="flex h-10 w-10 items-center justify-center rounded-md border border-border bg-muted/40">
               <File className="h-5 w-5 text-muted-foreground" />
             </div>
@@ -165,7 +165,7 @@ export function CloudStoragePanel({ channelId, className, onReference }: Props) 
               <div className="text-sm font-medium text-foreground">当前目录暂无文件</div>
               <div className="mt-1 text-xs text-muted-foreground">当前目录是空的。</div>
             </div>
-            <Button size="sm" variant="outline" className="h-8 px-3 text-xs" disabled={uploading || !canUpload} onClick={() => fileRef.current?.click()}>
+            <Button data-testid="storage-empty-upload-button" size="sm" variant="outline" className="h-8 px-3 text-xs" disabled={uploading || !canUpload} onClick={() => fileRef.current?.click()}>
               <Upload className="mr-1 h-3.5 w-3.5" />
               {canUpload ? '上传文件' : '只读空间'}
             </Button>
@@ -184,9 +184,17 @@ export function CloudStoragePanel({ channelId, className, onReference }: Props) 
             ))}
             {objects.map((obj) => {
               const refText = storageRefFromKey(obj.key)
+              const displayName = storageDisplayName(obj)
               return (
-                <div key={obj.key} className="group flex items-center gap-3 px-4 py-2">
+                <div
+                  key={obj.key}
+                  className="group flex items-center gap-3 px-4 py-2"
+                  data-testid="storage-file-row"
+                  data-storage-key={obj.key}
+                  data-storage-file-name={displayName}
+                >
                   <button
+                    data-testid="storage-file-preview"
                     type="button"
                     className="flex min-w-0 flex-1 items-center gap-3 rounded-sm text-left outline-none transition-colors hover:text-[#181d26] focus-visible:ring-2 focus-visible:ring-[#9297a0]"
                     onClick={() => setPreviewRef(refText)}
@@ -194,13 +202,14 @@ export function CloudStoragePanel({ channelId, className, onReference }: Props) 
                   >
                     <StorageFileIcon refText={refText} className="h-4 w-4 shrink-0 text-[#254fad]" />
                     <span className="min-w-0 flex-1">
-                      <span className="block truncate text-sm">{storageDisplayName(obj)}</span>
+                      <span className="block truncate text-sm">{displayName}</span>
                       <span className="block text-[10px] text-muted-foreground">
                         {storageFileLabelForRef(refText)} · {formatBytes(obj.size)} · {new Date(obj.last_modified).toLocaleDateString('zh-CN')}
                       </span>
                     </span>
                   </button>
                   <button
+                    data-testid="storage-file-reference"
                     title="引用到聊天"
                     onClick={() => handleReference(obj.key)}
                     className="hidden group-hover:block p-1 rounded hover:bg-muted transition-colors"
@@ -208,6 +217,7 @@ export function CloudStoragePanel({ channelId, className, onReference }: Props) 
                     <MessageSquareQuote className="w-3.5 h-3.5 text-muted-foreground" />
                   </button>
                   <button
+                    data-testid="storage-file-download"
                     title="下载"
                     onClick={() => void handleDownload(obj.key)}
                     className="hidden group-hover:block p-1 rounded hover:bg-muted transition-colors"
@@ -215,6 +225,7 @@ export function CloudStoragePanel({ channelId, className, onReference }: Props) 
                     <Download className="w-3.5 h-3.5 text-muted-foreground" />
                   </button>
                   <button
+                    data-testid="storage-file-delete"
                     title="删除"
                     onClick={() => deleteFile(obj.key)}
                     className="hidden group-hover:block p-1 rounded hover:bg-destructive/10 transition-colors"

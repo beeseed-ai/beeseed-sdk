@@ -30,7 +30,7 @@ export function LoginForm({ onSwitchToRegister, className }: Props) {
   }
 
   return (
-    <div className={className}>
+    <div className={className} data-testid="login-form">
       <div className="mx-auto w-full max-w-sm space-y-6 rounded-xl border border-border bg-white p-6 shadow-sm">
         <div className="space-y-3 text-center">
           {hasLogo ? (
@@ -62,6 +62,7 @@ export function LoginForm({ onSwitchToRegister, className }: Props) {
           <div className="space-y-2">
             <label className="text-sm font-medium">邮箱</label>
             <Input
+              data-testid="login-email"
               type="email"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
@@ -71,13 +72,14 @@ export function LoginForm({ onSwitchToRegister, className }: Props) {
           <div className="space-y-2">
             <label className="text-sm font-medium">密码</label>
             <Input
+              data-testid="login-password"
               type="password"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               placeholder="输入密码"
             />
           </div>
-          <Button className="w-full" disabled={loading}>
+          <Button data-testid="login-submit" className="w-full" disabled={loading}>
             {loading ? '登录中...' : '登录'}
           </Button>
         </form>

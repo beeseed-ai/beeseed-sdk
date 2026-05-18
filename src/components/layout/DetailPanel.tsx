@@ -348,6 +348,7 @@ export function DetailPanel({ channelId, members = [], tasks = [], files = [], o
               {filesOpen ? <ChevronDown className="w-3.5 h-3.5 text-muted-foreground" /> : <ChevronRight className="w-3.5 h-3.5 text-muted-foreground" />}
             </button>
             <button
+              data-testid="storage-open-dialog"
               title="打开云存储"
               className="rounded p-1 text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
               onClick={() => setStorageOpen(true)}
