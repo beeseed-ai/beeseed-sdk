@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { Bot, Plus, Save, Search, Trash2, X } from 'lucide-react'
+import type { ModelTierName } from '../../core/types.js'
 import { cn } from '../../lib/cn.js'
 import { useBeeSeedContext } from '../../provider/BeeSeedProvider.js'
 
@@ -9,6 +10,7 @@ interface AgentTemplateInfo {
   role: string
   provider: string
   model: string
+  model_tier?: ModelTierName | ''
   avatar_preset?: string
   avatar_url?: string
   tools?: string[]
@@ -29,23 +31,13 @@ interface AgentConfig {
   role?: string
   provider?: string
   model?: string
+  model_tier?: ModelTierName | ''
   temperature?: number
   thinking?: boolean
   tools?: string[]
   skills?: string[]
   avatar_preset?: string
   [key: string]: unknown
-}
-
-interface ProviderOption {
-  id: string
-  label?: string
-}
-
-interface ModelOption {
-  id: string
-  label?: string
-  provider: string
 }
 
 interface SkillSummary {
@@ -58,6 +50,11 @@ interface SkillSummary {
 }
 
 const FALLBACK_TEMPERATURE = 0.7
+const MODEL_TIER_OPTIONS: { value: ModelTierName; label: string; description: string }[] = [
+  { value: 'fast', label: '快速', description: '适合日常轻量任务' },
+  { value: 'thinking', label: '思考', description: '适合复杂推理和多步骤任务' },
+  { value: 'pro', label: '专业', description: '适合高质量研究和深度分析' },
+]
 const AVATAR_PRESETS = [
   'bot-amber',
   'bot-blue',
@@ -91,6 +88,16 @@ function toggleItem(items: string[], item: string) {
   return items.includes(item) ? items.filter((value) => value !== item) : [...items, item]
 }
 
+function normalizeModelTier(value: unknown): ModelTierName | '' {
+  return value === 'fast' || value === 'thinking' || value === 'pro' ? value : ''
+}
+
+function modelTierLabel(value: unknown) {
+  const tier = normalizeModelTier(value)
+  if (!tier) return '继承默认等级'
+  return MODEL_TIER_OPTIONS.find((option) => option.value === tier)?.label ?? tier
+}
+
 function avatarPresetUrl(preset: string | undefined) {
   return preset ? `/avatars/agents/${preset}.svg` : ''
 }
@@ -108,8 +115,6 @@ export function AgentManageTab() {
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [identity, setIdentity] = useState<IdentityData | null>(null)
   const [agentConfig, setAgentConfig] = useState<AgentConfig | null>(null)
-  const [providers, setProviders] = useState<ProviderOption[]>([])
-  const [models, setModels] = useState<ModelOption[]>([])
   const [availableTemplates, setAvailableTemplates] = useState<AgentTemplateInfo[]>([])
   const [availableSkills, setAvailableSkills] = useState<SkillSummary[]>([])
   const [addModalOpen, setAddModalOpen] = useState(false)
@@ -164,21 +169,6 @@ export function AgentManageTab() {
   }, [api])
 
   useEffect(() => {
-    let active = true
-    Promise.all([
-      api.get('providers').json<ProviderOption[]>().catch(() => []),
-      api.get('models').json<ModelOption[]>().catch(() => []),
-    ]).then(([providerData, modelData]) => {
-      if (!active) return
-      setProviders([...providerData].sort((a, b) => a.id.localeCompare(b.id)))
-      setModels([...modelData].sort((a, b) => a.provider.localeCompare(b.provider) || a.id.localeCompare(b.id)))
-    })
-    return () => {
-      active = false
-    }
-  }, [api])
-
-  useEffect(() => {
     if (!selectedId) {
       setIdentity(null)
       setAgentConfig(null)
@@ -199,7 +189,7 @@ export function AgentManageTab() {
     ]).then(([id, cfg]) => {
       if (detailSeqRef.current !== detailSeq) return
       setIdentity(id)
-      setAgentConfig(cfg ? { ...cfg, tools: cfg.tools ?? [], skills: cfg.skills ?? [] } : null)
+      setAgentConfig(cfg ? { ...cfg, model_tier: normalizeModelTier(cfg.model_tier), tools: cfg.tools ?? [], skills: cfg.skills ?? [] } : null)
     })
   }, [api, selectedId])
 
@@ -212,20 +202,6 @@ export function AgentManageTab() {
 
   const updateConfig = (patch: Partial<AgentConfig>) => {
     setAgentConfig((current) => ({ ...(current ?? {}), ...patch }))
-    setDirty(true)
-    setSaved(false)
-    setSaveError('')
-  }
-
-  const updateProvider = (nextProvider: string) => {
-    setAgentConfig((current) => {
-      const nextModels = models.filter((item) => item.provider === nextProvider)
-      const currentModel = current?.model ?? selectedTemplate?.model ?? ''
-      const nextModel = nextModels.some((item) => item.id === currentModel)
-        ? currentModel
-        : nextModels[0]?.id ?? currentModel
-      return { ...(current ?? {}), provider: nextProvider, model: nextModel }
-    })
     setDirty(true)
     setSaved(false)
     setSaveError('')
@@ -260,6 +236,7 @@ export function AgentManageTab() {
               role: String(configPayload.role || template.role),
               provider: String(configPayload.provider || template.provider),
               model: String(configPayload.model || template.model),
+              model_tier: normalizeModelTier(configPayload.model_tier),
               tools: configPayload.tools ?? template.tools,
               skills: configPayload.skills ?? template.skills,
               avatar_preset: configPayload.avatar_preset || '',
@@ -352,21 +329,13 @@ export function AgentManageTab() {
   const selectedTemplate = selectedId ? templates.find((template) => template.id === selectedId) ?? null : null
   const displayName = labelOrFallback(identity?.name || selectedTemplate?.name, selectedTemplate?.id || 'Agent')
   const role = labelOrFallback(agentConfig?.role || selectedTemplate?.role, selectedTemplate?.id || 'agent')
-  const provider = labelOrFallback(agentConfig?.provider || selectedTemplate?.provider, '-')
-  const model = labelOrFallback(agentConfig?.model || selectedTemplate?.model, '-')
+  const modelTier = normalizeModelTier(agentConfig?.model_tier)
   const temperature = typeof agentConfig?.temperature === 'number' ? agentConfig.temperature : FALLBACK_TEMPERATURE
   const tools = agentConfig?.tools ?? selectedTemplate?.tools ?? []
   const skills = agentConfig?.skills ?? selectedTemplate?.skills ?? []
   const extraTools = tools.filter((tool) => !TOOL_OPTIONS.includes(tool))
   const selectedAvatarPreset = agentConfig?.avatar_preset || selectedTemplate?.avatar_preset || ''
   const avatarUrl = selectedTemplate ? templateAvatar(selectedTemplate, agentConfig) : ''
-  const providerOptions = providers.length > 0 || !provider
-    ? providers
-    : [{ id: provider, label: provider }]
-  const filteredModels = models.filter((item) => item.provider === provider)
-  const modelOptions = filteredModels.some((item) => item.id === model) || !model
-    ? filteredModels
-    : [{ id: model, label: model, provider }, ...filteredModels]
   const filteredAvailableTemplates = availableTemplates.filter((template) => {
     const query = availableQuery.trim().toLowerCase()
     if (!query) return true
@@ -441,7 +410,7 @@ export function AgentManageTab() {
                       <div className="min-w-0 flex-1">
                         <div className="truncate text-sm font-medium text-[#1a1a1a]">{labelOrFallback(template.name, template.id)}</div>
                         <div className="mt-0.5 truncate text-xs text-muted-foreground">{labelOrFallback(template.role, template.id)}</div>
-                        {template.model && <div className="mt-0.5 truncate text-xs text-muted-foreground">{template.model}</div>}
+                        <div className="mt-0.5 truncate text-xs text-muted-foreground">{modelTierLabel(template.model_tier)}</div>
                       </div>
                     </button>
                     <button
@@ -539,17 +508,16 @@ export function AgentManageTab() {
                       </div>
 
                       <div>
-                        <label className="mb-1.5 block text-xs font-medium text-[#555]">模型</label>
+                        <label className="mb-1.5 block text-xs font-medium text-[#555]">模型等级</label>
                         <select
-                          value={model}
-                          onChange={(event) => updateConfig({ model: event.target.value })}
+                          value={modelTier}
+                          onChange={(event) => updateConfig({ model_tier: normalizeModelTier(event.target.value) })}
                           className="h-9 w-full rounded-lg border border-border bg-white px-3 text-sm text-[#1a1a1a] outline-none focus:border-[#9297a0] focus:ring-2 focus:ring-[#9297a0]/20"
                         >
-                          {modelOptions.length === 0 ? (
-                            <option value={model}>{model}</option>
-                          ) : modelOptions.map((option) => (
-                            <option key={`${option.provider}:${option.id}`} value={option.id}>
-                              {option.label || option.id}
+                          <option value="">继承 App 默认等级</option>
+                          {MODEL_TIER_OPTIONS.map((option) => (
+                            <option key={option.value} value={option.value}>
+                              {option.label} - {option.description}
                             </option>
                           ))}
                         </select>
@@ -568,20 +536,10 @@ export function AgentManageTab() {
 
                     <div className="grid gap-4 sm:grid-cols-2">
                       <div>
-                        <label className="mb-1.5 block text-xs font-medium text-[#555]">Provider</label>
-                        <select
-                          value={provider}
-                          onChange={(event) => updateProvider(event.target.value)}
-                          className="h-9 w-full rounded-lg border border-border bg-white px-3 text-sm text-[#1a1a1a] outline-none focus:border-[#9297a0] focus:ring-2 focus:ring-[#9297a0]/20"
-                        >
-                          {providerOptions.length === 0 ? (
-                            <option value={provider}>{provider}</option>
-                          ) : providerOptions.map((option) => (
-                            <option key={option.id} value={option.id}>
-                              {option.label || option.id}
-                            </option>
-                          ))}
-                        </select>
+                        <label className="mb-1.5 block text-xs font-medium text-[#555]">当前等级</label>
+                        <div className="flex h-9 items-center rounded-lg border border-border bg-[#fafafa] px-3 text-sm text-[#1a1a1a]">
+                          {modelTierLabel(modelTier)}
+                        </div>
                       </div>
 
                       <div>
@@ -600,15 +558,9 @@ export function AgentManageTab() {
                       </div>
                     </div>
 
-                    <label className="flex items-center gap-2 text-sm text-[#555]">
-                      <input
-                        type="checkbox"
-                        checked={Boolean(agentConfig?.thinking)}
-                        onChange={(event) => updateConfig({ thinking: event.target.checked })}
-                        className="h-4 w-4 rounded border-border"
-                      />
-                      启用 Thinking（深度思考模式）
-                    </label>
+                    <div className="rounded-lg border border-border bg-[#fafafa] px-3 py-2 text-xs leading-5 text-muted-foreground">
+                      底层 Provider、模型和 Thinking 由“设置”里的模型等级映射统一维护；这里仅为当前 Agent 选择等级。
+                    </div>
 
                     <div>
                       <label className="mb-2 block text-xs font-medium text-[#555]">工具</label>
