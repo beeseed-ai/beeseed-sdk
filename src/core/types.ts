@@ -197,6 +197,18 @@ export interface AskUserAnswerData {
 // ── Agent Loop ──
 
 export type AgentLoopToolCallStatus = 'calling' | 'success' | 'failed'
+export type AgentTodoStatus = 'pending' | 'in_progress' | 'completed' | 'blocked' | 'skipped'
+
+export interface AgentTodoItem {
+  id: string
+  title: string
+  status: AgentTodoStatus
+  seq: number
+  evidence?: string
+  blocker?: string
+  updated_at?: string
+  completed_at?: string
+}
 
 export interface AgentLoopToolCall {
   id: string
@@ -243,6 +255,7 @@ export interface AgentLoopState {
   completedAt?: number
   finalContent?: string
   error?: string
+  todos?: AgentTodoItem[]
 }
 
 // ── Agent ──
@@ -585,6 +598,8 @@ export type WSEvent =
   | { type: 'agent_turn_start'; channel_id: string; agent_id: string; run_id?: string; turn: number }
   | { type: 'agent_thinking'; channel_id: string; agent_id: string; run_id?: string; turn: number; content?: string }
   | { type: 'agent_progress'; channel_id: string; agent_id: string; run_id?: string; turn: number; summary: string }
+  | { type: 'agent_todo_snapshot'; channel_id: string; agent_id: string; run_id?: string; turn?: number; todo?: AgentTodoItem; todos: AgentTodoItem[] }
+  | { type: 'agent_todo_updated'; channel_id: string; agent_id: string; run_id?: string; turn?: number; todo?: AgentTodoItem; todos?: AgentTodoItem[] }
   | { type: 'agent_waiting_user'; channel_id: string; agent_id: string; run_id?: string; turn: number; summary: string }
   | { type: 'agent_ask_user_expired'; channel_id: string; agent_id: string; run_id?: string; turn: number; summary: string }
   | { type: 'agent_done'; channel_id: string; agent_id: string; run_id?: string; turn: number; content: string }

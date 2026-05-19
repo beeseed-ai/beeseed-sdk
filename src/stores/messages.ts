@@ -3,7 +3,7 @@ import type { KyInstance } from 'ky'
 import type {
   Message, ChatMessage, StreamState, WSEvent,
   ChannelMemberInfo, AgentLoopState, AgentLoopTurn, AgentLoopToolCall, AgentLoopSkillUse,
-  AskUserQuestion, SelectedSkillIntent,
+  AgentTodoItem, AskUserQuestion, SelectedSkillIntent,
 } from '../core/types.js'
 
 const AGENT_LOOP_STALE_AFTER_MS = 30 * 60 * 1000
@@ -66,6 +66,45 @@ function eventRunId(event: { run_id?: string }): string | undefined {
 
 function eventLoopKey(event: { channel_id: string; agent_id: string; run_id?: string }): string {
   return agentLoopStoreKey(event.channel_id, event.agent_id, eventRunId(event))
+}
+
+function normalizeAgentTodos(raw: unknown): AgentTodoItem[] {
+  if (!Array.isArray(raw)) return []
+  return raw.flatMap((item, index) => {
+    if (!item || typeof item !== 'object') return []
+    const record = item as Record<string, unknown>
+    const id = typeof record.id === 'string' ? record.id.trim() : ''
+    const title = typeof record.title === 'string' ? record.title.trim() : ''
+    const status = typeof record.status === 'string' ? record.status : 'pending'
+    if (!id || !title) return []
+    return [{
+      id,
+      title,
+      status: (
+        status === 'in_progress' || status === 'completed' || status === 'blocked' || status === 'skipped'
+          ? status
+          : 'pending'
+      ) as AgentTodoItem['status'],
+      seq: typeof record.seq === 'number' ? record.seq : index + 1,
+      evidence: typeof record.evidence === 'string' ? record.evidence : undefined,
+      blocker: typeof record.blocker === 'string' ? record.blocker : undefined,
+      updated_at: typeof record.updated_at === 'string' ? record.updated_at : undefined,
+      completed_at: typeof record.completed_at === 'string' ? record.completed_at : undefined,
+    }]
+  }).sort((a, b) => a.seq - b.seq)
+}
+
+function applyAgentTodoEvent(loop: AgentLoopState, todos?: AgentTodoItem[], todo?: AgentTodoItem): AgentLoopState {
+  if (todos && todos.length > 0) {
+    return { ...loop, todos: [...todos].sort((a, b) => a.seq - b.seq) }
+  }
+  if (!todo) return loop
+  const current = loop.todos ?? []
+  const exists = current.some((item) => item.id === todo.id)
+  const next = exists
+    ? current.map((item) => item.id === todo.id ? todo : item)
+    : [...current, todo]
+  return { ...loop, todos: next.sort((a, b) => a.seq - b.seq) }
 }
 
 export function parseMessage(m: Message, myUserId?: string): ChatMessage | null {
@@ -287,7 +326,12 @@ function buildAgentLoopsFromMessages(channelId: string, messages: Message[]): Ma
       loops.set(key, loop)
     }
 
-    if (meta.event === 'skill_use') {
+    if (meta.event === 'agent_todo_snapshot' || meta.event === 'agent_todo_updated') {
+      const todos = normalizeAgentTodos(meta.todos)
+      const todo = normalizeAgentTodos(meta.todo ? [meta.todo] : [])[0]
+      loop = applyAgentTodoEvent(loop, todos.length > 0 ? todos : undefined, todo)
+      loops.set(key, loop)
+    } else if (meta.event === 'skill_use') {
       turn = {
         ...turn,
         skillUses: [
@@ -1135,6 +1179,26 @@ export function createMessagesStore(config: MessagesStoreConfig) {
           const typing = new Map(state.typingStatus)
           typing.set(typingKey(event.channel_id, event.agent_id), event.summary)
           set({ typingStatus: typing })
+          break
+        }
+
+        case 'agent_todo_snapshot':
+        case 'agent_todo_updated': {
+          if (shouldIgnoreStaleLiveAgentEvent(state, event)) break
+          const loops = new Map(state.agentLoops)
+          const loopKey = eventLoopKey(event)
+          const turnNumber = eventTurnNumber(event, loops.get(loopKey))
+          let updated = ensureLoopTurn(loops.get(loopKey), event.channel_id, event.agent_id, turnNumber, eventRunId(event))
+          updated = applyAgentTodoEvent(updated, event.todos, event.todo)
+          loops.set(loopKey, updated)
+          set({ agentLoops: loops })
+
+          const streams = new Map(state.streams)
+          const stream = streams.get(loopKey)
+          if (stream) {
+            streams.set(loopKey, { ...stream, agentLoop: updated })
+            set({ streams })
+          }
           break
         }
 

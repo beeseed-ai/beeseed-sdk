@@ -83,7 +83,10 @@ const AVATAR_PRESETS = [
 const TOOL_OPTIONS = [
   'http_request',
   'ask_user',
+  'agent_todo',
   'knowledge_search',
+  'channel_members',
+  'task_management',
   'storage_list',
   'storage_info',
   'storage_read',

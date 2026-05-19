@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { Check, ChevronRight, Circle, Clock3, Sparkles, Wrench } from 'lucide-react'
-import type { AgentLoopState, AgentLoopTurn, AgentLoopToolCall, AgentLoopSkillUse } from '../../core/types.js'
+import type { AgentLoopState, AgentLoopTurn, AgentLoopToolCall, AgentLoopSkillUse, AgentTodoItem } from '../../core/types.js'
 import { cn } from '../../lib/cn.js'
 import { ThinkingBlock } from './ThinkingBlock.js'
 import { MarkdownRenderer } from './MarkdownRenderer.js'
@@ -107,6 +107,81 @@ function SkillUseLine({ skill }: { skill: AgentLoopSkillUse }) {
           {skill.reason && <div className="text-muted-foreground">原因：{skill.reason}</div>}
         </div>
       )}
+    </div>
+  )
+}
+
+function TodoStatusIcon({ todo }: { todo: AgentTodoItem }) {
+  if (todo.status === 'completed') {
+    return <Check className="size-3.5 text-[#006400]" />
+  }
+  if (todo.status === 'in_progress') {
+    return (
+      <span className="relative flex size-3.5 shrink-0 items-center justify-center">
+        <span className="absolute inline-flex size-3 rounded-full bg-[#181d26]/15 animate-ping" />
+        <span className="relative inline-flex size-2 rounded-full bg-[#181d26]" />
+      </span>
+    )
+  }
+  if (todo.status === 'blocked') {
+    return <Circle className="size-3.5 fill-amber-500 text-amber-500" />
+  }
+  if (todo.status === 'skipped') {
+    return <Circle className="size-3.5 text-[#999]" />
+  }
+  return <Circle className="size-3.5 text-muted-foreground/40" />
+}
+
+function todoStatusLabel(status: AgentTodoItem['status']) {
+  switch (status) {
+    case 'in_progress': return '进行中'
+    case 'completed': return '完成'
+    case 'blocked': return '阻塞'
+    case 'skipped': return '跳过'
+    default: return '待处理'
+  }
+}
+
+function AgentTodoList({ todos }: { todos?: AgentTodoItem[] }) {
+  if (!todos || todos.length === 0) return null
+
+  return (
+    <div className="rounded-md bg-white px-2.5 py-2 shadow-[inset_0_0_0_1px_rgba(0,0,0,0.06)]">
+      <div className="mb-1 flex items-center gap-1.5 text-[11px] font-medium text-[#181d26]">
+        <Clock3 className="size-3 text-[#777169]" />
+        <span>执行 TODO</span>
+      </div>
+      <div className="space-y-0.5">
+        {todos.map((todo) => (
+          <div key={todo.id} className="grid grid-cols-[14px_minmax(0,1fr)_auto] items-start gap-2 rounded-md px-1 py-1 text-xs">
+            <TodoStatusIcon todo={todo} />
+            <div className="min-w-0">
+              <div className={cn(
+                'break-words leading-5 text-[#181d26]',
+                todo.status === 'completed' && 'text-[#777169] line-through',
+                todo.status === 'skipped' && 'text-[#999]',
+              )}>
+                {todo.title}
+              </div>
+              {(todo.evidence || todo.blocker) && (
+                <div className="break-words text-[11px] leading-4 text-[#777169]">
+                  {todo.blocker || todo.evidence}
+                </div>
+              )}
+            </div>
+            <span className={cn(
+              'rounded border px-1.5 py-0.5 text-[10px] leading-3',
+              todo.status === 'in_progress' && 'border-[#181d26]/20 bg-[#181d26]/5 text-[#181d26]',
+              todo.status === 'completed' && 'border-green-200 bg-green-50 text-green-700',
+              todo.status === 'blocked' && 'border-amber-200 bg-amber-50 text-amber-700',
+              todo.status === 'skipped' && 'border-[#dddddd] bg-[#f7f7f5] text-[#777169]',
+              todo.status === 'pending' && 'border-[#dddddd] text-[#777169]',
+            )}>
+              {todoStatusLabel(todo.status)}
+            </span>
+          </div>
+        ))}
+      </div>
     </div>
   )
 }
@@ -229,6 +304,8 @@ export function AgentLoopTimeline({ loop, showContent = 'intermediate', classNam
 
   return (
     <div className={cn('space-y-1', className)}>
+      <AgentTodoList todos={loop.todos} />
+
       {loop.turns.map((turn, i) => (
         <TurnItem
           key={`${turn.turnNumber}-${i}`}
