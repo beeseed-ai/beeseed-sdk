@@ -1,4 +1,4 @@
-import { lazy, Suspense, useEffect, useState } from 'react'
+import { lazy, Suspense, useEffect, useState, type ReactNode } from 'react'
 import { PanelRight } from 'lucide-react'
 import { cn } from '../../lib/cn.js'
 import { useChannels } from '../../hooks/use-channels.js'
@@ -16,13 +16,16 @@ const KnowledgePanel = lazy(() => import('../knowledge/KnowledgePanel.js').then(
 const CronPanel = lazy(() => import('../cron/CronPanel.js').then((m) => ({ default: m.CronPanel })))
 const AdminPanel = lazy(() => import('../admin/AdminPanel.js').then((m) => ({ default: m.AdminPanel })))
 
-interface Props { className?: string }
+interface Props {
+  className?: string
+  sidebarFooterMeta?: ReactNode
+}
 
 function FeatureLoading() {
   return <div className="flex-1 flex items-center justify-center bg-[#fafafa]"><span className="text-sm text-muted-foreground">加载中...</span></div>
 }
 
-export function AppLayout({ className }: Props) {
+export function AppLayout({ className, sidebarFooterMeta }: Props) {
   const { channels, currentChannelId, setCurrentChannel } = useChannels()
   const { user } = useAuth()
   const { activeFeature, setActiveFeature, panelVisible, togglePanel, setPanel } = useDetailPanel()
@@ -59,6 +62,7 @@ export function AppLayout({ className }: Props) {
         channels={channels}
         currentChannelId={currentChannelId}
         onChannelSelect={handleChannelSelect}
+        footerMeta={sidebarFooterMeta}
       />
 
       <div className="flex-1 flex flex-col min-w-0">

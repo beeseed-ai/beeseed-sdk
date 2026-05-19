@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState, type ReactNode } from 'react'
 import { MessageSquareText, BookOpen, ListChecks, Plus, MoreHorizontal, LogOut, Bell, Hash, Shield, User } from 'lucide-react'
 import type { FeatureView, ChannelWithMeta } from '../../core/types.js'
 import { cn } from '../../lib/cn.js'
@@ -22,10 +22,11 @@ interface Props {
   channels: ChannelWithMeta[]
   currentChannelId: string | null
   onChannelSelect: (channelId: string) => void
+  footerMeta?: ReactNode
   className?: string
 }
 
-export function LeftNavSidebar({ activeFeature, onFeatureChange, channels, currentChannelId, onChannelSelect, className }: Props) {
+export function LeftNavSidebar({ activeFeature, onFeatureChange, channels, currentChannelId, onChannelSelect, footerMeta, className }: Props) {
   const { user, signOut } = useAuth()
   const { branding } = useAppConfig()
   const { unreadCount } = useNotifications()
@@ -168,6 +169,11 @@ export function LeftNavSidebar({ activeFeature, onFeatureChange, channels, curre
             )}
           </button>
         </div>
+        {footerMeta && (
+          <div className="mt-2 border-t border-border/60 pt-2">
+            {footerMeta}
+          </div>
+        )}
 
         {/* User menu popover */}
         {menuOpen && (

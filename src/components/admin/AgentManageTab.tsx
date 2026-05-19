@@ -8,6 +8,7 @@ interface AgentTemplateInfo {
   id: string
   name: string
   role: string
+  version?: string
   provider: string
   model: string
   model_tier?: ModelTierName | ''
@@ -30,6 +31,7 @@ interface IdentityData {
 
 interface AgentConfig {
   role?: string
+  template_version?: string
   provider?: string
   model?: string
   model_tier?: ModelTierName | ''
@@ -98,6 +100,12 @@ const TOOL_OPTIONS = [
 function labelOrFallback(value: string | undefined, fallback: string) {
   const text = value?.trim()
   return text || fallback
+}
+
+function formatAgentVersion(value: string | undefined) {
+  const text = value?.trim()
+  if (!text) return '未标注'
+  return text.toLowerCase().startsWith('v') ? text : `v${text}`
 }
 
 function toggleItem(items: string[], item: string) {
@@ -445,7 +453,7 @@ export function AgentManageTab() {
   const filteredAvailableTemplates = availableTemplates.filter((template) => {
     const query = availableQuery.trim().toLowerCase()
     if (!query) return true
-    return [template.id, template.name, template.model, template.provider]
+    return [template.id, template.name, template.version, template.model, template.provider]
       .some((value) => (value ?? '').toLowerCase().includes(query))
   })
   const filteredSkills = availableSkills.filter((skill) => {
@@ -515,7 +523,9 @@ export function AgentManageTab() {
                       </div>
                       <div className="min-w-0 flex-1">
                         <div className="truncate text-sm font-medium text-[#1a1a1a]">{labelOrFallback(template.name, template.id)}</div>
-                        <div className="mt-0.5 truncate text-xs text-muted-foreground">{labelOrFallback(template.role, template.id)}</div>
+                        <div className="mt-0.5 truncate text-xs text-muted-foreground">
+                          {labelOrFallback(template.role, template.id)} · 版本：{formatAgentVersion(template.version)}
+                        </div>
                         <div className="mt-0.5 truncate text-xs text-muted-foreground">默认：{modelTierLabel(template.model_tiers?.default_tier)}</div>
                       </div>
                     </button>
@@ -540,7 +550,7 @@ export function AgentManageTab() {
                     <div className="min-w-0">
                       <h3 className="truncate text-sm font-semibold text-[#1a1a1a]">{displayName}</h3>
                       <span className="text-xs text-muted-foreground">
-                        {role} · Template ID: {selectedTemplate.id}
+                        {role} · Template ID: {selectedTemplate.id} · 版本：{formatAgentVersion(selectedTemplate.version)}
                       </span>
                     </div>
                     <button
@@ -860,7 +870,9 @@ export function AgentManageTab() {
                       </div>
                       <div className="min-w-0 flex-1">
                         <div className="truncate text-sm font-medium text-[#1a1a1a]">{labelOrFallback(template.name, template.id)}</div>
-                        <div className="mt-0.5 truncate text-xs text-muted-foreground">{template.id} · {template.model || '-'}</div>
+                        <div className="mt-0.5 truncate text-xs text-muted-foreground">
+                          {template.id} · 版本：{formatAgentVersion(template.version)} · {template.model || '-'}
+                        </div>
                       </div>
                       <button
                         type="button"

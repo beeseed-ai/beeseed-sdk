@@ -56,6 +56,15 @@ interface SkillSummary {
   triggers?: string[]
 }
 
+interface AgentTemplateSummary {
+  id: string
+  name: string
+  role?: string
+  version?: string
+  avatar_url?: string
+  avatar_preset?: string
+}
+
 const MODEL_TIER_OPTIONS: { value: ModelTierName; label: string }[] = [
   { value: 'fast', label: '快速' },
   { value: 'thinking', label: '思考' },
@@ -67,7 +76,7 @@ function normalizeModelTier(value: unknown): ModelTierName | '' {
 }
 
 export function DetailPanel({ channelId, members = [], tasks = [], files = [], onCreateTask, onMembersChanged, className }: Props) {
-  const { api } = useBeeSeedContext()
+  const { api, channelsStore } = useBeeSeedContext()
   const { user } = useAuth()
   const { panelVisible, insertIntoComposer, setActiveFeature } = useDetailPanel()
   const {
@@ -93,6 +102,11 @@ export function DetailPanel({ channelId, members = [], tasks = [], files = [], o
   const [skillModalOpen, setSkillModalOpen] = useState(false)
   const [availableSkills, setAvailableSkills] = useState<SkillSummary[]>([])
   const [skillQuery, setSkillQuery] = useState('')
+  const [agentPickerOpen, setAgentPickerOpen] = useState(false)
+  const [availableAgents, setAvailableAgents] = useState<AgentTemplateSummary[]>([])
+  const [agentQuery, setAgentQuery] = useState('')
+  const [agentActionLoading, setAgentActionLoading] = useState('')
+  const [agentActionError, setAgentActionError] = useState('')
   const [agentSettingsLoading, setAgentSettingsLoading] = useState(false)
   const [agentSettingsSaving, setAgentSettingsSaving] = useState(false)
 
@@ -102,8 +116,17 @@ export function DetailPanel({ channelId, members = [], tasks = [], files = [], o
   const channelFiles = storageObjects.length > 0 ? storageObjects : files
   const currentMember = user ? users.find((m) => m.user_id === user.id) : null
   const canEditAgents = currentMember?.role === 'owner' || currentMember?.role === 'coordinator'
+  const canManageAgentMembers = currentMember?.role === 'owner'
   const canConfigureAgentTier = Boolean(currentMember)
   const agentNames = new Map(agents.map((agent) => [agent.agent_id, agent.display_name || agent.agent_id || 'Agent']))
+  const channelAgentIDs = useMemo(() => new Set(agents.map((agent) => agent.agent_id).filter(Boolean) as string[]), [agents])
+  const filteredAvailableAgents = useMemo(() => availableAgents
+    .filter((agent) => !channelAgentIDs.has(agent.id))
+    .filter((agent) => {
+      const query = agentQuery.trim().toLowerCase()
+      if (!query) return true
+      return [agent.id, agent.name, agent.role, agent.version].some((value) => (value ?? '').toLowerCase().includes(query))
+    }), [agentQuery, availableAgents, channelAgentIDs])
   const selectedTask = selectedTaskId ? channelTasks.find((task) => task.id === selectedTaskId) || null : null
   const now = Date.now()
   const activeTasks = useMemo(() => channelTasks.filter((task) => task.status !== 'done' && task.status !== 'failed'), [channelTasks])
@@ -203,6 +226,62 @@ export function DetailPanel({ channelId, members = [], tasks = [], files = [], o
     } finally {
       setAgentSettingsSaving(false)
     }
+  }
+
+  async function refreshChannelMemberSurface() {
+    onMembersChanged?.()
+    await channelsStore.getState().fetchChannels()
+  }
+
+  async function openAgentPicker() {
+    if (!channelId || !canManageAgentMembers) return
+    setAgentActionError('')
+    setAgentQuery('')
+    setAgentPickerOpen(true)
+    try {
+      const data = await api.get(`channels/${channelId}/agent-templates`).json<AgentTemplateSummary[]>()
+      setAvailableAgents(data ?? [])
+    } catch {
+      setAvailableAgents([])
+      setAgentActionError('加载可添加 Agent 失败')
+    }
+  }
+
+  async function addChannelAgent(agentID: string) {
+    if (!channelId || !agentID) return
+    setAgentActionLoading(agentID)
+    setAgentActionError('')
+    try {
+      await api.post(`channels/${channelId}/members`, { json: { agent_ids: [agentID] } })
+      await refreshChannelMemberSurface()
+      setAgentPickerOpen(false)
+    } catch {
+      setAgentActionError('添加 Agent 失败')
+    } finally {
+      setAgentActionLoading('')
+    }
+  }
+
+  async function removeChannelAgent(agentID: string) {
+    if (!channelId || !agentID) return false
+    setAgentActionLoading(agentID)
+    setAgentActionError('')
+    try {
+      await api.delete(`channels/${channelId}/members/agents/${encodeURIComponent(agentID)}`)
+      await refreshChannelMemberSurface()
+      return true
+    } catch {
+      setAgentActionError('移除 Agent 失败')
+      return false
+    } finally {
+      setAgentActionLoading('')
+    }
+  }
+
+  async function removeSelectedAgent() {
+    if (!selectedAgent?.agent_id) return
+    const removed = await removeChannelAgent(selectedAgent.agent_id)
+    if (removed) setAgentSettingsOpen(false)
   }
 
   async function openSkillModal() {
@@ -397,13 +476,30 @@ export function DetailPanel({ channelId, members = [], tasks = [], files = [], o
 
         {/* Members */}
         <div>
-          <button onClick={() => setMembersOpen(!membersOpen)} className="flex items-center gap-2 w-full px-4 py-3 text-sm font-medium hover:bg-muted/30 transition-colors">
-            <Users className="w-4 h-4 text-muted-foreground" />
-            <span className="flex-1 text-left">成员</span>
-            {membersOpen ? <ChevronDown className="w-3.5 h-3.5 text-muted-foreground" /> : <ChevronRight className="w-3.5 h-3.5 text-muted-foreground" />}
-          </button>
+          <div className="flex items-center gap-1 px-4 py-3 hover:bg-muted/30 transition-colors">
+            <button onClick={() => setMembersOpen(!membersOpen)} className="flex min-w-0 flex-1 items-center gap-2 text-sm font-medium">
+              <Users className="w-4 h-4 text-muted-foreground" />
+              <span className="flex-1 text-left">成员</span>
+              {membersOpen ? <ChevronDown className="w-3.5 h-3.5 text-muted-foreground" /> : <ChevronRight className="w-3.5 h-3.5 text-muted-foreground" />}
+            </button>
+            {canManageAgentMembers && (
+              <button
+                type="button"
+                title="添加 Agent"
+                className="rounded p-1 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+                onClick={() => { void openAgentPicker() }}
+              >
+                <Plus className="w-3.5 h-3.5" />
+              </button>
+            )}
+          </div>
           {membersOpen && (
             <div className="px-4 pb-3">
+              {agentActionError && (
+                <div className="mb-2 rounded-md border border-destructive/20 bg-destructive/5 px-2 py-1.5 text-xs text-destructive">
+                  {agentActionError}
+                </div>
+              )}
               {agents.length > 0 && (
                 <>
                   <div className="text-[10px] text-muted-foreground/60 uppercase tracking-wider mb-1.5">AGENT — {agents.length}</div>
@@ -554,12 +650,26 @@ export function DetailPanel({ channelId, members = [], tasks = [], files = [], o
               </div>
             )}
           </div>
-          <DialogFooter>
-            <Button variant="ghost" onClick={() => setAgentSettingsOpen(false)}>取消</Button>
-            <Button onClick={saveAgentSettings} disabled={agentSettingsLoading || agentSettingsSaving || !selectedAgent?.agent_id}>
-              <Save className="w-4 h-4" />
-              {agentSettingsSaving ? '保存中...' : '保存'}
-            </Button>
+          <DialogFooter className="sm:justify-between">
+            <div className="flex flex-col-reverse gap-2 sm:flex-row">
+              {canManageAgentMembers && selectedAgent?.agent_id && (
+                <Button
+                  variant="destructive"
+                  onClick={() => { void removeSelectedAgent() }}
+                  disabled={agentSettingsLoading || agentActionLoading === selectedAgent.agent_id}
+                >
+                  <Trash2 className="w-4 h-4" />
+                  {agentActionLoading === selectedAgent.agent_id ? '移出中...' : '移出频道'}
+                </Button>
+              )}
+            </div>
+            <div className="flex flex-col-reverse gap-2 sm:flex-row">
+              <Button variant="ghost" onClick={() => setAgentSettingsOpen(false)}>取消</Button>
+              <Button onClick={saveAgentSettings} disabled={agentSettingsLoading || agentSettingsSaving || !selectedAgent?.agent_id}>
+                <Save className="w-4 h-4" />
+                {agentSettingsSaving ? '保存中...' : '保存'}
+              </Button>
+            </div>
           </DialogFooter>
         </DialogContent>
       </Dialog>
@@ -609,6 +719,55 @@ export function DetailPanel({ channelId, members = [], tasks = [], files = [], o
                 <div className="rounded-lg border border-border p-4 text-sm text-muted-foreground">暂无可添加技能</div>
               )}
             </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={agentPickerOpen} onOpenChange={setAgentPickerOpen}>
+        <DialogContent className="w-[min(560px,calc(100vw-2rem))] max-w-[calc(100vw-2rem)] p-0" onClose={() => setAgentPickerOpen(false)}>
+          <div className="border-b border-border p-4">
+            <DialogHeader>
+              <DialogTitle>添加 Agent</DialogTitle>
+            </DialogHeader>
+            <div className="relative mt-4">
+              <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+              <Input
+                value={agentQuery}
+                onChange={(event) => setAgentQuery(event.target.value)}
+                placeholder="搜索 Agent 名称、Role、版本..."
+                className="pl-9"
+              />
+            </div>
+          </div>
+          <div className="max-h-[55vh] overflow-y-auto p-4">
+            {agentActionError && (
+              <div className="mb-3 rounded-lg border border-destructive/20 bg-destructive/5 px-3 py-2 text-sm text-destructive">
+                {agentActionError}
+              </div>
+            )}
+            {filteredAvailableAgents.length === 0 ? (
+              <div className="rounded-lg border border-border p-4 text-sm text-muted-foreground">暂无可添加 Agent</div>
+            ) : (
+              <div className="space-y-2">
+                {filteredAvailableAgents.map((agent) => (
+                  <div key={agent.id} className="flex items-center gap-3 rounded-lg border border-border p-3">
+                    <Avatar className="size-9 shrink-0">
+                      {agent.avatar_url ? <AvatarImage src={agent.avatar_url} /> : null}
+                      <AvatarFallback className="text-[10px] bg-emerald-100 text-emerald-700">AI</AvatarFallback>
+                    </Avatar>
+                    <div className="min-w-0 flex-1">
+                      <div className="truncate text-sm font-medium">{agent.name || agent.id}</div>
+                      <div className="mt-0.5 truncate font-mono text-xs text-muted-foreground">
+                        {agent.role || agent.id}{agent.version ? ` · v${String(agent.version).replace(/^v/i, '')}` : ''}
+                      </div>
+                    </div>
+                    <Button size="sm" onClick={() => { void addChannelAgent(agent.id) }} disabled={agentActionLoading === agent.id}>
+                      {agentActionLoading === agent.id ? '添加中...' : '添加'}
+                    </Button>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
         </DialogContent>
       </Dialog>

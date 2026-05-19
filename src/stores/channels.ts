@@ -10,7 +10,7 @@ export interface ChannelsState {
   fetchChannels: () => Promise<void>
   setCurrentChannel: (channelId: string | null) => void
   setChannels: (channels: ChannelWithMeta[]) => void
-  createChannel: (input: { name: string; purpose?: string }) => Promise<{ channel: ChannelWithMeta; members: ChannelMember[] } | null>
+  createChannel: (input: { name: string; purpose?: string; agent_ids?: string[] }) => Promise<{ channel: ChannelWithMeta; members: ChannelMember[] } | null>
   updateUnread: (channelId: string, count: number) => void
   markRead: (channelId: string) => void
   reset: () => void

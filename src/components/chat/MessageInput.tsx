@@ -391,7 +391,6 @@ export function MessageInput({
   const handleChange = useCallback(
     (e: ChangeEvent<HTMLTextAreaElement>) => {
       autoResize()
-      if (members.length === 0) return
 
       const el = e.target
       const pos = el.selectionStart
@@ -412,14 +411,22 @@ export function MessageInput({
       }
 
       if (skillMenuOpen && skillSlashStart >= 0) {
-        const query = text.slice(skillSlashStart + 1, pos)
-        if (query.includes(' ') || query.includes('\n')) {
+        const triggerStillPresent = skillSlashStart < text.length && text[skillSlashStart] === '/' && pos > skillSlashStart
+        const charBefore = skillSlashStart > 0 ? text[skillSlashStart - 1] : ' '
+        if (!triggerStillPresent || (charBefore !== ' ' && charBefore !== '\n')) {
           closeSkillMenu()
         } else {
-          setSkillQuery(query)
-          setSkillIndex(0)
+          const query = text.slice(skillSlashStart + 1, pos)
+          if (query.includes(' ') || query.includes('\n')) {
+            closeSkillMenu()
+          } else {
+            setSkillQuery(query)
+            setSkillIndex(0)
+          }
         }
       }
+
+      if (members.length === 0) return
 
       // Detect @ trigger
       if (pos > 0 && text[pos - 1] === '@') {
@@ -501,13 +508,20 @@ export function MessageInput({
         {skillMenuOpen && (
           <div
             ref={skillMenuRef}
-            className="absolute bottom-full left-2 mb-1 z-50 w-[min(420px,calc(100vw-32px))] max-h-80 overflow-hidden rounded-lg border border-[#dddddd] bg-white shadow-lg"
+            className="absolute bottom-full left-0 right-0 mb-1 z-50 max-h-80 w-full overflow-hidden rounded-lg border border-[#dddddd] bg-white shadow-lg"
           >
             <div className="border-b border-[#eeeeee] px-3 py-2">
-              <div className="text-xs font-medium text-[#181d26]">{pendingSkill ? (replaceSkillKey ? '更换执行 Agent' : '选择执行 Agent') : '选择技能'}</div>
-              <div className="mt-0.5 truncate text-[11px] text-[#777169]">
-                {pendingSkill ? `${skillDisplayName(pendingSkill)} 需要指定执行者` : '输入 / 后可继续键入关键词过滤'}
-              </div>
+              {pendingSkill ? (
+                <>
+                  <div className="text-xs font-medium text-[#181d26]">{replaceSkillKey ? '更换执行 Agent' : '选择执行 Agent'}</div>
+                  <div className="mt-0.5 truncate text-[11px] text-[#777169]">{skillDisplayName(pendingSkill)} 需要指定执行者</div>
+                </>
+              ) : (
+                <div className="flex min-w-0 items-center gap-2 text-xs">
+                  <span className="shrink-0 font-medium text-[#181d26]">选择技能</span>
+                  <span className="min-w-0 truncate text-[11px] text-[#777169]">输入 / 后可继续键入关键词过滤</span>
+                </div>
+              )}
             </div>
             <div ref={skillScrollRef} className="max-h-64 overflow-y-auto py-1">
               {pendingSkill ? (
@@ -532,24 +546,30 @@ export function MessageInput({
                 <div className="px-3 py-3 text-xs text-[#777169]">没有匹配的技能</div>
               ) : filteredSkills.map((skill, index) => {
                 const agents = skill.agents ?? []
+                const agentNames = agents.map((agent) => agent.agent_name).filter(Boolean).join('、')
                 return (
                   <button
                     key={skill.name}
                     ref={index === skillIndex ? activeSkillItemRef : undefined}
                     type="button"
                     className={cn(
-                      'flex w-full items-start gap-3 px-3 py-2 text-left',
+                      'flex w-full items-center gap-3 px-3 py-2 text-left',
                       index === skillIndex ? 'bg-[#181d26] text-white' : 'text-[#181d26] hover:bg-[#f8fafc]',
                     )}
                     onMouseDown={(e) => { e.preventDefault(); chooseSkill(skill, skillSlashStart >= 0 ? 'slash' : 'skill_button') }}
                   >
-                    <Zap className={cn('mt-0.5 h-3.5 w-3.5 shrink-0', index === skillIndex ? 'text-white' : 'text-[#254fad]')} />
-                    <span className="min-w-0 flex-1">
-                      <span className="block truncate text-sm font-medium">/{skillDisplayName(skill)}</span>
-                      {skill.description && <span className={cn('mt-0.5 block truncate text-xs', index === skillIndex ? 'text-white/75' : 'text-[#777169]')}>{skill.description}</span>}
-                      <span className={cn('mt-1 block truncate text-[10px]', index === skillIndex ? 'text-white/65' : 'text-[#777169]')}>
-                        {agents.length > 0 ? `关联 Agent：${agents.map((agent) => agent.agent_name).join('、')}` : '通用技能，需选择 Agent'}
+                    <span className="grid min-w-0 flex-1 grid-cols-[minmax(96px,max-content)_minmax(0,1fr)_auto] items-center gap-2">
+                      <span className={cn('min-w-0 truncate text-sm font-medium', index === skillIndex ? 'text-white' : 'text-[#181d26]')}>
+                        {skillDisplayName(skill)}
                       </span>
+                      <span className={cn('min-w-0 truncate text-xs', index === skillIndex ? 'text-white/75' : 'text-[#777169]')}>
+                        {skill.description || ''}
+                      </span>
+                      {agentNames && (
+                        <span className={cn('max-w-[180px] shrink-0 truncate text-right text-xs font-medium', index === skillIndex ? 'text-white/80' : 'text-[#41454d]')}>
+                          {agentNames}
+                        </span>
+                      )}
                     </span>
                   </button>
                 )
