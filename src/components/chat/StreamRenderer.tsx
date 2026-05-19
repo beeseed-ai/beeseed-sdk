@@ -7,7 +7,7 @@ import { Button } from '../ui/button.js'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '../ui/dialog.js'
 import { MarkdownRenderer } from './MarkdownRenderer.js'
 import { ThinkingBlock } from './ThinkingBlock.js'
-import { AgentLoopTimeline } from './AgentLoopTimeline.js'
+import { AgentRunTranscript } from './AgentRunTranscript.js'
 
 interface Props {
   stream: StreamState
@@ -75,10 +75,10 @@ export function StreamRenderer({ stream, agentLoop, agentAvatarUrl, agentDisplay
           </Dialog>
         )}
 
-        {/* Agent Loop timeline (replaces simple turn indicator) */}
+        {/* Agent run transcript keeps execution steps and streamed content in one flow. */}
         {agentLoop && agentLoop.turns.length > 0 && (
-          <div className="rounded-md border border-[#eeeeee] bg-[#fbfbfb] px-3 py-2">
-            <AgentLoopTimeline loop={agentLoop} showContent="all" />
+          <div className="py-1">
+            <AgentRunTranscript loop={agentLoop} showContent="all" />
           </div>
         )}
 

@@ -45,6 +45,8 @@ interface AgentConfigForm {
   thinking?: boolean
   tools?: string[]
   skills?: string[]
+  avatar_preset?: string
+  identity?: Partial<AgentIdentityForm>
   [key: string]: unknown
 }
 
@@ -70,9 +72,25 @@ const MODEL_TIER_OPTIONS: { value: ModelTierName; label: string }[] = [
   { value: 'thinking', label: '思考' },
   { value: 'pro', label: '专业' },
 ]
+const AVATAR_PRESETS = [
+  'bot-amber',
+  'bot-blue',
+  'bot-emerald',
+  'bot-rose',
+  'bot-violet',
+  'owl',
+  'rocket',
+  'star',
+  'leaf',
+  'lightning',
+]
 
 function normalizeModelTier(value: unknown): ModelTierName | '' {
   return value === 'fast' || value === 'thinking' || value === 'pro' ? value : ''
+}
+
+function avatarPresetUrl(preset: string | undefined) {
+  return preset ? `/avatars/agents/${preset}.svg` : ''
 }
 
 export function DetailPanel({ channelId, members = [], tasks = [], files = [], onCreateTask, onMembersChanged, className }: Props) {
@@ -214,7 +232,14 @@ export function DetailPanel({ channelId, members = [], tasks = [], files = [], o
       }
       if (agentConfig && canEditAgents) {
         await api.put(`channels/${channelId}/agents/${selectedAgent.agent_id}/config`, {
-          json: { ...agentConfig, role: agentConfig.role || selectedAgent.agent_id },
+          json: {
+            ...agentConfig,
+            role: agentConfig.role || selectedAgent.agent_id,
+            identity: {
+              ...(agentConfig.identity ?? {}),
+              ...agentIdentity,
+            },
+          },
         })
       } else {
         await api.put(`channels/${channelId}/agents/${selectedAgent.agent_id}/model-tier`, {
@@ -314,6 +339,13 @@ export function DetailPanel({ channelId, members = [], tasks = [], files = [], o
 
   function updateAgentModelTier(modelTier: ModelTierName | '') {
     setAgentConfig((current) => ({ ...(current ?? { role: selectedAgent?.agent_id, skills: [] }), model_tier: modelTier }))
+  }
+
+  function updateAgentAvatarPreset(avatarPreset: string) {
+    setAgentConfig((current) => ({
+      ...(current ?? { role: selectedAgent?.agent_id, skills: [] }),
+      avatar_preset: avatarPreset,
+    }))
   }
 
   return (
@@ -599,6 +631,36 @@ export function DetailPanel({ channelId, members = [], tasks = [], files = [], o
                 </div>
                 {canEditAgents ? (
                   <>
+                <div>
+                  <label className="mb-2 block text-xs font-medium text-muted-foreground">头像</label>
+                  <div className="flex flex-wrap gap-2">
+                    <button
+                      type="button"
+                      onClick={() => updateAgentAvatarPreset('')}
+                      className={cn(
+                        'flex size-9 items-center justify-center rounded-full border bg-background transition-colors hover:bg-muted',
+                        (agentConfig?.avatar_preset ?? '') === '' ? 'border-[#181d26] ring-2 ring-[#181d26]/15' : 'border-border',
+                      )}
+                      title="默认头像"
+                    >
+                      <span className="text-[10px] font-medium text-muted-foreground">AI</span>
+                    </button>
+                    {AVATAR_PRESETS.map((preset) => (
+                      <button
+                        key={preset}
+                        type="button"
+                        onClick={() => updateAgentAvatarPreset(preset)}
+                        className={cn(
+                          'size-9 overflow-hidden rounded-full border bg-background transition-colors hover:bg-muted',
+                          agentConfig?.avatar_preset === preset ? 'border-[#181d26] ring-2 ring-[#181d26]/15' : 'border-border',
+                        )}
+                        title={preset}
+                      >
+                        <img src={avatarPresetUrl(preset)} alt="" className="size-full object-cover" />
+                      </button>
+                    ))}
+                  </div>
+                </div>
                 <div>
                   <label className="mb-1.5 block text-xs font-medium text-muted-foreground">名称</label>
                   <Input

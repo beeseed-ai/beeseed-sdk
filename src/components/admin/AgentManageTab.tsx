@@ -150,9 +150,15 @@ function avatarPresetUrl(preset: string | undefined) {
   return preset ? `/avatars/agents/${preset}.svg` : ''
 }
 
+function configAvatarPreset(template: AgentTemplateInfo, config: AgentConfig | null) {
+  return config && Object.prototype.hasOwnProperty.call(config, 'avatar_preset')
+    ? config.avatar_preset || ''
+    : template.avatar_preset || ''
+}
+
 function templateAvatar(template: AgentTemplateInfo, config: AgentConfig | null) {
-  if (template.avatar_url) return template.avatar_url
-  const preset = config?.avatar_preset || template.avatar_preset
+  const preset = configAvatarPreset(template, config)
+  if (!config && template.avatar_url) return template.avatar_url
   return avatarPresetUrl(preset)
 }
 
@@ -448,7 +454,7 @@ export function AgentManageTab() {
   const tools = agentConfig?.tools ?? selectedTemplate?.tools ?? []
   const skills = agentConfig?.skills ?? selectedTemplate?.skills ?? []
   const extraTools = tools.filter((tool) => !TOOL_OPTIONS.includes(tool))
-  const selectedAvatarPreset = agentConfig?.avatar_preset || selectedTemplate?.avatar_preset || ''
+  const selectedAvatarPreset = selectedTemplate ? configAvatarPreset(selectedTemplate, agentConfig) : ''
   const avatarUrl = selectedTemplate ? templateAvatar(selectedTemplate, agentConfig) : ''
   const filteredAvailableTemplates = availableTemplates.filter((template) => {
     const query = availableQuery.trim().toLowerCase()

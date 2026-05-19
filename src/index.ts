@@ -12,7 +12,7 @@ export type {
   // Ask-User
   AskUserQuestion, AskUserData,
   // Agent Loop
-  AgentLoopToolCallStatus, AgentLoopToolCall, AgentLoopSkillUse, AgentLoopTurn, AgentLoopState,
+  AgentLoopToolCallStatus, AgentLoopToolCall, AgentLoopSkillUse, AgentLoopTurn, AgentLoopEventType, AgentLoopEventItem, AgentLoopState,
   AgentTodoStatus, AgentTodoItem,
   // Task System
   Project, Task, TaskComment, TaskSchedule, CalendarEvent,
@@ -67,6 +67,8 @@ export { ToolGroupBubble } from './components/chat/index.js'
 export { AskUserCard } from './components/chat/index.js'
 export { MentionMenu } from './components/chat/index.js'
 export { AgentLoopTimeline } from './components/chat/index.js'
+export { AgentRunTranscript } from './components/chat/index.js'
+export { AgentTodoRail } from './components/chat/index.js'
 
 // Components — Channels
 export { ChannelList } from './components/channels/index.js'

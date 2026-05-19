@@ -3,7 +3,7 @@ import type { KyInstance } from 'ky'
 import type {
   Message, ChatMessage, StreamState, WSEvent,
   ChannelMemberInfo, AgentLoopState, AgentLoopTurn, AgentLoopToolCall, AgentLoopSkillUse,
-  AgentTodoItem, AskUserQuestion, SelectedSkillIntent,
+  AgentLoopEventItem, AgentTodoItem, AskUserQuestion, SelectedSkillIntent,
 } from '../core/types.js'
 
 const AGENT_LOOP_STALE_AFTER_MS = 30 * 60 * 1000
@@ -64,6 +64,42 @@ function eventRunId(event: { run_id?: string }): string | undefined {
     : undefined
 }
 
+function metadataSeq(meta: Record<string, unknown>): number | undefined {
+  return typeof meta.seq === 'number' && Number.isFinite(meta.seq) && meta.seq > 0
+    ? meta.seq
+    : undefined
+}
+
+function metadataEventId(meta: Record<string, unknown>, fallback: string): string {
+  return typeof meta.event_id === 'string' && meta.event_id.trim() !== ''
+    ? meta.event_id
+    : fallback
+}
+
+function metadataToolCallId(meta: Record<string, unknown>): string | undefined {
+  return typeof meta.tool_call_id === 'string' && meta.tool_call_id.trim() !== ''
+    ? meta.tool_call_id
+    : undefined
+}
+
+function eventSeq(event: { seq?: number }): number | undefined {
+  return typeof event.seq === 'number' && Number.isFinite(event.seq) && event.seq > 0
+    ? event.seq
+    : undefined
+}
+
+function eventId(event: { event_id?: string }, fallback: string): string {
+  return typeof event.event_id === 'string' && event.event_id.trim() !== ''
+    ? event.event_id
+    : fallback
+}
+
+function eventToolCallId(event: { tool_call_id?: string }): string | undefined {
+  return typeof event.tool_call_id === 'string' && event.tool_call_id.trim() !== ''
+    ? event.tool_call_id
+    : undefined
+}
+
 function eventLoopKey(event: { channel_id: string; agent_id: string; run_id?: string }): string {
   return agentLoopStoreKey(event.channel_id, event.agent_id, eventRunId(event))
 }
@@ -105,6 +141,65 @@ function applyAgentTodoEvent(loop: AgentLoopState, todos?: AgentTodoItem[], todo
     ? current.map((item) => item.id === todo.id ? todo : item)
     : [...current, todo]
   return { ...loop, todos: next.sort((a, b) => a.seq - b.seq) }
+}
+
+function sortLoopEvents(events: AgentLoopEventItem[]): AgentLoopEventItem[] {
+  return [...events].sort((a, b) => {
+    const aSeq = a.seq ?? Number.MAX_SAFE_INTEGER
+    const bSeq = b.seq ?? Number.MAX_SAFE_INTEGER
+    if (aSeq !== bSeq) return aSeq - bSeq
+    return a.timestamp - b.timestamp
+  })
+}
+
+function compactEventText(value?: string): string {
+  return (value ?? '').replace(/\s+/g, ' ').trim()
+}
+
+function isDuplicateProgressEvent(a?: AgentLoopEventItem, b?: AgentLoopEventItem): boolean {
+  if (!a || !b) return false
+  return a.type === 'progress'
+    && b.type === 'progress'
+    && a.turnNumber === b.turnNumber
+    && compactEventText(a.summary) !== ''
+    && compactEventText(a.summary) === compactEventText(b.summary)
+}
+
+function appendLoopEvent(loop: AgentLoopState, item: AgentLoopEventItem): AgentLoopState {
+  const current = loop.events ?? []
+  if (current.some((event) => event.id === item.id)) {
+    return {
+      ...loop,
+      events: sortLoopEvents(current.map((event) => event.id === item.id ? item : event)),
+    }
+  }
+  const next = sortLoopEvents([...current, item])
+  const compacted: AgentLoopEventItem[] = []
+  for (const event of next) {
+    if (isDuplicateProgressEvent(compacted[compacted.length - 1], event)) continue
+    compacted.push(event)
+  }
+  return { ...loop, events: compacted }
+}
+
+function upsertAssistantContentEvent(
+  loop: AgentLoopState,
+  turnNumber: number,
+  contentDelta: string,
+  timestamp: number,
+  id: string,
+  seq?: number,
+): AgentLoopState {
+  if (!contentDelta) return loop
+  const existing = (loop.events ?? []).find((event) => (
+    event.type === 'assistant_content'
+    && event.turnNumber === turnNumber
+    && event.id === id
+  ))
+  const item: AgentLoopEventItem = existing
+    ? { ...existing, content: `${existing.content ?? ''}${contentDelta}`, timestamp }
+    : { id, seq, type: 'assistant_content', turnNumber, timestamp, content: contentDelta }
+  return appendLoopEvent(loop, item)
 }
 
 export function parseMessage(m: Message, myUserId?: string): ChatMessage | null {
@@ -272,6 +367,10 @@ function buildAgentLoopsFromMessages(channelId: string, messages: Message[]): Ma
     const runId = metadataRunId(meta)
     const key = agentLoopStoreKey(channelId, agentId, runId)
     const timestamp = new Date(message.created_at).getTime()
+    const seq = metadataSeq(meta)
+    const storedEvent = typeof meta.event === 'string' ? meta.event : ''
+    const storedEventId = metadataEventId(meta, `${message.id}`)
+    const toolCallId = metadataToolCallId(meta)
 
     if (meta.source !== 'agent_loop') {
       if (message.msg_type === 'tool_call' && meta.name === 'ask_user' && getAskUserStatus(meta) === 'expired') {
@@ -332,26 +431,73 @@ function buildAgentLoopsFromMessages(channelId: string, messages: Message[]): Ma
       loop = applyAgentTodoEvent(loop, todos.length > 0 ? todos : undefined, todo)
       loops.set(key, loop)
     } else if (meta.event === 'skill_use') {
+      const skillUse: AgentLoopSkillUse = {
+        id: `${message.id}`,
+        seq,
+        name: (meta.name as string) || 'unknown',
+        displayName: meta.display_name as string | undefined,
+        description: meta.description as string | undefined,
+        status: ((meta.status as string) || 'injected') as AgentLoopSkillUse['status'],
+        reason: meta.reason as string | undefined,
+        startedAt: timestamp,
+      }
       turn = {
         ...turn,
         skillUses: [
           ...(turn.skillUses ?? []),
-          {
-            id: `${message.id}`,
-            name: (meta.name as string) || 'unknown',
-            displayName: meta.display_name as string | undefined,
-            description: meta.description as string | undefined,
-            status: ((meta.status as string) || 'injected') as AgentLoopSkillUse['status'],
-            reason: meta.reason as string | undefined,
-            startedAt: timestamp,
-          },
+          skillUse,
         ],
       }
+      loop = appendLoopEvent(loop, {
+        id: storedEventId,
+        seq,
+        messageId: message.id,
+        type: 'skill_use',
+        turnNumber,
+        timestamp,
+        skill: skillUse,
+      })
+      loops.set(key, loop)
     } else if (message.msg_type === 'thinking') {
-      turn = { ...turn, progress: message.content }
+      if (meta.event === 'assistant_content') {
+        turn = { ...turn, content: `${turn.content ?? ''}${message.content}` }
+        loop = appendLoopEvent(loop, {
+          id: storedEventId,
+          seq,
+          messageId: message.id,
+          type: 'assistant_content',
+          turnNumber,
+          timestamp,
+          content: message.content,
+        })
+        loops.set(key, loop)
+      } else {
+        turn = { ...turn, progress: message.content }
+        if (
+          storedEvent !== 'agent_stopped'
+          && storedEvent !== 'agent_error'
+          && storedEvent !== 'agent_interrupted'
+          && storedEvent !== 'max_turns_reached'
+          && storedEvent !== 'agent_waiting_user'
+          && storedEvent !== 'agent_ask_user_expired'
+        ) {
+          loop = appendLoopEvent(loop, {
+            id: storedEventId,
+            seq,
+            messageId: message.id,
+            type: 'progress',
+            turnNumber,
+            timestamp,
+            summary: message.content,
+          })
+          loops.set(key, loop)
+        }
+      }
     } else if (message.msg_type === 'tool_call') {
       const tool: AgentLoopToolCall = {
         id: `${message.id}`,
+        toolCallId,
+        seq,
         name: (meta.name as string) || 'unknown',
         args: meta.args as Record<string, unknown> | undefined,
         status: 'calling',
@@ -360,13 +506,29 @@ function buildAgentLoopsFromMessages(channelId: string, messages: Message[]): Ma
         batchId: meta.batch_id as string | undefined,
       }
       turn = { ...turn, toolCalls: [...turn.toolCalls, tool] }
+      loop = appendLoopEvent(loop, {
+        id: storedEventId,
+        seq,
+        messageId: message.id,
+        type: 'tool_call',
+        turnNumber,
+        timestamp,
+        tool,
+      })
+      loops.set(key, loop)
     } else if (message.msg_type === 'tool_result') {
       const name = (meta.name as string) || 'unknown'
-      const idx = [...turn.toolCalls].reverse().findIndex((tc) => tc.name === name && tc.status === 'calling')
+      const idx = [...turn.toolCalls].reverse().findIndex((tc) => (
+        toolCallId
+          ? tc.toolCallId === toolCallId || tc.id === toolCallId
+          : tc.name === name && tc.status === 'calling'
+      ))
+      let resultTool: AgentLoopToolCall
       if (idx >= 0) {
         const realIdx = turn.toolCalls.length - 1 - idx
         const updated = {
           ...turn.toolCalls[realIdx]!,
+          toolCallId: turn.toolCalls[realIdx]!.toolCallId ?? toolCallId,
           status: meta.success !== false ? 'success' as const : 'failed' as const,
           output: (meta.output as string) || message.content,
           completedAt: timestamp,
@@ -379,22 +541,36 @@ function buildAgentLoopsFromMessages(channelId: string, messages: Message[]): Ma
             ...turn.toolCalls.slice(realIdx + 1),
           ],
         }
+        resultTool = updated
       } else {
+        resultTool = {
+          id: `${message.id}`,
+          toolCallId,
+          seq,
+          name,
+          status: meta.success !== false ? 'success' : 'failed',
+          output: (meta.output as string) || message.content,
+          startedAt: timestamp,
+          completedAt: timestamp,
+        }
         turn = {
           ...turn,
           toolCalls: [
             ...turn.toolCalls,
-            {
-              id: `${message.id}`,
-              name,
-              status: meta.success !== false ? 'success' : 'failed',
-              output: (meta.output as string) || message.content,
-              startedAt: timestamp,
-              completedAt: timestamp,
-            },
+            resultTool,
           ],
         }
       }
+      loop = appendLoopEvent(loop, {
+        id: storedEventId,
+        seq,
+        messageId: message.id,
+        type: 'tool_result',
+        turnNumber,
+        timestamp,
+        tool: resultTool,
+      })
+      loops.set(key, loop)
     }
 
     loop = loops.get(key)!
@@ -805,6 +981,14 @@ export function createMessagesStore(config: MessagesStoreConfig) {
             ...turn,
             content: (turn.content || '') + event.content,
           }))
+          agentLoop = upsertAssistantContentEvent(
+            agentLoop,
+            turnNumber,
+            event.content,
+            Date.now(),
+            `${key}:turn-${turnNumber}:assistant-content`,
+            eventSeq(event),
+          )
           loops.set(key, agentLoop)
           set({ agentLoops: loops })
           streams.set(key, {
@@ -903,7 +1087,9 @@ export function createMessagesStore(config: MessagesStoreConfig) {
           const turnNumber = eventTurnNumber(event, existing?.agentLoop ?? loops.get(key))
           let agentLoop = ensureLoopTurn(existing?.agentLoop ?? loops.get(key), event.channel_id, event.agent_id, turnNumber, eventRunId(event))
           const toolCall: AgentLoopToolCall = {
-            id: `${event.name}-${Date.now()}`,
+            id: eventToolCallId(event) || `${event.name}-${eventSeq(event) ?? Date.now()}`,
+            toolCallId: eventToolCallId(event),
+            seq: eventSeq(event),
             name: event.name,
             args: event.args as Record<string, unknown>,
             status: 'calling',
@@ -915,6 +1101,14 @@ export function createMessagesStore(config: MessagesStoreConfig) {
             ...turn,
             toolCalls: [...turn.toolCalls, toolCall],
           }))
+          agentLoop = appendLoopEvent(agentLoop, {
+            id: eventId(event, `${toolCall.id}:call`),
+            seq: eventSeq(event),
+            type: 'tool_call',
+            turnNumber,
+            timestamp: Date.now(),
+            tool: toolCall,
+          })
           loops.set(key, agentLoop)
           set({ agentLoops: loops })
 
@@ -944,18 +1138,23 @@ export function createMessagesStore(config: MessagesStoreConfig) {
           const loops = new Map(state.agentLoops)
           const turnNumber = eventTurnNumber(event, existing?.agentLoop ?? loops.get(key))
           let agentLoop = ensureLoopTurn(existing?.agentLoop ?? loops.get(key), event.channel_id, event.agent_id, turnNumber, eventRunId(event))
+          let resultTool: AgentLoopToolCall | undefined
           agentLoop = updateLoopTurn(agentLoop, turnNumber, (turn) => {
             let nextTurn = turn
             if (nextTurn) {
               const idx = [...turn.toolCalls].reverse().findIndex(
-                (tc) => tc.name === event.name && tc.status === 'calling',
+                (tc) => eventToolCallId(event)
+                  ? tc.toolCallId === eventToolCallId(event) || tc.id === eventToolCallId(event)
+                  : tc.name === event.name && tc.status === 'calling',
               )
               if (idx >= 0) {
                 const realIdx = turn.toolCalls.length - 1 - idx
                 const updated = { ...turn.toolCalls[realIdx]! }
+                updated.toolCallId = updated.toolCallId ?? eventToolCallId(event)
                 updated.status = event.success !== false ? 'success' : 'failed'
                 updated.output = event.output
                 updated.completedAt = Date.now()
+                resultTool = updated
                 nextTurn = {
                   ...turn,
                   toolCalls: [
@@ -965,24 +1164,37 @@ export function createMessagesStore(config: MessagesStoreConfig) {
                   ],
                 }
               } else {
+                resultTool = {
+                  id: eventToolCallId(event) || `${event.name}-${eventSeq(event) ?? Date.now()}`,
+                  toolCallId: eventToolCallId(event),
+                  seq: eventSeq(event),
+                  name: event.name,
+                  status: event.success !== false ? 'success' : 'failed',
+                  output: event.output,
+                  startedAt: Date.now(),
+                  completedAt: Date.now(),
+                }
                 nextTurn = {
                   ...turn,
                   toolCalls: [
                     ...turn.toolCalls,
-                    {
-                      id: `${event.name}-${Date.now()}`,
-                      name: event.name,
-                      status: event.success !== false ? 'success' : 'failed',
-                      output: event.output,
-                      startedAt: Date.now(),
-                      completedAt: Date.now(),
-                    },
+                    resultTool,
                   ],
                 }
               }
             }
             return nextTurn
           })
+          if (resultTool) {
+            agentLoop = appendLoopEvent(agentLoop, {
+              id: eventId(event, `${resultTool.id}:result`),
+              seq: eventSeq(event),
+              type: 'tool_result',
+              turnNumber,
+              timestamp: Date.now(),
+              tool: resultTool,
+            })
+          }
           loops.set(key, agentLoop)
           set({ agentLoops: loops })
 
@@ -1010,21 +1222,31 @@ export function createMessagesStore(config: MessagesStoreConfig) {
           const loops = new Map(state.agentLoops)
           const turnNumber = eventTurnNumber(event, existing?.agentLoop ?? loops.get(key))
           let agentLoop = ensureLoopTurn(existing?.agentLoop ?? loops.get(key), event.channel_id, event.agent_id, turnNumber, eventRunId(event))
+          const skillUse: AgentLoopSkillUse = {
+            id: `${event.name}-${eventSeq(event) ?? Date.now()}`,
+            seq: eventSeq(event),
+            name: event.name,
+            displayName: event.display_name,
+            description: event.description,
+            status: event.status || 'injected',
+            reason: event.reason,
+            startedAt: Date.now(),
+          }
           agentLoop = updateLoopTurn(agentLoop, turnNumber, (turn) => ({
             ...turn,
             skillUses: [
               ...(turn.skillUses ?? []),
-              {
-                id: `${event.name}-${Date.now()}`,
-                name: event.name,
-                displayName: event.display_name,
-                description: event.description,
-                status: event.status || 'injected',
-                reason: event.reason,
-                startedAt: Date.now(),
-              },
+              skillUse,
             ],
           }))
+          agentLoop = appendLoopEvent(agentLoop, {
+            id: eventId(event, skillUse.id),
+            seq: eventSeq(event),
+            type: 'skill_use',
+            turnNumber,
+            timestamp: Date.now(),
+            skill: skillUse,
+          })
           loops.set(key, agentLoop)
           set({ agentLoops: loops })
 
@@ -1067,7 +1289,7 @@ export function createMessagesStore(config: MessagesStoreConfig) {
             startedAt: Date.now(),
           }
 
-          const loop: AgentLoopState = shouldContinueExisting && existing
+          let loop: AgentLoopState = shouldContinueExisting && existing
             ? {
                 ...existing,
                 status: 'running',
@@ -1085,6 +1307,17 @@ export function createMessagesStore(config: MessagesStoreConfig) {
                 currentTurn: turnNumber,
                 startedAt: Date.now(),
               }
+
+          if (event.content) {
+            loop = appendLoopEvent(loop, {
+              id: eventId(event, `${loopKey}:ack-${turnNumber}`),
+              seq: eventSeq(event),
+              type: 'progress',
+              turnNumber,
+              timestamp: Date.now(),
+              summary: event.content,
+            })
+          }
 
           loops.set(loopKey, loop)
           set({ agentLoops: loops })
@@ -1165,6 +1398,14 @@ export function createMessagesStore(config: MessagesStoreConfig) {
             ...turn,
             progress: event.summary,
           }))
+          updated = appendLoopEvent(updated, {
+            id: eventId(event, `${loopKey}:progress-${turnNumber}-${eventSeq(event) ?? Date.now()}`),
+            seq: eventSeq(event),
+            type: 'progress',
+            turnNumber,
+            timestamp: Date.now(),
+            summary: event.summary,
+          })
           loops.set(loopKey, updated)
           set({ agentLoops: loops })
 

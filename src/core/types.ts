@@ -212,6 +212,8 @@ export interface AgentTodoItem {
 
 export interface AgentLoopToolCall {
   id: string
+  toolCallId?: string
+  seq?: number
   name: string
   args?: Record<string, unknown>
   status: AgentLoopToolCallStatus
@@ -224,6 +226,7 @@ export interface AgentLoopToolCall {
 
 export interface AgentLoopSkillUse {
   id: string
+  seq?: number
   name: string
   displayName?: string
   description?: string
@@ -244,6 +247,21 @@ export interface AgentLoopTurn {
   completedAt?: number
 }
 
+export type AgentLoopEventType = 'assistant_content' | 'progress' | 'skill_use' | 'tool_call' | 'tool_result'
+
+export interface AgentLoopEventItem {
+  id: string
+  seq?: number
+  messageId?: number
+  type: AgentLoopEventType
+  turnNumber: number
+  timestamp: number
+  content?: string
+  summary?: string
+  skill?: AgentLoopSkillUse
+  tool?: AgentLoopToolCall
+}
+
 export interface AgentLoopState {
   runId?: string
   agentId: string
@@ -256,6 +274,7 @@ export interface AgentLoopState {
   finalContent?: string
   error?: string
   todos?: AgentTodoItem[]
+  events?: AgentLoopEventItem[]
 }
 
 // ── Agent ──
@@ -582,29 +601,31 @@ export interface StreamState {
 
 // ── WebSocket Events — Server to Client ──
 
+export type AgentLoopWireFields = { seq?: number; event_id?: string; tool_call_id?: string }
+
 export type WSEvent =
   | { type: 'auth_ok'; user: User; channels: ChannelWithMeta[] }
   | { type: 'message'; channel_id: string; message: Message }
-  | { type: 'chunk'; channel_id: string; agent_id: string; run_id?: string; content: string; turn?: number }
-  | { type: 'message_end'; channel_id: string; agent_id: string; run_id?: string; turn?: number; message: Message }
-  | { type: 'thinking'; channel_id: string; agent_id: string; run_id?: string; content: string }
-  | { type: 'thinking_content'; channel_id: string; agent_id: string; run_id?: string; content: string }
-  | { type: 'tool_call'; channel_id: string; agent_id: string; run_id?: string; name: string; args?: unknown; batch_id?: string; parallel?: boolean; turn?: number }
-  | { type: 'tool_result'; channel_id: string; agent_id: string; run_id?: string; name: string; success?: boolean; output?: string; duration_secs?: number; turn?: number }
-  | { type: 'skill_use'; channel_id: string; agent_id: string; run_id?: string; name: string; display_name?: string; description?: string; status?: AgentLoopSkillUse['status']; reason?: string; turn?: number }
-  | { type: 'error'; channel_id?: string; agent_id?: string; run_id?: string; error: string; turn?: number }
+  | ({ type: 'chunk'; channel_id: string; agent_id: string; run_id?: string; content: string; turn?: number } & AgentLoopWireFields)
+  | ({ type: 'message_end'; channel_id: string; agent_id: string; run_id?: string; turn?: number; message: Message } & AgentLoopWireFields)
+  | ({ type: 'thinking'; channel_id: string; agent_id: string; run_id?: string; content: string } & AgentLoopWireFields)
+  | ({ type: 'thinking_content'; channel_id: string; agent_id: string; run_id?: string; content: string } & AgentLoopWireFields)
+  | ({ type: 'tool_call'; channel_id: string; agent_id: string; run_id?: string; name: string; args?: unknown; batch_id?: string; parallel?: boolean; turn?: number } & AgentLoopWireFields)
+  | ({ type: 'tool_result'; channel_id: string; agent_id: string; run_id?: string; name: string; success?: boolean; output?: string; duration_secs?: number; turn?: number } & AgentLoopWireFields)
+  | ({ type: 'skill_use'; channel_id: string; agent_id: string; run_id?: string; name: string; display_name?: string; description?: string; status?: AgentLoopSkillUse['status']; reason?: string; turn?: number } & AgentLoopWireFields)
+  | ({ type: 'error'; channel_id?: string; agent_id?: string; run_id?: string; error: string; turn?: number } & AgentLoopWireFields)
   // Agent Loop events
-  | { type: 'agent_ack'; channel_id: string; agent_id: string; run_id?: string; turn: number; content?: string }
-  | { type: 'agent_turn_start'; channel_id: string; agent_id: string; run_id?: string; turn: number }
-  | { type: 'agent_thinking'; channel_id: string; agent_id: string; run_id?: string; turn: number; content?: string }
-  | { type: 'agent_progress'; channel_id: string; agent_id: string; run_id?: string; turn: number; summary: string }
-  | { type: 'agent_todo_snapshot'; channel_id: string; agent_id: string; run_id?: string; turn?: number; todo?: AgentTodoItem; todos: AgentTodoItem[] }
-  | { type: 'agent_todo_updated'; channel_id: string; agent_id: string; run_id?: string; turn?: number; todo?: AgentTodoItem; todos?: AgentTodoItem[] }
-  | { type: 'agent_waiting_user'; channel_id: string; agent_id: string; run_id?: string; turn: number; summary: string }
-  | { type: 'agent_ask_user_expired'; channel_id: string; agent_id: string; run_id?: string; turn: number; summary: string }
-  | { type: 'agent_done'; channel_id: string; agent_id: string; run_id?: string; turn: number; content: string }
-  | { type: 'max_turns_reached'; channel_id: string; agent_id: string; run_id?: string; turn: number }
-  | { type: 'agent_stopped'; channel_id: string; agent_id: string; run_id?: string; turn?: number; summary?: string }
+  | ({ type: 'agent_ack'; channel_id: string; agent_id: string; run_id?: string; turn: number; content?: string } & AgentLoopWireFields)
+  | ({ type: 'agent_turn_start'; channel_id: string; agent_id: string; run_id?: string; turn: number } & AgentLoopWireFields)
+  | ({ type: 'agent_thinking'; channel_id: string; agent_id: string; run_id?: string; turn: number; content?: string } & AgentLoopWireFields)
+  | ({ type: 'agent_progress'; channel_id: string; agent_id: string; run_id?: string; turn: number; summary: string } & AgentLoopWireFields)
+  | ({ type: 'agent_todo_snapshot'; channel_id: string; agent_id: string; run_id?: string; turn?: number; todo?: AgentTodoItem; todos: AgentTodoItem[] } & AgentLoopWireFields)
+  | ({ type: 'agent_todo_updated'; channel_id: string; agent_id: string; run_id?: string; turn?: number; todo?: AgentTodoItem; todos?: AgentTodoItem[] } & AgentLoopWireFields)
+  | ({ type: 'agent_waiting_user'; channel_id: string; agent_id: string; run_id?: string; turn: number; summary: string } & AgentLoopWireFields)
+  | ({ type: 'agent_ask_user_expired'; channel_id: string; agent_id: string; run_id?: string; turn: number; summary: string } & AgentLoopWireFields)
+  | ({ type: 'agent_done'; channel_id: string; agent_id: string; run_id?: string; turn: number; content: string } & AgentLoopWireFields)
+  | ({ type: 'max_turns_reached'; channel_id: string; agent_id: string; run_id?: string; turn: number } & AgentLoopWireFields)
+  | ({ type: 'agent_stopped'; channel_id: string; agent_id: string; run_id?: string; turn?: number; summary?: string } & AgentLoopWireFields)
   // UI events
   | { type: 'routing_info'; channel_id: string; routing_info: { routing_method: string; target_agent_ids: string[]; reason: string } }
   | { type: 'channels_updated'; channel_id?: string }

@@ -17,6 +17,8 @@ export { MessageBubble } from './chat/index.js'
 export { MessageInput } from './chat/index.js'
 export { StreamRenderer } from './chat/index.js'
 export { TypingIndicator } from './chat/index.js'
+export { AgentRunTranscript } from './chat/index.js'
+export { AgentTodoRail } from './chat/index.js'
 
 // Channels
 export { ChannelList } from './channels/index.js'

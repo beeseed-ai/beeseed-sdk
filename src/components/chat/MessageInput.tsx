@@ -711,12 +711,8 @@ export function MessageInput({
               <span>工作流</span>
             </button>
           </div>
-          {/* Right side — model + send */}
+          {/* Right side — send */}
           <div className="flex items-center gap-2 shrink-0 ml-auto">
-            <button className="flex items-center gap-0.5 h-8 px-2 rounded-lg text-[#888] hover:text-black hover:bg-black/5 transition-colors text-sm shrink-0">
-              <span className="text-xs">快速</span>
-              <svg className="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="6 9 12 15 18 9"/></svg>
-            </button>
             <button
               disabled={disabled || uploading || !!pendingSkill}
               onClick={handleSend}
