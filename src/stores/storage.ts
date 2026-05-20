@@ -69,21 +69,22 @@ export function createStorageStore(config: StorageStoreConfig) {
 
     uploadFile: async (channelId, file, prefix = get().currentPrefix) => {
       const visiblePrefix = get().currentPrefix
+      const contentType = contentTypeForUpload(file)
       set({ uploading: true, uploadProgress: 0, uploadError: null })
       if (config.useMock) {
         const key = `${prefix || ''}${file.name}`
-        const obj: StorageObject = { key, name: file.name, display_name: file.name, size: file.size, content_type: file.type || 'application/octet-stream', last_modified: new Date().toISOString(), status: 'available' }
+        const obj: StorageObject = { key, name: file.name, display_name: file.name, size: file.size, content_type: contentType, last_modified: new Date().toISOString(), status: 'available' }
         if (prefix === visiblePrefix) set({ objects: [obj, ...get().objects] })
         set({ uploading: false, uploadProgress: 100 })
         return obj
       }
       try {
         const presign = await config.api.post(`channels/${channelId}/storage/presign-upload`, {
-          json: { file_name: file.name, content_type: file.type || 'application/octet-stream', size: file.size, prefix },
+          json: { file_name: file.name, content_type: contentType, size: file.size, prefix },
         }).json<{ object: StorageObject; upload_url: string; method: string; headers?: Record<string, string> }>()
 
         const headers = presign.headers && Object.keys(presign.headers).length > 0 ? presign.headers : undefined
-        const uploadBody = file.slice(0, file.size, '')
+        const uploadBody = file.slice(0, file.size, contentType)
         await uploadWithProgress(presign.upload_url, presign.method || 'PUT', uploadBody, headers, (progress) => {
           set({ uploadProgress: progress })
         })
@@ -185,4 +186,33 @@ function uploadWithProgress(
     xhr.onabort = () => reject(new Error('上传已取消'))
     xhr.send(body)
   })
+}
+
+function contentTypeForUpload(file: File): string {
+  if (file.type) return file.type
+  const ext = file.name.split('.').pop()?.toLowerCase()
+  switch (ext) {
+  case 'jpg':
+  case 'jpeg':
+    return 'image/jpeg'
+  case 'png':
+    return 'image/png'
+  case 'webp':
+    return 'image/webp'
+  case 'gif':
+    return 'image/gif'
+  case 'svg':
+    return 'image/svg+xml'
+  case 'pdf':
+    return 'application/pdf'
+  case 'txt':
+    return 'text/plain'
+  case 'md':
+  case 'markdown':
+    return 'text/markdown'
+  case 'json':
+    return 'application/json'
+  default:
+    return 'application/octet-stream'
+  }
 }
