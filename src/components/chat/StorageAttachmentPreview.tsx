@@ -20,8 +20,6 @@ const SHEET_EXTS = new Set(['xls', 'xlsx', 'numbers'])
 const ARCHIVE_EXTS = new Set(['zip', 'rar', '7z', 'tar', 'gz', 'tgz'])
 const AUDIO_EXTS = new Set(['mp3', 'wav', 'm4a', 'aac', 'ogg', 'flac'])
 const VIDEO_EXTS = new Set(['mp4', 'webm', 'mov', 'm4v'])
-const IMAGE_THUMBNAIL_PROCESS = 'image/resize,m_lfit,w_640,h_640'
-const IMAGE_DIALOG_PROCESS = 'image/resize,m_lfit,w_1800,h_1800'
 
 function uniqueRefs(refs: string[]) {
   return refs.filter((ref, i) => refs.indexOf(ref) === i)
@@ -110,10 +108,7 @@ export function StoragePreviewDialog({ channelId, refText, onClose }: { channelI
     }
 
     void api.post(`channels/${channelId}/storage/presign-download`, {
-      json: {
-        key: keyFromStorageRef(refText),
-        ...(kind === 'image' ? { process: IMAGE_DIALOG_PROCESS } : {}),
-      },
+      json: { key: keyFromStorageRef(refText) },
     }).json<{ url: string }>()
       .then(async (data) => {
         if (cancelled) return
@@ -224,7 +219,7 @@ function StorageImageAttachment({ channelId, refText }: { channelId: string; ref
     setFailed(false)
     if (config.useMockData) return
     void api.post(`channels/${channelId}/storage/presign-download`, {
-      json: { key: keyFromStorageRef(refText), process: IMAGE_THUMBNAIL_PROCESS },
+      json: { key: keyFromStorageRef(refText) },
     }).json<{ url: string }>()
       .then((data) => { if (!cancelled) setUrl(data.url) })
       .catch(() => { if (!cancelled) setFailed(true) })
