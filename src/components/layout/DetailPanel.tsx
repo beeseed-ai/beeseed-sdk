@@ -13,6 +13,7 @@ import { useBeeSeedContext } from '../../provider/BeeSeedProvider.js'
 import { Avatar, AvatarFallback, AvatarImage } from '../ui/avatar.js'
 import { Button } from '../ui/button.js'
 import { Badge } from '../ui/badge.js'
+import { StoragePreviewDialog } from '../chat/StorageAttachmentPreview.js'
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '../ui/dialog.js'
 import { Input } from '../ui/input.js'
 import { CloudStoragePanel } from '../storage/CloudStoragePanel.js'
@@ -111,6 +112,7 @@ export function DetailPanel({ channelId, members = [], tasks = [], files = [], o
   const [taskView, setTaskView] = useState<'focus' | 'calendar' | 'schedules'>('focus')
   const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null)
   const [filesOpen, setFilesOpen] = useState(true)
+  const [storagePreviewRef, setStoragePreviewRef] = useState<string | null>(null)
   const [membersOpen, setMembersOpen] = useState(true)
   const [storageOpen, setStorageOpen] = useState(false)
   const [agentSettingsOpen, setAgentSettingsOpen] = useState(false)
@@ -484,22 +486,41 @@ export function DetailPanel({ channelId, members = [], tasks = [], files = [], o
                 <div className="text-xs text-muted-foreground/60 py-2">暂无文件</div>
               ) : (
                 <div className="space-y-1.5">
-                  {channelFiles.slice(0, 5).map((f) => (
-                    <div key={f.key} className="group flex items-start gap-2 py-1 hover:bg-muted/30 rounded px-1 -mx-1 transition-colors">
-                      <FileText className="w-4 h-4 text-blue-500 mt-0.5 shrink-0" />
-                      <div className="min-w-0 flex-1">
-                        <div className="text-xs truncate">{storageDisplayName(f)}</div>
-                        <div className="text-[10px] text-muted-foreground">{formatBytes(f.size)} · {formatTime(f.last_modified)}</div>
-                      </div>
-                      <button
-                        title="引用到聊天"
-                        className="hidden rounded p-1 text-muted-foreground hover:bg-muted group-hover:block"
-                        onClick={() => referenceFile(f)}
+                  {channelFiles.slice(0, 5).map((f) => {
+                    const refText = storageRefFromKey(f.key)
+                    const displayName = storageDisplayName(f)
+
+                    return (
+                      <div
+                        key={f.key}
+                        className="group flex items-start gap-2 rounded px-1 py-1 -mx-1 transition-colors hover:bg-muted/30"
+                        data-testid="detail-storage-file-row"
+                        data-storage-key={f.key}
+                        data-storage-file-name={displayName}
                       >
-                        <MessageSquareQuote className="h-3.5 w-3.5" />
-                      </button>
-                    </div>
-                  ))}
+                        <button
+                          type="button"
+                          data-testid="detail-storage-file-preview"
+                          title="预览文件"
+                          className="flex min-w-0 flex-1 items-start gap-2 rounded-sm text-left outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                          onClick={() => setStoragePreviewRef(refText)}
+                        >
+                          <FileText className="w-4 h-4 text-blue-500 mt-0.5 shrink-0" />
+                          <span className="min-w-0 flex-1">
+                            <span className="block truncate text-xs">{displayName}</span>
+                            <span className="block text-[10px] text-muted-foreground">{formatBytes(f.size)} · {formatTime(f.last_modified)}</span>
+                          </span>
+                        </button>
+                        <button
+                          title="引用到聊天"
+                          className="hidden rounded p-1 text-muted-foreground hover:bg-muted group-hover:block"
+                          onClick={() => referenceFile(f)}
+                        >
+                          <MessageSquareQuote className="h-3.5 w-3.5" />
+                        </button>
+                      </div>
+                    )
+                  })}
                 </div>
               )}
             </div>
@@ -595,6 +616,7 @@ export function DetailPanel({ channelId, members = [], tasks = [], files = [], o
           <CloudStoragePanel channelId={channelId} className="h-full" onReference={() => setStorageOpen(false)} />
         </DialogContent>
       </Dialog>
+      {storagePreviewRef && <StoragePreviewDialog channelId={channelId} refText={storagePreviewRef} onClose={() => setStoragePreviewRef(null)} />}
 
       <TaskDetailSheet
         channelId={channelId}

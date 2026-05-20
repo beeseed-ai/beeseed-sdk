@@ -19,7 +19,7 @@ const CODE_EXTS = new Set(['js', 'jsx', 'ts', 'tsx', 'go', 'py', 'rs', 'java', '
 const SHEET_EXTS = new Set(['xls', 'xlsx', 'numbers'])
 const ARCHIVE_EXTS = new Set(['zip', 'rar', '7z', 'tar', 'gz', 'tgz'])
 const AUDIO_EXTS = new Set(['mp3', 'wav', 'm4a', 'aac', 'ogg', 'flac'])
-const VIDEO_EXTS = new Set(['mp4', 'webm', 'mov', 'm4v'])
+const VIDEO_EXTS = new Set(['mp4', 'webm', 'mov', 'm4v', 'f4v', 'flv'])
 
 function uniqueRefs(refs: string[]) {
   return refs.filter((ref, i) => refs.indexOf(ref) === i)

@@ -87,6 +87,8 @@ const TOOL_OPTIONS = [
   'ask_user',
   'agent_todo',
   'knowledge_search',
+  'web_search',
+  'fal_generate',
   'channel_members',
   'task_management',
   'storage_list',
