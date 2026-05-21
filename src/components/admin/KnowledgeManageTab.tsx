@@ -180,6 +180,7 @@ export function KnowledgeManageTab() {
   const [graphData, setGraphData] = useState<KnowledgeGraphData | null>(null)
 
   const appBases = useMemo(() => bases.filter((base) => base.scope_type === 'app'), [bases])
+  const platformBases = useMemo(() => bases.filter((base) => base.scope_type === 'platform'), [bases])
   const channelBases = useMemo(() => bases.filter((base) => base.scope_type === 'channel'), [bases])
   const subscribedBaseIds = useMemo(() => new Set(subscriptions.map((subscription) => subscription.knowledge_base_id)), [subscriptions])
   const organizationBases = useMemo(() => {
@@ -479,6 +480,17 @@ export function KnowledgeManageTab() {
               selectedBaseId={selectedBaseId}
               onSelect={selectAppBase}
             />
+            <KnowledgeBaseGroup
+              title="平台知识库"
+              icon={BookOpen}
+              bases={platformBases}
+              selectedBaseId={selectedBaseId}
+              onSelect={(id) => {
+                setSelectedScope('app')
+                setSelectedChannelId('')
+                setSelectedBaseId(id)
+              }}
+            />
             <OrganizationKnowledgeGroup
               bases={organizationBases}
               selectedBaseId={selectedBaseId}
@@ -613,7 +625,7 @@ function KnowledgeWorkspace({
             {selectedBase.display_name || selectedBase.name}
           </span>
           <Badge variant="outline" className="h-5 rounded-md px-1.5 text-[10px]">
-            {selectedBase.scope_type === 'channel' ? '频道知识库' : 'App 知识库'}
+            {getKnowledgeBaseScopeLabel(selectedBase.scope_type)}
           </Badge>
         </div>
         <div className="ml-auto text-xs text-muted-foreground">
@@ -645,7 +657,8 @@ function KnowledgeWorkspace({
           ) : (
             <div className="border-b p-4">
               <div className="rounded-md border border-[#dddddd] bg-[#f8fafc] px-3 py-2 text-xs leading-5 text-muted-foreground">
-                组织知识库由组织侧维护。当前 App 可检索该知识库，但不能在这里上传或删除资料。
+                {selectedBase.scope_type === 'platform' ? '平台知识库由平台侧维护。' : '组织知识库由组织侧维护。'}
+                当前 App 可检索该知识库，但不能在这里上传或删除资料。
               </div>
             </div>
           )}
@@ -773,6 +786,7 @@ function OrganizationKnowledgeGroup({
           <div className="rounded-md border border-border px-3 py-2 text-xs text-muted-foreground">暂无组织知识库</div>
         ) : bases.map((base) => {
           const subscribed = subscribedBaseIds.has(base.id)
+          const available = base.is_active
           const active = selectedBaseId === base.id
           const working = workingId === base.id
           return (
@@ -796,6 +810,7 @@ function OrganizationKnowledgeGroup({
                   <div className="flex items-center gap-2">
                     <span className="truncate text-sm font-medium text-[#1a1a1a]">{base.display_name}</span>
                     {subscribed && <Badge variant="secondary" className="shrink-0 text-[10px]">已订阅</Badge>}
+                    {!available && <Badge variant="outline" className="shrink-0 text-[10px]">已停用</Badge>}
                   </div>
                   <div className="mt-1 text-xs text-muted-foreground">{base.source_count} 资料 · {base.chunk_count} 分块</div>
                 </button>
@@ -803,7 +818,7 @@ function OrganizationKnowledgeGroup({
                   variant={subscribed ? 'outline' : 'default'}
                   size="sm"
                   className="h-7 shrink-0 px-2 text-xs"
-                  disabled={working}
+                  disabled={working || (!available && !subscribed)}
                   onClick={() => subscribed ? onUnsubscribe(base) : onSubscribe(base)}
                 >
                   {working ? (
@@ -815,8 +830,8 @@ function OrganizationKnowledgeGroup({
                     </>
                   ) : (
                     <>
-                      <Check className="h-3.5 w-3.5" />
-                      订阅
+                      {available ? <Check className="h-3.5 w-3.5" /> : <X className="h-3.5 w-3.5" />}
+                      {available ? '订阅' : '不可订阅'}
                     </>
                   )}
                 </Button>
@@ -1635,6 +1650,13 @@ function buildSigmaGraph(data: SigmaData): Graph {
 function ScopeBadge({ scope }: { scope: KnowledgeBase['scope_type'] }) {
   const label = scope === 'app' ? 'App' : scope === 'channel' ? '频道' : scope === 'organization' ? '组织' : '平台'
   return <Badge variant={scope === 'channel' ? 'secondary' : 'outline'} className="shrink-0 text-[10px]">{label}</Badge>
+}
+
+function getKnowledgeBaseScopeLabel(scope: KnowledgeBase['scope_type']) {
+  if (scope === 'platform') return '平台知识库'
+  if (scope === 'organization') return '组织知识库'
+  if (scope === 'channel') return '频道知识库'
+  return 'App 知识库'
 }
 
 function SourceStatusBadge({ source }: { source: KnowledgeSource }) {
