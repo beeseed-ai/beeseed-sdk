@@ -187,6 +187,14 @@ export interface AskUserData {
   targetUserIds?: string[]
   visibility?: 'target_user' | 'target_users' | 'mentioned_users' | 'channel_admins' | 'all_members'
   expiresAt?: string
+  skillEnableRequest?: {
+    skill?: string
+    displayName?: string
+    description?: string
+    reason?: string
+    agentId?: string
+    agentName?: string
+  }
 }
 
 export interface AskUserAnswerData {

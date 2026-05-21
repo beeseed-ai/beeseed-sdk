@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect } from 'react'
+import { useState, useCallback, useEffect, useMemo } from 'react'
 import type { AskUserQuestion, AskUserData } from '../../core/types.js'
 import { cn } from '../../lib/cn.js'
 import { SingleSelect } from './ask-user/SingleSelect.js'
@@ -15,8 +15,40 @@ interface Props {
   className?: string
 }
 
+function normalizeSkillLabel(value?: string): string {
+  const label = (value ?? '').trim().replace(/^\$+/, '')
+  return label || '这项能力'
+}
+
+function skillEnableQuestionDescription(data: AskUserData, label: string): string | undefined {
+  if (!data.skillEnableRequest) return undefined
+  const description = data.skillEnableRequest.description?.trim()
+  return [
+    `启用后，当前频道的 Agent 可以使用「${label}」来完成相关任务。`,
+    description || '',
+    '该能力只会添加到当前频道，不会影响其他频道。',
+  ].filter(Boolean).join('\n\n')
+}
+
+function normalizeQuestionForDisplay(question: AskUserQuestion, data: AskUserData): AskUserQuestion {
+  if (question.id !== 'enable_skill' || !data.skillEnableRequest) return question
+  const label = normalizeSkillLabel(data.skillEnableRequest.displayName)
+  const agentName = (data.skillEnableRequest.agentName ?? '').trim() || 'AI 助手'
+
+  return {
+    ...question,
+    title: `是否为当前频道的 ${agentName} 启用「${label}」能力？`,
+    description: skillEnableQuestionDescription(data, label),
+    confirm_text: question.confirm_text || '启用',
+    cancel_text: question.cancel_text || '暂不启用',
+  }
+}
+
 export function AskUserCard({ data, currentUserId, onSubmit, className }: Props) {
-  const questions = Array.isArray(data.questions) ? data.questions : []
+  const questions = useMemo(
+    () => (Array.isArray(data.questions) ? data.questions.map((question) => normalizeQuestionForDisplay(question, data)) : []),
+    [data],
+  )
   const expiresAtMs = data.expiresAt ? Date.parse(data.expiresAt) : NaN
   const [now, setNow] = useState(() => Date.now())
   const answered = data.status === 'answered'

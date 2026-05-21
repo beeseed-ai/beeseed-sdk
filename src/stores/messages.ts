@@ -3,7 +3,7 @@ import type { KyInstance } from 'ky'
 import type {
   Message, ChatMessage, StreamState, WSEvent,
   ChannelMemberInfo, AgentLoopState, AgentLoopTurn, AgentLoopToolCall, AgentLoopSkillUse,
-  AgentLoopEventItem, AgentTodoItem, AskUserQuestion, SelectedSkillIntent,
+  AgentLoopEventItem, AgentTodoItem, AskUserData, AskUserQuestion, SelectedSkillIntent,
 } from '../core/types.js'
 
 const AGENT_LOOP_STALE_AFTER_MS = 30 * 60 * 1000
@@ -22,6 +22,20 @@ function getAskUserStatus(meta: Record<string, unknown>): 'pending' | 'answered'
   const expiresAt = typeof meta.expires_at === 'string' ? Date.parse(meta.expires_at) : NaN
   if (Number.isFinite(expiresAt) && expiresAt <= Date.now()) return 'expired'
   return 'pending'
+}
+
+function parseSkillEnableRequest(meta: Record<string, unknown>): AskUserData['skillEnableRequest'] | undefined {
+  const raw = meta.skill_enable_request
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return undefined
+  const data = raw as Record<string, unknown>
+  return {
+    skill: typeof data.skill === 'string' ? data.skill : undefined,
+    displayName: typeof data.display_name === 'string' ? data.display_name : undefined,
+    description: typeof data.description === 'string' ? data.description : undefined,
+    reason: typeof data.reason === 'string' ? data.reason : undefined,
+    agentId: typeof data.agent_id === 'string' ? data.agent_id : undefined,
+    agentName: typeof data.agent_name === 'string' ? data.agent_name : undefined,
+  }
 }
 
 function metadataRunId(meta: Record<string, unknown>): string | undefined {
@@ -232,6 +246,7 @@ export function parseMessage(m: Message, myUserId?: string): ChatMessage | null 
           targetUserIds: Array.isArray(meta.target_user_ids) ? meta.target_user_ids as string[] : undefined,
           visibility: (meta.visibility as 'target_user' | 'target_users' | 'mentioned_users' | 'channel_admins' | 'all_members') || undefined,
           expiresAt: (meta.expires_at as string) || undefined,
+          skillEnableRequest: parseSkillEnableRequest(meta),
         },
       }
     }
