@@ -111,7 +111,13 @@ export function DetailPanel({ channelId, members = [], tasks = [], files = [], o
     fetchScheduledTasks,
     fetchCalendar,
   } = useTasks(channelId)
-  const { objects: storageObjects, directories: storageDirectories, browse: browseStorage, uploadFile } = useStorage(channelId)
+  const {
+    objects: storageObjects,
+    directories: storageDirectories,
+    breadcrumbs: storageBreadcrumbs,
+    browse: browseStorage,
+    uploadFile,
+  } = useStorage(channelId)
   const [tasksOpen, setTasksOpen] = useState(true)
   const [taskView, setTaskView] = useState<'focus' | 'calendar' | 'schedules'>('focus')
   const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null)
@@ -476,9 +482,25 @@ export function DetailPanel({ channelId, members = [], tasks = [], files = [], o
           {filesOpen && (
             <div className="px-4 pb-3">
               <div className="flex items-center gap-2 mb-2">
-                <span className="text-[10px] text-primary">云存储</span>
-                <span className="text-[10px] text-muted-foreground">/</span>
-                <span className="text-[10px] text-muted-foreground">当前对话</span>
+                <div className="flex min-w-0 items-center gap-1 overflow-hidden">
+                  <span className="shrink-0 text-[10px] text-primary">云存储</span>
+                  {storageBreadcrumbs.map((crumb, index) => (
+                    <span key={crumb.prefix || 'root'} className="flex min-w-0 items-center gap-1">
+                      <span className="text-[10px] text-muted-foreground">/</span>
+                      <button
+                        type="button"
+                        className={cn(
+                          'max-w-[92px] truncate text-[10px] transition-colors hover:text-foreground',
+                          index === storageBreadcrumbs.length - 1 ? 'text-foreground' : 'text-muted-foreground',
+                        )}
+                        onClick={() => void browseStorage(crumb.prefix)}
+                        title={crumb.label}
+                      >
+                        {crumb.label === '根目录' ? '当前对话' : crumb.label}
+                      </button>
+                    </span>
+                  ))}
+                </div>
                 <div className="flex-1" />
                 <Search className="w-3 h-3 text-muted-foreground" />
                 <label className="cursor-pointer">
