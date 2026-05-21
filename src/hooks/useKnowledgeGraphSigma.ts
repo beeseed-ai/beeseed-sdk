@@ -116,6 +116,7 @@ interface UseKnowledgeGraphSigmaOptions {
   onNodeClick?: (nodeId: string) => void
   onNodeHover?: (nodeId: string | null) => void
   onStageClick?: () => void
+  focusViewportPaddingRight?: number
 }
 
 interface UseKnowledgeGraphSigmaReturn {
@@ -148,6 +149,27 @@ export const useKnowledgeGraphSigma = (
   const [isLayoutRunning, setIsLayoutRunning] = useState(false)
   const [selectedNode, setSelectedNodeState] = useState<string | null>(null)
   const [edgesHidden, setEdgesHiddenState] = useState(false)
+
+  const finishLayout = useCallback(() => {
+    if (layoutTimeoutRef.current) {
+      clearTimeout(layoutTimeoutRef.current)
+      layoutTimeoutRef.current = null
+    }
+
+    if (!layoutRef.current) return
+
+    layoutRef.current.stop()
+    layoutRef.current = null
+
+    const graph = graphRef.current
+    const sigma = sigmaRef.current
+    if (graph && sigma) {
+      noverlap.assign(graph, NOVERLAP_SETTINGS)
+      sigma.refresh()
+    }
+
+    setIsLayoutRunning(false)
+  }, [])
 
   const setSelectedNode = useCallback((nodeId: string | null) => {
     selectedNodeRef.current = nodeId
@@ -438,6 +460,8 @@ export const useKnowledgeGraphSigma = (
       setSelectedNodeState(nodeId)
 
       if (!alreadySelected) {
+        finishLayout()
+
         const attrs = graph.getNodeAttributes(nodeId)
 
         // Collect node + all neighbors
@@ -468,15 +492,34 @@ export const useKnowledgeGraphSigma = (
         // Sigma normalizes: center=(0.5,0.5), span=max(width,height)
         const graphCenterX = (gMinX + gMaxX) / 2
         const graphCenterY = (gMinY + gMaxY) / 2
-        const camX = 0.5 + (attrs.x - graphCenterX) / graphSpan
-        const camY = 0.5 + (attrs.y - graphCenterY) / graphSpan
+        let camX = 0.5 + (attrs.x - graphCenterX) / graphSpan
+        let camY = 0.5 + (attrs.y - graphCenterY) / graphSpan
+
+        const rightPadding = Math.max(0, options.focusViewportPaddingRight || 0)
+        const dimensions = sigma.getDimensions()
+        if (rightPadding > 0 && dimensions.width > rightPadding + 120) {
+          const targetViewport = {
+            x: (dimensions.width - rightPadding) / 2,
+            y: dimensions.height / 2,
+          }
+          const graphAtTarget = sigma.viewportToGraph(targetViewport, {
+            cameraState: { x: camX, y: camY, ratio, angle: 0 },
+          })
+          const targetCamX = 2 * camX - (0.5 + (graphAtTarget.x - graphCenterX) / graphSpan)
+          const targetCamY = 2 * camY - (0.5 + (graphAtTarget.y - graphCenterY) / graphSpan)
+
+          if (Number.isFinite(targetCamX) && Number.isFinite(targetCamY)) {
+            camX = targetCamX
+            camY = targetCamY
+          }
+        }
 
         sigma.getCamera().animate({ x: camX, y: camY, ratio }, { duration: 400 })
       }
 
       sigma.refresh()
     },
-    [],
+    [finishLayout, options.focusViewportPaddingRight],
   )
 
   const zoomIn = useCallback(() => {

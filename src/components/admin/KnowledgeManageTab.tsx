@@ -1134,6 +1134,7 @@ function SigmaKnowledgeGraph({
   } = useKnowledgeGraphSigma({
     onNodeClick: handleNodeClick,
     onStageClick: () => onSelect(null),
+    focusViewportPaddingRight: 352,
   })
   const showGraph = hasGraphData && sigmaData.nodes.length > 0
 
