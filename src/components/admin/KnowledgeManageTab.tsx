@@ -180,18 +180,23 @@ export function KnowledgeManageTab() {
   const [graphData, setGraphData] = useState<KnowledgeGraphData | null>(null)
 
   const appBases = useMemo(() => bases.filter((base) => base.scope_type === 'app'), [bases])
-  const platformBases = useMemo(() => bases.filter((base) => base.scope_type === 'platform'), [bases])
   const channelBases = useMemo(() => bases.filter((base) => base.scope_type === 'channel'), [bases])
   const subscribedBaseIds = useMemo(() => new Set(subscriptions.map((subscription) => subscription.knowledge_base_id)), [subscriptions])
-  const organizationBases = useMemo(() => {
+  const externalBases = useMemo(() => {
     const byId = new Map<string, KnowledgeBase>()
     subscribableBases.forEach((base) => {
-      if (base.scope_type === 'organization') byId.set(base.id, base)
+      if (base.scope_type === 'organization' || base.scope_type === 'platform') byId.set(base.id, base)
     })
     subscriptions.forEach((subscription) => {
-      if (subscription.knowledge_base.scope_type === 'organization') byId.set(subscription.knowledge_base.id, subscription.knowledge_base)
+      if (subscription.knowledge_base.scope_type === 'organization' || subscription.knowledge_base.scope_type === 'platform') {
+        byId.set(subscription.knowledge_base.id, subscription.knowledge_base)
+      }
     })
-    return Array.from(byId.values()).sort((a, b) => (a.display_name || a.name).localeCompare(b.display_name || b.name))
+    return Array.from(byId.values()).sort((a, b) => {
+      const scopeOrder = (scope: KnowledgeBase['scope_type']) => scope === 'platform' ? 0 : scope === 'organization' ? 1 : 2
+      return scopeOrder(a.scope_type) - scopeOrder(b.scope_type)
+        || (a.display_name || a.name).localeCompare(b.display_name || b.name)
+    })
   }, [subscribableBases, subscriptions])
   const selectedBase = bases.find((base) => base.id === selectedBaseId) ?? null
   const selectedChannel = channels.find((channel) => channel.id === selectedChannelId) ?? null
@@ -480,19 +485,8 @@ export function KnowledgeManageTab() {
               selectedBaseId={selectedBaseId}
               onSelect={selectAppBase}
             />
-            <KnowledgeBaseGroup
-              title="平台知识库"
-              icon={BookOpen}
-              bases={platformBases}
-              selectedBaseId={selectedBaseId}
-              onSelect={(id) => {
-                setSelectedScope('app')
-                setSelectedChannelId('')
-                setSelectedBaseId(id)
-              }}
-            />
-            <OrganizationKnowledgeGroup
-              bases={organizationBases}
+            <ExternalKnowledgeGroup
+              bases={externalBases}
               selectedBaseId={selectedBaseId}
               subscribedBaseIds={subscribedBaseIds}
               loading={subscriptionLoading}
@@ -744,7 +738,7 @@ function KnowledgeBaseGroup({
   )
 }
 
-function OrganizationKnowledgeGroup({
+function ExternalKnowledgeGroup({
   bases,
   selectedBaseId,
   subscribedBaseIds,
@@ -770,9 +764,9 @@ function OrganizationKnowledgeGroup({
       <div className="mb-2 flex items-center justify-between gap-2 px-1 text-xs font-medium text-muted-foreground">
         <div className="flex items-center gap-2">
           <BookOpen className="h-3.5 w-3.5" />
-          组织知识库
+          外部知识库
         </div>
-        <Button variant="ghost" size="icon-sm" onClick={onRefresh} title="刷新组织知识库">
+        <Button variant="ghost" size="icon-sm" onClick={onRefresh} title="刷新外部知识库">
           <RefreshCw className={cn('h-3.5 w-3.5', loading && 'animate-spin')} />
         </Button>
       </div>
@@ -780,10 +774,10 @@ function OrganizationKnowledgeGroup({
         {loading && bases.length === 0 ? (
           <div className="flex items-center gap-2 rounded-md border border-border px-3 py-2 text-xs text-muted-foreground">
             <Loader2 className="h-3.5 w-3.5 animate-spin" />
-            加载组织知识库
+            加载外部知识库
           </div>
         ) : bases.length === 0 ? (
-          <div className="rounded-md border border-border px-3 py-2 text-xs text-muted-foreground">暂无组织知识库</div>
+          <div className="rounded-md border border-border px-3 py-2 text-xs text-muted-foreground">暂无外部知识库</div>
         ) : bases.map((base) => {
           const subscribed = subscribedBaseIds.has(base.id)
           const available = base.is_active
@@ -809,6 +803,7 @@ function OrganizationKnowledgeGroup({
                 >
                   <div className="flex items-center gap-2">
                     <span className="truncate text-sm font-medium text-[#1a1a1a]">{base.display_name}</span>
+                    <ScopeBadge scope={base.scope_type} />
                     {subscribed && <Badge variant="secondary" className="shrink-0 text-[10px]">已订阅</Badge>}
                     {!available && <Badge variant="outline" className="shrink-0 text-[10px]">已停用</Badge>}
                   </div>
