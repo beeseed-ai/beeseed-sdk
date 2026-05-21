@@ -94,6 +94,10 @@ function avatarPresetUrl(preset: string | undefined) {
   return preset ? `/avatars/agents/${preset}.svg` : ''
 }
 
+function directoryDisplayName(dir: string) {
+  return dir.replace(/\/$/, '').split('/').pop() || dir
+}
+
 export function DetailPanel({ channelId, members = [], tasks = [], files = [], onCreateTask, onMembersChanged, className }: Props) {
   const { api, channelsStore } = useBeeSeedContext()
   const { user } = useAuth()
@@ -107,7 +111,7 @@ export function DetailPanel({ channelId, members = [], tasks = [], files = [], o
     fetchScheduledTasks,
     fetchCalendar,
   } = useTasks(channelId)
-  const { objects: storageObjects, uploadFile } = useStorage(channelId)
+  const { objects: storageObjects, directories: storageDirectories, browse: browseStorage, uploadFile } = useStorage(channelId)
   const [tasksOpen, setTasksOpen] = useState(true)
   const [taskView, setTaskView] = useState<'focus' | 'calendar' | 'schedules'>('focus')
   const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null)
@@ -133,7 +137,7 @@ export function DetailPanel({ channelId, members = [], tasks = [], files = [], o
   const agents = members.filter((m) => m.member_type === 'agent')
   const users = members.filter((m) => m.member_type === 'user')
   const channelTasks = storeTasks.length > 0 ? storeTasks : tasks
-  const channelFiles = storageObjects.length > 0 ? storageObjects : files
+  const channelFiles = storageObjects.length > 0 || storageDirectories.length > 0 ? storageObjects : files
   const currentMember = user ? users.find((m) => m.user_id === user.id) : null
   const canEditAgents = currentMember?.role === 'owner' || currentMember?.role === 'coordinator'
   const canManageAgentMembers = currentMember?.role === 'owner'
@@ -482,11 +486,27 @@ export function DetailPanel({ channelId, members = [], tasks = [], files = [], o
                   <input type="file" className="hidden" onChange={(e) => { void uploadFromPicker(e.target.files?.[0]); e.target.value = '' }} />
                 </label>
               </div>
-              {channelFiles.length === 0 ? (
+              {storageDirectories.length === 0 && channelFiles.length === 0 ? (
                 <div className="text-xs text-muted-foreground/60 py-2">暂无文件</div>
               ) : (
                 <div className="space-y-1.5">
-                  {channelFiles.slice(0, 5).map((f) => {
+                  {storageDirectories.slice(0, 5).map((dir) => (
+                    <button
+                      key={dir}
+                      type="button"
+                      className="group flex w-full items-start gap-2 rounded px-1 py-1 -mx-1 text-left transition-colors hover:bg-muted/30"
+                      data-testid="detail-storage-directory-row"
+                      data-storage-prefix={dir}
+                      onClick={() => void browseStorage(dir)}
+                    >
+                      <FolderOpen className="w-4 h-4 text-amber-500 mt-0.5 shrink-0" />
+                      <span className="min-w-0 flex-1">
+                        <span className="block truncate text-xs">{directoryDisplayName(dir)}</span>
+                        <span className="block text-[10px] text-muted-foreground">文件夹</span>
+                      </span>
+                    </button>
+                  ))}
+                  {channelFiles.slice(0, Math.max(0, 5 - storageDirectories.length)).map((f) => {
                     const refText = storageRefFromKey(f.key)
                     const displayName = storageDisplayName(f)
 
