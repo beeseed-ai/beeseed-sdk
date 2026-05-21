@@ -171,6 +171,7 @@ export function KnowledgeManageTab() {
   const [subscriptionLoading, setSubscriptionLoading] = useState(false)
   const [subscriptionWorkingId, setSubscriptionWorkingId] = useState('')
   const [uploading, setUploading] = useState(false)
+  const [deletingSourceId, setDeletingSourceId] = useState<number | null>(null)
   const [distilling, setDistilling] = useState(false)
   const [dragging, setDragging] = useState(false)
   const [newName, setNewName] = useState('')
@@ -399,13 +400,28 @@ export function KnowledgeManageTab() {
   }
 
   const deleteSource = async (source: KnowledgeSource) => {
-    await api.delete(`knowledge/sources/${source.id}`)
-    setSources((items) => {
-      const next = items.filter((item) => item.id !== source.id)
-      sourcesRef.current = next
-      return next
-    })
-    void loadBases()
+    const confirmed = window.confirm(`确定删除「${source.title}」吗？删除后会同时移除它的分块、实体关联和图谱关系。`)
+    if (!confirmed) return
+    setDeletingSourceId(source.id)
+    try {
+      await api.delete(`knowledge/sources/${source.id}`)
+      setSelection((current) => {
+        if (current?.type === 'source' && current.source.id === source.id) return null
+        return current
+      })
+      setSources((items) => {
+        const next = items.filter((item) => item.id !== source.id)
+        sourcesRef.current = next
+        return next
+      })
+      await Promise.all([
+        loadBases({ silent: true }),
+        loadSources(selectedBaseId, { silent: true }),
+        loadGraph(selectedBaseId),
+      ])
+    } finally {
+      setDeletingSourceId(null)
+    }
   }
 
   const subscribeBase = async (base: KnowledgeBase) => {
@@ -540,6 +556,7 @@ export function KnowledgeManageTab() {
               canEditSources={selectedBase.scope_type === 'app' || selectedBase.scope_type === 'channel'}
               sources={sources}
               sourceLoading={sourceLoading}
+              deletingSourceId={deletingSourceId}
               graph={graphData}
               graphLoading={graphLoading}
               selection={selection}
@@ -571,6 +588,7 @@ function KnowledgeWorkspace({
   canEditSources,
   sources,
   sourceLoading,
+  deletingSourceId,
   graph,
   graphLoading,
   selection,
@@ -590,6 +608,7 @@ function KnowledgeWorkspace({
   canEditSources: boolean
   sources: KnowledgeSource[]
   sourceLoading: boolean
+  deletingSourceId: number | null
   graph: KnowledgeGraphData | null
   graphLoading: boolean
   selection: Selection
@@ -659,6 +678,7 @@ function KnowledgeWorkspace({
           <SourcesList
             sources={sources}
             loading={sourceLoading}
+            deletingSourceId={deletingSourceId}
             selectedID={selection?.type === 'source' ? selection.source.id : null}
             onSelect={(source) => onSelect({ type: 'source', source })}
             onDelete={canEditSources ? onDeleteSource : undefined}
@@ -685,6 +705,7 @@ function KnowledgeWorkspace({
             selection={selection}
             readyCount={readyCount}
             failedCount={failedCount}
+            deletingSourceId={deletingSourceId}
             onDelete={canEditSources ? onDeleteSource : undefined}
             onClose={() => onSelect(null)}
           />
@@ -1008,12 +1029,14 @@ function UploadZone({
 function SourcesList({
   sources,
   loading,
+  deletingSourceId,
   selectedID,
   onSelect,
   onDelete,
 }: {
   sources: KnowledgeSource[]
   loading: boolean
+  deletingSourceId?: number | null
   selectedID?: number | null
   onSelect?: (source: KnowledgeSource) => void
   onDelete?: (source: KnowledgeSource) => void
@@ -1031,13 +1054,18 @@ function SourcesList({
       ) : (
         <div className="min-h-0 flex-1 divide-y divide-border overflow-y-auto">
           {sources.map((source) => (
+            (() => {
+              const deleting = deletingSourceId === source.id
+              return (
             <button
               key={source.id}
               type="button"
+              disabled={deleting}
               onClick={() => onSelect?.(source)}
               className={cn(
                 'group flex w-full items-start gap-3 px-4 py-3 text-left transition-colors hover:bg-[#fafafa]',
                 selectedID === source.id && 'bg-slate-50 shadow-[inset_3px_0_0_#181d26]',
+                deleting && 'cursor-wait opacity-60',
               )}
             >
               <FileText className="mt-0.5 h-4 w-4 shrink-0 text-[#667085]" />
@@ -1070,12 +1098,15 @@ function SourcesList({
                     event.stopPropagation()
                     onDelete(source)
                   }}
+                  disabled={deleting}
                   title="删除资料"
                 >
-                  <Trash2 className="h-3.5 w-3.5 text-destructive" />
+                  {deleting ? <Loader2 className="h-3.5 w-3.5 animate-spin text-muted-foreground" /> : <Trash2 className="h-3.5 w-3.5 text-destructive" />}
                 </Button>
               )}
             </button>
+              )
+            })()
           ))}
         </div>
       )}
@@ -1317,6 +1348,7 @@ function DetailPopover({
   selection,
   readyCount,
   failedCount,
+  deletingSourceId,
   onDelete,
   onClose,
 }: {
@@ -1326,6 +1358,7 @@ function DetailPopover({
   selection: Selection
   readyCount: number
   failedCount: number
+  deletingSourceId?: number | null
   onDelete?: (source: KnowledgeSource) => void
   onClose: () => void
 }) {
@@ -1348,6 +1381,7 @@ function DetailPopover({
         selection={selection}
         readyCount={readyCount}
         failedCount={failedCount}
+        deletingSourceId={deletingSourceId}
         onDelete={onDelete}
       />
     </aside>
@@ -1361,6 +1395,7 @@ function DetailPanel({
   selection,
   readyCount,
   failedCount,
+  deletingSourceId,
   onDelete,
 }: {
   base: KnowledgeBase
@@ -1369,6 +1404,7 @@ function DetailPanel({
   selection: Selection
   readyCount: number
   failedCount: number
+  deletingSourceId?: number | null
   onDelete?: (source: KnowledgeSource) => void
 }) {
   if (selection?.type === 'source') {
@@ -1423,9 +1459,14 @@ function DetailPanel({
         )}
         {source.error_message && <div className="rounded-md border border-red-200 bg-red-50 p-2 text-xs text-red-700">{source.error_message}</div>}
         {onDelete && (
-          <Button variant="outline" className="w-full" onClick={() => onDelete(source)}>
-            <Trash2 className="mr-2 h-4 w-4" />
-            删除资料
+          <Button
+            variant="outline"
+            className="w-full"
+            disabled={deletingSourceId === source.id}
+            onClick={() => onDelete(source)}
+          >
+            {deletingSourceId === source.id ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Trash2 className="mr-2 h-4 w-4" />}
+            {deletingSourceId === source.id ? '删除中' : '删除资料'}
           </Button>
         )}
       </div>
