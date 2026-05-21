@@ -523,7 +523,7 @@ export function MessageInput({
                 </div>
               )}
             </div>
-            <div ref={skillScrollRef} className="max-h-64 overflow-y-auto py-1">
+            <div ref={skillScrollRef} className="max-h-[min(16rem,55dvh)] overflow-y-auto py-1">
               {pendingSkill ? (
                 pendingAgentChoices.length === 0 ? (
                   <div className="px-3 py-3 text-xs text-[#777169]">当前频道暂无可执行 Agent</div>
@@ -558,7 +558,7 @@ export function MessageInput({
                     )}
                     onMouseDown={(e) => { e.preventDefault(); chooseSkill(skill, skillSlashStart >= 0 ? 'slash' : 'skill_button') }}
                   >
-                    <span className="grid min-w-0 flex-1 grid-cols-[minmax(96px,max-content)_minmax(0,1fr)_auto] items-center gap-2">
+                    <span className="grid min-w-0 flex-1 gap-1.5 sm:grid-cols-[minmax(96px,max-content)_minmax(0,1fr)_auto] sm:items-center sm:gap-2">
                       <span className={cn('min-w-0 truncate text-sm font-medium', index === skillIndex ? 'text-white' : 'text-[#181d26]')}>
                         {skillDisplayName(skill)}
                       </span>
@@ -566,7 +566,7 @@ export function MessageInput({
                         {skill.description || ''}
                       </span>
                       {agentNames && (
-                        <span className={cn('max-w-[180px] shrink-0 truncate text-right text-xs font-medium', index === skillIndex ? 'text-white/80' : 'text-[#41454d]')}>
+                        <span className={cn('min-w-0 truncate text-xs font-medium sm:max-w-[180px] sm:shrink-0 sm:text-right', index === skillIndex ? 'text-white/80' : 'text-[#41454d]')}>
                           {agentNames}
                         </span>
                       )}

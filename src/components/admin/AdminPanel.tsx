@@ -6,6 +6,7 @@ import { cn } from '../../lib/cn.js'
 import { AgentManageTab } from './AgentManageTab.js'
 import { UserManageTab } from './UserManageTab.js'
 import { KnowledgeManageTab } from './KnowledgeManageTab.js'
+import { ChannelManageTab } from './ChannelManageTab.js'
 import { useBeeSeedContext } from '../../provider/BeeSeedProvider.js'
 import { useAppConfig } from '../../hooks/use-app-config.js'
 import { Button } from '../ui/button.js'
@@ -51,23 +52,9 @@ export function AdminPanel() {
       <div className="flex-1 overflow-hidden">
         {activeTab === 'agents' && <AgentManageTab />}
         {activeTab === 'users' && <UserManageTab />}
-        {activeTab === 'channels' && <Placeholder label="频道管理" />}
+        {activeTab === 'channels' && <ChannelManageTab />}
         {activeTab === 'knowledge' && <KnowledgeManageTab />}
         {activeTab === 'settings' && <AppSettingsPanel />}
-      </div>
-    </div>
-  )
-}
-
-function Placeholder({ label }: { label: string }) {
-  return (
-    <div className="flex h-full overflow-hidden bg-[#fafafa]">
-      <div className="flex-1 overflow-y-auto">
-        <div className="mx-auto max-w-5xl p-8">
-          <div className="flex h-[320px] items-center justify-center rounded-xl border border-border bg-white text-sm text-muted-foreground shadow-sm">
-            {label}（即将推出）
-          </div>
-        </div>
       </div>
     </div>
   )

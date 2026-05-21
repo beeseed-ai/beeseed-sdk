@@ -15,21 +15,21 @@ export function KnowledgePanel() {
   return (
     <div className="flex h-full overflow-hidden bg-[#fafafa]">
       <div className="flex-1 overflow-y-auto">
-        <div className="mx-auto max-w-5xl space-y-6 p-8">
+        <div className="mx-auto max-w-5xl space-y-4 p-4 sm:space-y-6 sm:p-8">
           <div>
             <h1 className="text-xl font-bold text-[#1a1a1a]">知识库</h1>
             <p className="mt-1 text-sm text-muted-foreground">管理知识来源并检索已索引内容。</p>
           </div>
 
-          <Tabs defaultValue="sources" className="overflow-hidden rounded-xl border border-border bg-white shadow-sm">
-            <div className="border-b border-border px-5 py-4">
+          <Tabs defaultValue="sources" className="flex max-h-[calc(100dvh-10rem)] min-h-[320px] flex-col overflow-hidden rounded-xl border border-border bg-white shadow-sm">
+            <div className="shrink-0 border-b border-border px-3 py-3 sm:px-5 sm:py-4">
               <TabsList>
                 <TabsTrigger value="sources">来源</TabsTrigger>
                 <TabsTrigger value="search">搜索</TabsTrigger>
               </TabsList>
             </div>
 
-            <TabsContent value="sources" className="p-5">
+            <TabsContent value="sources" className="min-h-0 flex-1 overflow-y-auto p-3 sm:p-5">
           {loading ? (
             <div className="text-center text-sm text-muted-foreground py-8">加载中...</div>
           ) : sources.length === 0 ? (
@@ -62,7 +62,7 @@ export function KnowledgePanel() {
           )}
             </TabsContent>
 
-            <TabsContent value="search" className="p-5">
+            <TabsContent value="search" className="min-h-0 flex-1 overflow-y-auto p-3 sm:p-5">
           <div className="flex gap-2 mb-3">
             <div className="relative flex-1">
               <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground" />

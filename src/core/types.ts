@@ -58,6 +58,8 @@ export interface ChannelWithMeta extends Channel {
   last_message?: string
   last_msg_at?: string
   unread_count: number
+  owner_name?: string
+  owner_email?: string
 }
 
 // ── Channel Member ──

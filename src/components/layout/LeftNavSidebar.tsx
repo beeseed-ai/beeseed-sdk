@@ -1,5 +1,5 @@
 import { useEffect, useState, type ReactNode } from 'react'
-import { MessageSquareText, BookOpen, ListChecks, Plus, MoreHorizontal, LogOut, Bell, Hash, Shield, User } from 'lucide-react'
+import { MessageSquareText, BookOpen, ListChecks, Plus, LogOut, Bell, Hash, Shield, User } from 'lucide-react'
 import type { FeatureView, ChannelWithMeta } from '../../core/types.js'
 import { cn } from '../../lib/cn.js'
 import { useAuth } from '../../hooks/use-auth.js'
@@ -106,9 +106,6 @@ export function LeftNavSidebar({ activeFeature, onFeatureChange, channels, curre
               className="p-1 rounded hover:bg-black/5 transition-colors"
             >
               <Plus className="w-3.5 h-3.5 text-muted-foreground" />
-            </button>
-            <button className="p-1 rounded hover:bg-black/5 transition-colors">
-              <MoreHorizontal className="w-3.5 h-3.5 text-muted-foreground" />
             </button>
           </div>
         </div>

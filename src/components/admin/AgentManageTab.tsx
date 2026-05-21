@@ -98,10 +98,53 @@ const TOOL_OPTIONS = [
   'storage_delete',
   'storage_presign_download',
 ]
+const TOOL_LABELS: Record<string, string> = {
+  http_request: 'HTTP 请求',
+  ask_user: '询问用户',
+  agent_todo: 'Agent 待办',
+  knowledge_search: '知识库搜索',
+  web_search: '网页/社交搜索',
+  fal_generate: '媒体生成',
+  channel_members: '频道成员',
+  task_management: '任务管理',
+  storage_list: '云存储列表',
+  storage_info: '文件信息',
+  storage_read: '读取文件',
+  storage_write: '写入文件',
+  storage_delete: '删除文件',
+  storage_presign_download: '下载链接',
+}
+const SKILL_LABELS: Record<string, string> = {
+  'ai-search-api': 'AI 聚合搜索',
+  'equity-7d-collection': '7维度信息采集',
+  'equity-cross-validation': '6种交叉验证',
+  'equity-research-brief': '研究简报生成',
+  'med-lit-review': '医学文献阅读助手',
+  'med-paper-writer': '医学论文写作助手',
+  'med-research-writer': 'SCI 医学写作顾问',
+  'med-study-design': '医学研究方案设计助手',
+  'med-topic-finder': '医学科研选题助手',
+  'media-generate': 'AI 图片/视频/音频生成',
+  'moxibustion-advisor': '辨证施灸顾问',
+  'moxibustion-classics': '艾灸古籍知识库',
+  pdf: 'PDF 处理助手',
+  pptx: 'PPTX 演示文稿',
+  'volcengine-search': '火山引擎事实核查搜索',
+  xlsx: 'Excel 表格助手',
+  'yinyuan-skills': '月老·姻缘测算',
+}
 
 function labelOrFallback(value: string | undefined, fallback: string) {
   const text = value?.trim()
   return text || fallback
+}
+
+function toolDisplayName(tool: string) {
+  return TOOL_LABELS[tool] ?? tool
+}
+
+function skillDisplayName(skill: string, catalog: SkillSummary[]) {
+  return catalog.find((item) => item.name === skill)?.display_name || SKILL_LABELS[skill] || skill
 }
 
 function formatAgentVersion(value: string | undefined) {
@@ -236,6 +279,20 @@ export function AgentManageTab() {
       setProviders([...providerData].sort((a, b) => a.id.localeCompare(b.id)))
       setModels([...modelData].sort((a, b) => a.provider.localeCompare(b.provider) || a.id.localeCompare(b.id)))
     })
+    return () => {
+      active = false
+    }
+  }, [api])
+
+  useEffect(() => {
+    let active = true
+    api.get('admin/skills').json<SkillSummary[]>()
+      .then((data) => {
+        if (active) setAvailableSkills(data ?? [])
+      })
+      .catch(() => {
+        if (active) setAvailableSkills([])
+      })
     return () => {
       active = false
     }
@@ -718,15 +775,7 @@ export function AgentManageTab() {
                       })}
                     </div>
 
-                    <div className="grid gap-4 sm:grid-cols-2">
-                      <div>
-                        <label className="mb-1.5 block text-xs font-medium text-[#555]">默认等级</label>
-                        <div className="flex h-9 items-center rounded-lg border border-border bg-[#fafafa] px-3 text-sm text-[#1a1a1a]">
-                          {modelTierLabel(modelTierSettings.default_tier)}
-                        </div>
-                      </div>
-
-                      <div>
+                    <div>
                         <label className="mb-1.5 block text-xs font-medium text-[#555]">
                           Temperature: {temperature.toFixed(1)}
                         </label>
@@ -739,7 +788,6 @@ export function AgentManageTab() {
                           onChange={(event) => updateConfig({ temperature: Number(event.target.value) })}
                           className="h-9 w-full"
                         />
-                      </div>
                     </div>
 
                     <div>
@@ -751,15 +799,16 @@ export function AgentManageTab() {
                             <button
                               key={tool}
                               type="button"
+                              title={tool}
                               onClick={() => updateConfig({ tools: toggleItem(tools, tool) })}
                               className={cn(
-                                'rounded-md border px-2.5 py-1 font-mono text-xs transition-colors',
+                                'rounded-md border px-2.5 py-1 text-xs transition-colors',
                                 active
                                   ? 'border-[#181d26] bg-[#181d26] text-white'
                                   : 'border-border bg-white text-[#555] hover:border-[#9297a0] hover:bg-muted',
                               )}
                             >
-                              {tool}
+                              {toolDisplayName(tool)}
                             </button>
                           )
                         })}
@@ -767,10 +816,11 @@ export function AgentManageTab() {
                           <button
                             key={tool}
                             type="button"
+                            title={tool}
                             onClick={() => updateConfig({ tools: tools.filter((value) => value !== tool) })}
-                            className="rounded-md border border-[#181d26] bg-[#181d26] px-2.5 py-1 font-mono text-xs text-white transition-colors hover:bg-[#0d1218]"
+                            className="rounded-md border border-[#181d26] bg-[#181d26] px-2.5 py-1 text-xs text-white transition-colors hover:bg-[#0d1218]"
                           >
-                            {tool}
+                            {toolDisplayName(tool)}
                           </button>
                         ))}
                       </div>
@@ -795,8 +845,8 @@ export function AgentManageTab() {
                       ) : (
                         <div className="flex flex-wrap gap-2">
                           {skills.map((skill) => (
-                            <span key={skill} className="inline-flex items-center gap-1.5 rounded-md border border-border bg-white px-2.5 py-1 font-mono text-xs text-[#181d26]">
-                              {skill}
+                            <span key={skill} title={skill} className="inline-flex items-center gap-1.5 rounded-md border border-border bg-white px-2.5 py-1 text-xs text-[#181d26]">
+                              {skillDisplayName(skill, availableSkills)}
                               <button
                                 type="button"
                                 onClick={() => removeSkill(skill)}

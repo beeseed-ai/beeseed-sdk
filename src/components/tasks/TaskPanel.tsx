@@ -48,8 +48,8 @@ export function TaskPanel({ channelId, members = [], createTaskRequest = 0 }: Pr
   if (!channelId) {
     return (
       <div className="flex-1 overflow-y-auto bg-[#fafafa]">
-        <div className="mx-auto max-w-5xl space-y-6 p-8">
-          <div className="flex items-center justify-between">
+        <div className="mx-auto max-w-5xl space-y-4 p-4 sm:space-y-6 sm:p-8">
+          <div className="flex flex-wrap items-center justify-between gap-3">
             <h1 className="text-xl font-bold text-[#1a1a1a]">当前对话任务</h1>
             <ChannelSwitcher channels={channels} currentChannelId={channelId} onSelect={joinChannel} />
           </div>
@@ -112,7 +112,7 @@ export function TaskPanel({ channelId, members = [], createTaskRequest = 0 }: Pr
 
   return (
     <div className="flex-1 flex flex-col overflow-hidden bg-[#fafafa]">
-      <div className="flex items-center justify-between border-b border-border bg-white px-4 py-3">
+      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border bg-white px-3 py-3 sm:px-4">
         <div className="min-w-0">
           <h2 className="text-sm font-semibold">当前对话任务</h2>
           <div className="mt-0.5 flex items-center gap-1.5 text-[11px] text-muted-foreground">
@@ -120,13 +120,13 @@ export function TaskPanel({ channelId, members = [], createTaskRequest = 0 }: Pr
             <span className="truncate">{currentChannel?.name || '未命名频道'}</span>
           </div>
         </div>
-        <div className="flex items-center gap-1">
+        <div className="flex min-w-0 flex-wrap items-center gap-1">
           <ChannelSwitcher channels={channels} currentChannelId={channelId} onSelect={joinChannel} />
           <CreateScheduledTaskDialog agents={agentMembers} onSubmit={handleCreateScheduledTask} />
           <CreateTaskDialog agents={agentMembers} onSubmit={handleCreateTask} requestOpenKey={createTaskRequest} />
         </div>
       </div>
-      <Tabs defaultValue="tasks" value={activeTab} onValueChange={setActiveTab} className="m-6 flex flex-1 flex-col overflow-hidden rounded-xl border border-border bg-white shadow-sm">
+      <Tabs defaultValue="tasks" value={activeTab} onValueChange={setActiveTab} className="m-3 flex flex-1 flex-col overflow-hidden rounded-xl border border-border bg-white shadow-sm sm:m-6">
         <div className="border-b border-border px-3 py-2">
           <TaskMetricsStrip metrics={metrics} loading={metricsLoading} />
           <TabsList className="w-full">
