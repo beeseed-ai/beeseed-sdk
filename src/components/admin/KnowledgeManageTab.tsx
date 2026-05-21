@@ -1,12 +1,12 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode, type RefObject } from 'react'
 import Graph from 'graphology'
 import {
-  BookOpen, Database, Eye, EyeOff, FileText, FolderOpen, GitFork, Loader2,
+  BookOpen, Check, Database, Eye, EyeOff, FileText, FolderOpen, GitFork, Loader2,
   Maximize2, Package, Pause, Play, Plus, RefreshCw, Search, Trash2, Upload,
   X, ZoomIn, ZoomOut,
 } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
-import type { ChannelWithMeta, KnowledgeBase, KnowledgeSource } from '../../core/types.js'
+import type { ChannelWithMeta, KnowledgeBase, KnowledgeSource, KnowledgeSubscription } from '../../core/types.js'
 import { useBeeSeedContext } from '../../provider/BeeSeedProvider.js'
 import { cn } from '../../lib/cn.js'
 import { formatBytes } from '../../lib/format.js'
@@ -16,6 +16,7 @@ import { Input } from '../ui/input.js'
 import { Badge } from '../ui/badge.js'
 
 type KnowledgeBasesResponse = { bases: KnowledgeBase[] }
+type KnowledgeSubscriptionsResponse = { subscriptions: KnowledgeSubscription[] }
 type ChannelKnowledgeOverview = {
   settings?: {
     enabled?: boolean
@@ -156,6 +157,8 @@ export function KnowledgeManageTab() {
   const fileRef = useRef<HTMLInputElement>(null)
   const sourcesRef = useRef<KnowledgeSource[]>([])
   const [bases, setBases] = useState<KnowledgeBase[]>([])
+  const [subscribableBases, setSubscribableBases] = useState<KnowledgeBase[]>([])
+  const [subscriptions, setSubscriptions] = useState<KnowledgeSubscription[]>([])
   const [sources, setSources] = useState<KnowledgeSource[]>([])
   const [channels, setChannels] = useState<ChannelWithMeta[]>([])
   const [selectedBaseId, setSelectedBaseId] = useState('')
@@ -165,6 +168,8 @@ export function KnowledgeManageTab() {
   const [channelsLoading, setChannelsLoading] = useState(false)
   const [sourceLoading, setSourceLoading] = useState(false)
   const [graphLoading, setGraphLoading] = useState(false)
+  const [subscriptionLoading, setSubscriptionLoading] = useState(false)
+  const [subscriptionWorkingId, setSubscriptionWorkingId] = useState('')
   const [uploading, setUploading] = useState(false)
   const [distilling, setDistilling] = useState(false)
   const [dragging, setDragging] = useState(false)
@@ -176,6 +181,17 @@ export function KnowledgeManageTab() {
 
   const appBases = useMemo(() => bases.filter((base) => base.scope_type === 'app'), [bases])
   const channelBases = useMemo(() => bases.filter((base) => base.scope_type === 'channel'), [bases])
+  const subscribedBaseIds = useMemo(() => new Set(subscriptions.map((subscription) => subscription.knowledge_base_id)), [subscriptions])
+  const organizationBases = useMemo(() => {
+    const byId = new Map<string, KnowledgeBase>()
+    subscribableBases.forEach((base) => {
+      if (base.scope_type === 'organization') byId.set(base.id, base)
+    })
+    subscriptions.forEach((subscription) => {
+      if (subscription.knowledge_base.scope_type === 'organization') byId.set(subscription.knowledge_base.id, subscription.knowledge_base)
+    })
+    return Array.from(byId.values()).sort((a, b) => (a.display_name || a.name).localeCompare(b.display_name || b.name))
+  }, [subscribableBases, subscriptions])
   const selectedBase = bases.find((base) => base.id === selectedBaseId) ?? null
   const selectedChannel = channels.find((channel) => channel.id === selectedChannelId) ?? null
   const filteredChannels = useMemo(() => {
@@ -213,6 +229,20 @@ export function KnowledgeManageTab() {
       setChannels(data ?? [])
     } finally {
       if (!options.silent) setChannelsLoading(false)
+    }
+  }, [api])
+
+  const loadSubscriptionCatalog = useCallback(async (options: { silent?: boolean } = {}) => {
+    if (!options.silent) setSubscriptionLoading(true)
+    try {
+      const [baseData, subscriptionData] = await Promise.all([
+        api.get('knowledge/subscribable-bases').json<KnowledgeBasesResponse>(),
+        api.get('knowledge/subscriptions').json<KnowledgeSubscriptionsResponse>(),
+      ])
+      setSubscribableBases(baseData.bases ?? [])
+      setSubscriptions(subscriptionData.subscriptions ?? [])
+    } finally {
+      if (!options.silent) setSubscriptionLoading(false)
     }
   }, [api])
 
@@ -270,6 +300,7 @@ export function KnowledgeManageTab() {
 
   useEffect(() => { void loadBases() }, [])
   useEffect(() => { void loadChannels() }, [loadChannels])
+  useEffect(() => { void loadSubscriptionCatalog() }, [loadSubscriptionCatalog])
   useEffect(() => {
     setGraphData(null)
     setSelection(null)
@@ -297,6 +328,7 @@ export function KnowledgeManageTab() {
     const timer = window.setInterval(() => {
       if (selectedBaseId) void loadSources(selectedBaseId, { silent: true, refreshGraphOnReady: true })
       void loadBases({ silent: true })
+      void loadSubscriptionCatalog({ silent: true })
       if (selectedBase?.scope_type === 'channel' && selectedBase.channel_id) {
         void loadChannelOverview(selectedBase.channel_id)
       }
@@ -320,6 +352,12 @@ export function KnowledgeManageTab() {
     setSelectedScope('app')
     setSelectedChannelId('')
     setSelectedBaseId(id)
+  }
+
+  const selectBase = (base: KnowledgeBase) => {
+    setSelectedScope('app')
+    setSelectedChannelId('')
+    setSelectedBaseId(base.id)
   }
 
   const selectChannel = async (channel: ChannelWithMeta) => {
@@ -362,6 +400,29 @@ export function KnowledgeManageTab() {
       return next
     })
     void loadBases()
+  }
+
+  const subscribeBase = async (base: KnowledgeBase) => {
+    setSubscriptionWorkingId(base.id)
+    try {
+      await api.post('knowledge/subscriptions', { json: { knowledge_base_id: base.id } }).json<KnowledgeSubscription>()
+      await Promise.all([loadBases({ silent: true }), loadSubscriptionCatalog({ silent: true })])
+    } finally {
+      setSubscriptionWorkingId('')
+    }
+  }
+
+  const unsubscribeBase = async (base: KnowledgeBase) => {
+    setSubscriptionWorkingId(base.id)
+    try {
+      await api.delete(`knowledge/subscriptions/${base.id}`).json<{ status: string }>()
+      await Promise.all([loadBases({ silent: true }), loadSubscriptionCatalog({ silent: true })])
+      if (selectedBaseId === base.id) {
+        setSelectedBaseId(appBases[0]?.id || '')
+      }
+    } finally {
+      setSubscriptionWorkingId('')
+    }
   }
 
   const distillChannel = async () => {
@@ -418,6 +479,17 @@ export function KnowledgeManageTab() {
               selectedBaseId={selectedBaseId}
               onSelect={selectAppBase}
             />
+            <OrganizationKnowledgeGroup
+              bases={organizationBases}
+              selectedBaseId={selectedBaseId}
+              subscribedBaseIds={subscribedBaseIds}
+              loading={subscriptionLoading}
+              workingId={subscriptionWorkingId}
+              onSelect={selectBase}
+              onRefresh={() => void loadSubscriptionCatalog()}
+              onSubscribe={(base) => void subscribeBase(base)}
+              onUnsubscribe={(base) => void unsubscribeBase(base)}
+            />
             <ChannelKnowledgePicker
               channels={filteredChannels}
               totalCount={channels.length}
@@ -459,6 +531,7 @@ export function KnowledgeManageTab() {
           {selectedBase ? (
             <KnowledgeWorkspace
               selectedBase={selectedBase}
+              canEditSources={selectedBase.scope_type === 'app' || selectedBase.scope_type === 'channel'}
               sources={sources}
               sourceLoading={sourceLoading}
               graph={graphData}
@@ -489,6 +562,7 @@ export function KnowledgeManageTab() {
 
 function KnowledgeWorkspace({
   selectedBase,
+  canEditSources,
   sources,
   sourceLoading,
   graph,
@@ -507,6 +581,7 @@ function KnowledgeWorkspace({
   onDeleteSource,
 }: {
   selectedBase: KnowledgeBase
+  canEditSources: boolean
   sources: KnowledgeSource[]
   sourceLoading: boolean
   graph: KnowledgeGraphData | null
@@ -557,21 +632,29 @@ function KnowledgeWorkspace({
               <ChannelKnowledgeSummary overview={channelOverview} distilling={distilling} onDistill={onDistill} />
             </div>
           )}
-          <div className="border-b p-4">
-            <UploadZone
-              dragging={dragging}
-              uploading={uploading}
-              fileRef={fileRef}
-              onDraggingChange={onDraggingChange}
-              onUpload={onUpload}
-            />
-          </div>
+          {canEditSources ? (
+            <div className="border-b p-4">
+              <UploadZone
+                dragging={dragging}
+                uploading={uploading}
+                fileRef={fileRef}
+                onDraggingChange={onDraggingChange}
+                onUpload={onUpload}
+              />
+            </div>
+          ) : (
+            <div className="border-b p-4">
+              <div className="rounded-md border border-[#dddddd] bg-[#f8fafc] px-3 py-2 text-xs leading-5 text-muted-foreground">
+                组织知识库由组织侧维护。当前 App 可检索该知识库，但不能在这里上传或删除资料。
+              </div>
+            </div>
+          )}
           <SourcesList
             sources={sources}
             loading={sourceLoading}
             selectedID={selection?.type === 'source' ? selection.source.id : null}
             onSelect={(source) => onSelect({ type: 'source', source })}
-            onDelete={onDeleteSource}
+            onDelete={canEditSources ? onDeleteSource : undefined}
           />
         </aside>
 
@@ -595,7 +678,7 @@ function KnowledgeWorkspace({
             selection={selection}
             readyCount={readyCount}
             failedCount={failedCount}
-            onDelete={onDeleteSource}
+            onDelete={canEditSources ? onDeleteSource : undefined}
             onClose={() => onSelect(null)}
           />
         </main>
@@ -643,6 +726,104 @@ function KnowledgeBaseGroup({
             <div className="mt-1 text-xs text-muted-foreground">{base.source_count} 资料 · {base.chunk_count} 分块</div>
           </button>
         ))}
+      </div>
+    </div>
+  )
+}
+
+function OrganizationKnowledgeGroup({
+  bases,
+  selectedBaseId,
+  subscribedBaseIds,
+  loading,
+  workingId,
+  onSelect,
+  onRefresh,
+  onSubscribe,
+  onUnsubscribe,
+}: {
+  bases: KnowledgeBase[]
+  selectedBaseId: string
+  subscribedBaseIds: Set<string>
+  loading: boolean
+  workingId: string
+  onSelect: (base: KnowledgeBase) => void
+  onRefresh: () => void
+  onSubscribe: (base: KnowledgeBase) => void
+  onUnsubscribe: (base: KnowledgeBase) => void
+}) {
+  return (
+    <div className="mb-4">
+      <div className="mb-2 flex items-center justify-between gap-2 px-1 text-xs font-medium text-muted-foreground">
+        <div className="flex items-center gap-2">
+          <BookOpen className="h-3.5 w-3.5" />
+          组织知识库
+        </div>
+        <Button variant="ghost" size="icon-sm" onClick={onRefresh} title="刷新组织知识库">
+          <RefreshCw className={cn('h-3.5 w-3.5', loading && 'animate-spin')} />
+        </Button>
+      </div>
+      <div className="space-y-1">
+        {loading && bases.length === 0 ? (
+          <div className="flex items-center gap-2 rounded-md border border-border px-3 py-2 text-xs text-muted-foreground">
+            <Loader2 className="h-3.5 w-3.5 animate-spin" />
+            加载组织知识库
+          </div>
+        ) : bases.length === 0 ? (
+          <div className="rounded-md border border-border px-3 py-2 text-xs text-muted-foreground">暂无组织知识库</div>
+        ) : bases.map((base) => {
+          const subscribed = subscribedBaseIds.has(base.id)
+          const active = selectedBaseId === base.id
+          const working = workingId === base.id
+          return (
+            <div
+              key={base.id}
+              className={cn(
+                'rounded-md border px-3 py-2 transition-colors',
+                active ? 'border-[#181d26] bg-[#f5f5f5]' : 'border-transparent hover:bg-[#fafafa]',
+              )}
+            >
+              <div className="flex items-start gap-2">
+                <button
+                  type="button"
+                  disabled={!subscribed}
+                  onClick={() => subscribed && onSelect(base)}
+                  className={cn(
+                    'min-w-0 flex-1 text-left',
+                    subscribed ? 'cursor-pointer' : 'cursor-default',
+                  )}
+                >
+                  <div className="flex items-center gap-2">
+                    <span className="truncate text-sm font-medium text-[#1a1a1a]">{base.display_name}</span>
+                    {subscribed && <Badge variant="secondary" className="shrink-0 text-[10px]">已订阅</Badge>}
+                  </div>
+                  <div className="mt-1 text-xs text-muted-foreground">{base.source_count} 资料 · {base.chunk_count} 分块</div>
+                </button>
+                <Button
+                  variant={subscribed ? 'outline' : 'default'}
+                  size="sm"
+                  className="h-7 shrink-0 px-2 text-xs"
+                  disabled={working}
+                  onClick={() => subscribed ? onUnsubscribe(base) : onSubscribe(base)}
+                >
+                  {working ? (
+                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                  ) : subscribed ? (
+                    <>
+                      <X className="h-3.5 w-3.5" />
+                      取消
+                    </>
+                  ) : (
+                    <>
+                      <Check className="h-3.5 w-3.5" />
+                      订阅
+                    </>
+                  )}
+                </Button>
+              </div>
+            </div>
+          )
+        })}
       </div>
     </div>
   )
@@ -825,7 +1006,7 @@ function SourcesList({
   loading: boolean
   selectedID?: number | null
   onSelect?: (source: KnowledgeSource) => void
-  onDelete: (source: KnowledgeSource) => void
+  onDelete?: (source: KnowledgeSource) => void
 }) {
   return (
     <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-lg border border-border bg-white">
@@ -870,18 +1051,20 @@ function SourcesList({
                   </div>
                 )}
               </div>
-              <Button
-                variant="ghost"
-                size="icon-sm"
-                className="opacity-0 group-hover:opacity-100"
-                onClick={(event) => {
-                  event.stopPropagation()
-                  onDelete(source)
-                }}
-                title="删除资料"
-              >
-                <Trash2 className="h-3.5 w-3.5 text-destructive" />
-              </Button>
+              {onDelete && (
+                <Button
+                  variant="ghost"
+                  size="icon-sm"
+                  className="opacity-0 group-hover:opacity-100"
+                  onClick={(event) => {
+                    event.stopPropagation()
+                    onDelete(source)
+                  }}
+                  title="删除资料"
+                >
+                  <Trash2 className="h-3.5 w-3.5 text-destructive" />
+                </Button>
+              )}
             </button>
           ))}
         </div>
@@ -1132,7 +1315,7 @@ function DetailPopover({
   selection: Selection
   readyCount: number
   failedCount: number
-  onDelete: (source: KnowledgeSource) => void
+  onDelete?: (source: KnowledgeSource) => void
   onClose: () => void
 }) {
   if (!selection) return null
@@ -1175,7 +1358,7 @@ function DetailPanel({
   selection: Selection
   readyCount: number
   failedCount: number
-  onDelete: (source: KnowledgeSource) => void
+  onDelete?: (source: KnowledgeSource) => void
 }) {
   if (selection?.type === 'source') {
     const source = selection.source
@@ -1228,10 +1411,12 @@ function DetailPanel({
           </div>
         )}
         {source.error_message && <div className="rounded-md border border-red-200 bg-red-50 p-2 text-xs text-red-700">{source.error_message}</div>}
-        <Button variant="outline" className="w-full" onClick={() => onDelete(source)}>
-          <Trash2 className="mr-2 h-4 w-4" />
-          删除资料
-        </Button>
+        {onDelete && (
+          <Button variant="outline" className="w-full" onClick={() => onDelete(source)}>
+            <Trash2 className="mr-2 h-4 w-4" />
+            删除资料
+          </Button>
+        )}
       </div>
     )
   }

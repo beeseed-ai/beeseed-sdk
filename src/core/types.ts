@@ -456,6 +456,16 @@ export interface KnowledgeBase {
   updated_at: string
 }
 
+export interface KnowledgeSubscription {
+  id: string
+  app_id: string
+  organization_id: string
+  knowledge_base_id: string
+  subscribed_by?: string
+  subscribed_at: string
+  knowledge_base: KnowledgeBase
+}
+
 export interface KnowledgeSource {
   id: number
   organization_id?: string
