@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { Archive, Code2, Download, ExternalLink, File, FileAudio, FileImage, FileSpreadsheet, FileText, FileVideo, X } from 'lucide-react'
+import { Archive, Code2, Download, ExternalLink, File, FileAudio, FileImage, FileSpreadsheet, FileText, FileVideo, Presentation, X } from 'lucide-react'
 import { cn } from '../../lib/cn.js'
 import { fileNameFromStorageRef, keyFromStorageRef } from '../../lib/storage-ref.js'
 import { useBeeSeedContext } from '../../provider/BeeSeedProvider.js'
@@ -11,12 +11,28 @@ interface Props {
   compact?: boolean
 }
 
-export type StorageFileKind = 'image' | 'pdf' | 'text' | 'code' | 'spreadsheet' | 'archive' | 'audio' | 'video' | 'file'
+export type StorageFileKind = 'image' | 'pdf' | 'html' | 'text' | 'code' | 'spreadsheet' | 'presentation' | 'archive' | 'audio' | 'video' | 'file'
 
 const IMAGE_EXTS = new Set(['png', 'jpg', 'jpeg', 'webp', 'gif', 'svg'])
-const TEXT_EXTS = new Set(['txt', 'md', 'markdown', 'csv', 'json', 'yaml', 'yml', 'toml', 'log'])
-const CODE_EXTS = new Set(['js', 'jsx', 'ts', 'tsx', 'go', 'py', 'rs', 'java', 'c', 'cpp', 'h', 'hpp', 'html', 'css', 'scss', 'sh', 'sql'])
+const HTML_EXTS = new Set(['html', 'htm'])
+const TEXT_EXTS = new Set(['txt', 'md', 'markdown', 'csv', 'tsv', 'json', 'jsonl', 'yaml', 'yml', 'toml', 'ini', 'env', 'log', 'conf', 'config'])
+const CODE_EXTS = new Set([
+  'js', 'jsx', 'mjs', 'cjs',
+  'ts', 'tsx',
+  'css', 'scss', 'sass', 'less', 'styl',
+  'html', 'htm', 'xml',
+  'py', 'pyw', 'ipynb',
+  'go', 'rs', 'java', 'kt', 'kts', 'swift', 'scala',
+  'c', 'cc', 'cpp', 'cxx', 'h', 'hh', 'hpp', 'hxx',
+  'cs', 'fs', 'fsx',
+  'php', 'rb', 'r', 'lua', 'pl', 'pm',
+  'sh', 'bash', 'zsh', 'fish', 'ps1', 'bat', 'cmd',
+  'sql', 'graphql', 'gql', 'prisma',
+  'vue', 'svelte', 'astro',
+])
+const CODE_FILENAMES = new Set(['dockerfile', 'makefile', 'rakefile', 'gemfile', 'procfile'])
 const SHEET_EXTS = new Set(['xls', 'xlsx', 'numbers'])
+const PRESENTATION_EXTS = new Set(['ppt', 'pptx', 'key', 'odp'])
 const ARCHIVE_EXTS = new Set(['zip', 'rar', '7z', 'tar', 'gz', 'tgz'])
 const AUDIO_EXTS = new Set(['mp3', 'wav', 'm4a', 'aac', 'ogg', 'flac'])
 const VIDEO_EXTS = new Set(['mp4', 'webm', 'mov', 'm4v', 'f4v', 'flv'])
@@ -31,11 +47,19 @@ function extOf(ref: string) {
   return idx >= 0 ? name.slice(idx + 1).toLowerCase() : ''
 }
 
+function baseNameOf(ref: string) {
+  return fileNameFromStorageRef(ref).toLowerCase()
+}
+
 export function storageFileKindForRef(ref: string): StorageFileKind {
   const ext = extOf(ref)
+  const baseName = baseNameOf(ref)
   if (IMAGE_EXTS.has(ext)) return 'image'
   if (ext === 'pdf') return 'pdf'
+  if (HTML_EXTS.has(ext)) return 'html'
   if (SHEET_EXTS.has(ext)) return 'spreadsheet'
+  if (PRESENTATION_EXTS.has(ext)) return 'presentation'
+  if (CODE_FILENAMES.has(baseName)) return 'code'
   if (CODE_EXTS.has(ext)) return 'code'
   if (ARCHIVE_EXTS.has(ext)) return 'archive'
   if (AUDIO_EXTS.has(ext)) return 'audio'
@@ -49,8 +73,10 @@ export function storageFileIconForKind(kind: StorageFileKind) {
   case 'image': return FileImage
   case 'pdf':
   case 'text': return FileText
+  case 'html':
   case 'code': return Code2
   case 'spreadsheet': return FileSpreadsheet
+  case 'presentation': return Presentation
   case 'archive': return Archive
   case 'audio': return FileAudio
   case 'video': return FileVideo
@@ -61,8 +87,10 @@ export function storageFileIconForKind(kind: StorageFileKind) {
 export function storageFileLabel(kind: StorageFileKind, ext: string) {
   if (kind === 'pdf') return 'PDF'
   if (kind === 'image') return ext.toUpperCase() || '图片'
+  if (kind === 'html') return 'HTML'
   if (kind === 'code') return ext.toUpperCase() || '代码'
   if (kind === 'spreadsheet') return ext.toUpperCase() || '表格'
+  if (kind === 'presentation') return ext.toUpperCase() || '演示文稿'
   if (kind === 'archive') return ext.toUpperCase() || '压缩包'
   if (kind === 'audio') return ext.toUpperCase() || '音频'
   if (kind === 'video') return ext.toUpperCase() || '视频'
@@ -71,7 +99,11 @@ export function storageFileLabel(kind: StorageFileKind, ext: string) {
 }
 
 export function storageFileCanPreview(kind: StorageFileKind) {
-  return kind === 'image' || kind === 'pdf' || kind === 'text' || kind === 'code' || kind === 'audio' || kind === 'video'
+  return kind === 'image' || kind === 'pdf' || kind === 'html' || kind === 'text' || kind === 'code' || kind === 'presentation' || kind === 'audio' || kind === 'video'
+}
+
+function officePresentationViewerUrl(url: string) {
+  return `https://view.officeapps.live.com/op/embed.aspx?src=${encodeURIComponent(url)}`
 }
 
 export function StorageFileIcon({ refText, className }: { refText: string; className?: string }) {
@@ -90,6 +122,7 @@ export function StoragePreviewDialog({ channelId, refText, onClose }: { channelI
   const ext = extOf(refText)
   const Icon = storageFileIconForKind(kind)
   const [url, setUrl] = useState<string | null>(null)
+  const [htmlPreviewUrl, setHtmlPreviewUrl] = useState<string | null>(null)
   const [text, setText] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -97,6 +130,7 @@ export function StoragePreviewDialog({ channelId, refText, onClose }: { channelI
   useEffect(() => {
     let cancelled = false
     setUrl(null)
+    setHtmlPreviewUrl(null)
     setText(null)
     setLoading(true)
     setError(null)
@@ -118,6 +152,11 @@ export function StoragePreviewDialog({ channelId, refText, onClose }: { channelI
           if (!resp.ok) throw new Error(`HTTP ${resp.status}`)
           const body = await resp.text()
           if (!cancelled) setText(body)
+        } else if (kind === 'html') {
+          const preview = await api.post(`channels/${channelId}/storage/html-preview`, {
+            json: { key: keyFromStorageRef(refText) },
+          }).json<{ url: string }>()
+          if (!cancelled) setHtmlPreviewUrl(preview.url)
         }
       })
       .catch((err) => {
@@ -133,6 +172,7 @@ export function StoragePreviewDialog({ channelId, refText, onClose }: { channelI
   const download = () => {
     if (url) window.open(url, '_blank', 'noopener,noreferrer')
   }
+  const presentationViewerUrl = kind === 'presentation' && url ? officePresentationViewerUrl(url) : null
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/35 px-4 py-6" onClick={onClose}>
@@ -181,6 +221,22 @@ export function StoragePreviewDialog({ channelId, refText, onClose }: { channelI
             <img src={url} alt={name} className="mx-auto max-h-[70vh] max-w-full rounded bg-white object-contain" />
           ) : kind === 'pdf' && url ? (
             <iframe src={url} title={name} className="h-[70vh] w-full rounded border border-[#e5e5e5] bg-white" />
+          ) : kind === 'html' && htmlPreviewUrl ? (
+            <iframe
+              src={htmlPreviewUrl}
+              title={name}
+              sandbox="allow-scripts"
+              className="h-[70vh] w-full rounded border border-[#e5e5e5] bg-white"
+            />
+          ) : presentationViewerUrl ? (
+            <div className="flex min-h-[70vh] flex-col gap-2">
+              <iframe
+                src={presentationViewerUrl}
+                title={name}
+                className="min-h-0 flex-1 rounded border border-[#e5e5e5] bg-white"
+              />
+              <div className="text-center text-xs text-[#777169]">如果演示文稿未能加载，请使用右上角按钮打开原文件。</div>
+            </div>
           ) : kind === 'audio' && url ? (
             <div className="flex h-48 items-center justify-center">
               <audio controls src={url} className="w-full max-w-xl" />
