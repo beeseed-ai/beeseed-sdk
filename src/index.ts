@@ -69,6 +69,7 @@ export { MentionMenu } from './components/chat/index.js'
 export { AgentLoopTimeline } from './components/chat/index.js'
 export { AgentRunTranscript } from './components/chat/index.js'
 export { AgentTodoRail } from './components/chat/index.js'
+export { SkillIcon, skillIconUrl } from './components/skills/index.js'
 
 // Components — Channels
 export { ChannelList } from './components/channels/index.js'

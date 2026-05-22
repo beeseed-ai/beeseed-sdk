@@ -3,6 +3,7 @@ import { Check, ChevronRight, Circle, Clock3, Sparkles, Wrench } from 'lucide-re
 import type { AgentLoopState, AgentLoopToolCall, AgentLoopSkillUse, ChatMessage, AgentLoopEventItem } from '../../core/types.js'
 import { cn } from '../../lib/cn.js'
 import { MarkdownRenderer } from './MarkdownRenderer.js'
+import { SkillIcon } from '../skills/SkillIcon.js'
 
 interface Props {
   loop: AgentLoopState
@@ -79,7 +80,16 @@ function SkillLine({ skill }: { skill: AgentLoopSkillUse }) {
   const label = skill.displayName || skill.name
 
   return (
-    <TranscriptLine icon={<Sparkles className={cn('size-3.5', failed ? 'text-red-600' : 'text-[#254fad]')} />}>
+    <TranscriptLine
+      icon={(
+        <SkillIcon
+          name={skill.name}
+          iconUrl={skill.iconUrl}
+          className={cn('size-[18px] rounded bg-transparent', failed ? 'text-red-600' : 'text-[#254fad]')}
+          fallback={<Sparkles className="size-3.5" />}
+        />
+      )}
+    >
       <button
         type="button"
         onClick={() => setDetailOpen((open) => !open)}

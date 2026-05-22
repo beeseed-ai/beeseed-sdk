@@ -10,23 +10,45 @@ interface Props {
 }
 
 export function LoginForm({ onSwitchToRegister, className }: Props) {
-  const { signIn } = useAuth()
+  const { signIn, signInWithSMS, sendSMSCode } = useAuth()
   const { branding } = useAppConfig()
   const [logoFailed, setLogoFailed] = useState(false)
+  const [mode, setMode] = useState<'password' | 'sms'>('password')
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
+  const [phone, setPhone] = useState('')
+  const [code, setCode] = useState('')
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
+  const [sendingCode, setSendingCode] = useState(false)
   const hasLogo = Boolean(branding.logo && !logoFailed)
 
   async function handleSubmit(e: FormEvent) {
     e.preventDefault()
+    if (mode === 'sms') {
+      if (!phone || !code) { setError('请填写手机号和验证码'); return }
+      setLoading(true)
+      setError('')
+      const result = await signInWithSMS(phone, code)
+      if (result.error) setError(result.error)
+      setLoading(false)
+      return
+    }
     if (!email || !password) { setError('请填写邮箱和密码'); return }
     setLoading(true)
     setError('')
     const result = await signIn(email, password)
     if (result.error) setError(result.error)
     setLoading(false)
+  }
+
+  async function handleSendCode() {
+    if (!phone) { setError('请填写手机号'); return }
+    setSendingCode(true)
+    setError('')
+    const result = await sendSMSCode(phone, 'login')
+    if (result.error) setError(result.error)
+    setSendingCode(false)
   }
 
   return (
@@ -58,27 +80,62 @@ export function LoginForm({ onSwitchToRegister, className }: Props) {
           </div>
         )}
 
+        <div className="grid grid-cols-2 rounded-md border border-border p-1 text-sm">
+          <button type="button" className={`rounded px-3 py-1.5 ${mode === 'password' ? 'bg-[#181d26] text-white' : 'text-muted-foreground'}`} onClick={() => setMode('password')}>密码</button>
+          <button type="button" className={`rounded px-3 py-1.5 ${mode === 'sms' ? 'bg-[#181d26] text-white' : 'text-muted-foreground'}`} onClick={() => setMode('sms')}>短信</button>
+        </div>
+
         <form onSubmit={handleSubmit} className="space-y-4">
-          <div className="space-y-2">
-            <label className="text-sm font-medium">邮箱</label>
-            <Input
-              data-testid="login-email"
-              type="email"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              placeholder="you@example.com"
-            />
-          </div>
-          <div className="space-y-2">
-            <label className="text-sm font-medium">密码</label>
-            <Input
-              data-testid="login-password"
-              type="password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              placeholder="输入密码"
-            />
-          </div>
+          {mode === 'password' ? (
+            <>
+              <div className="space-y-2">
+                <label className="text-sm font-medium">邮箱</label>
+                <Input
+                  data-testid="login-email"
+                  type="email"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  placeholder="you@example.com"
+                />
+              </div>
+              <div className="space-y-2">
+                <label className="text-sm font-medium">密码</label>
+                <Input
+                  data-testid="login-password"
+                  type="password"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  placeholder="输入密码"
+                />
+              </div>
+            </>
+          ) : (
+            <>
+              <div className="space-y-2">
+                <label className="text-sm font-medium">手机号</label>
+                <Input
+                  type="tel"
+                  value={phone}
+                  onChange={(e) => setPhone(e.target.value)}
+                  placeholder="输入手机号"
+                />
+              </div>
+              <div className="space-y-2">
+                <label className="text-sm font-medium">验证码</label>
+                <div className="flex gap-2">
+                  <Input
+                    type="text"
+                    value={code}
+                    onChange={(e) => setCode(e.target.value)}
+                    placeholder="6 位验证码"
+                  />
+                  <Button type="button" variant="outline" disabled={sendingCode} onClick={handleSendCode}>
+                    {sendingCode ? '发送中' : '发送'}
+                  </Button>
+                </div>
+              </div>
+            </>
+          )}
           <Button data-testid="login-submit" className="w-full" disabled={loading}>
             {loading ? '登录中...' : '登录'}
           </Button>

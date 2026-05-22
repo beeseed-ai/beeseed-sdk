@@ -3,6 +3,7 @@ import { Bot, Plus, Save, Search, Trash2, X } from 'lucide-react'
 import type { ModelTierName, ModelTierSettings } from '../../core/types.js'
 import { cn } from '../../lib/cn.js'
 import { useBeeSeedContext } from '../../provider/BeeSeedProvider.js'
+import { SkillIcon } from '../skills/SkillIcon.js'
 
 interface AgentTemplateInfo {
   id: string
@@ -47,6 +48,7 @@ interface AgentConfig {
 interface SkillSummary {
   name: string
   display_name?: string
+  icon_url?: string
   category?: string
   description?: string
   version?: string
@@ -844,8 +846,11 @@ export function AgentManageTab() {
                         </div>
                       ) : (
                         <div className="flex flex-wrap gap-2">
-                          {skills.map((skill) => (
+                          {skills.map((skill) => {
+                            const meta = availableSkills.find((item) => item.name === skill)
+                            return (
                             <span key={skill} title={skill} className="inline-flex items-center gap-1.5 rounded-md border border-border bg-white px-2.5 py-1 text-xs text-[#181d26]">
+                              <SkillIcon name={skill} iconUrl={meta?.icon_url} className="size-5 rounded" />
                               {skillDisplayName(skill, availableSkills)}
                               <button
                                 type="button"
@@ -856,7 +861,8 @@ export function AgentManageTab() {
                                 <X className="h-3 w-3" />
                               </button>
                             </span>
-                          ))}
+                            )
+                          })}
                         </div>
                       )}
                     </div>
@@ -1054,6 +1060,7 @@ export function AgentManageTab() {
                     const added = skills.includes(skill.name)
                     return (
                       <div key={skill.name} className="flex items-start gap-3 rounded-lg border border-border p-3">
+                        <SkillIcon name={skill.name} iconUrl={skill.icon_url} className="size-10 rounded-lg border border-border" />
                         <div className="min-w-0 flex-1">
                           <div className="flex items-center gap-2">
                             <span className="truncate text-sm font-medium text-[#1a1a1a]">{skill.display_name || skill.name}</span>

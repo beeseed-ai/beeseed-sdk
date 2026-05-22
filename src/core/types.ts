@@ -3,6 +3,8 @@
 export interface User {
   id: string
   email: string
+  phone?: string
+  phone_verified_at?: string
   name: string
   avatar_url?: string
   role: string
@@ -152,6 +154,7 @@ export interface SkillShortcutOption {
   name: string
   display_name?: string
   description?: string
+  icon_url?: string
   agents?: SkillShortcutAgent[]
   source?: 'agent' | 'recent' | 'general'
 }
@@ -161,6 +164,7 @@ export interface SelectedSkillIntent {
   skill_name: string
   skill_display_name?: string
   skill_description?: string
+  skill_icon_url?: string
   agent_id: string
   agent_name: string
   source?: 'skill_button' | 'slash'
@@ -245,6 +249,7 @@ export interface AgentLoopSkillUse {
   name: string
   displayName?: string
   description?: string
+  iconUrl?: string
   status: 'available' | 'suggested' | 'approved' | 'triggered' | 'injected' | 'missing' | 'error'
   reason?: string
   startedAt: number
@@ -641,7 +646,7 @@ export type WSEvent =
   | ({ type: 'thinking_content'; channel_id: string; agent_id: string; run_id?: string; content: string } & AgentLoopWireFields)
   | ({ type: 'tool_call'; channel_id: string; agent_id: string; run_id?: string; name: string; args?: unknown; batch_id?: string; parallel?: boolean; turn?: number } & AgentLoopWireFields)
   | ({ type: 'tool_result'; channel_id: string; agent_id: string; run_id?: string; name: string; success?: boolean; output?: string; duration_secs?: number; turn?: number } & AgentLoopWireFields)
-  | ({ type: 'skill_use'; channel_id: string; agent_id: string; run_id?: string; name: string; display_name?: string; description?: string; status?: AgentLoopSkillUse['status']; reason?: string; turn?: number } & AgentLoopWireFields)
+  | ({ type: 'skill_use'; channel_id: string; agent_id: string; run_id?: string; name: string; display_name?: string; description?: string; icon_url?: string; status?: AgentLoopSkillUse['status']; reason?: string; turn?: number } & AgentLoopWireFields)
   | ({ type: 'error'; channel_id?: string; agent_id?: string; run_id?: string; error: string; turn?: number } & AgentLoopWireFields)
   // Agent Loop events
   | ({ type: 'agent_ack'; channel_id: string; agent_id: string; run_id?: string; turn: number; content?: string } & AgentLoopWireFields)

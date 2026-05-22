@@ -11,7 +11,10 @@ export interface AuthState {
 
   init: () => Promise<void>
   signIn: (email: string, password: string) => Promise<{ error: string | null }>
+  sendSMSCode: (phone: string, purpose: 'login' | 'register', options?: { inviteCode?: string }) => Promise<{ error: string | null }>
+  signInWithSMS: (phone: string, code: string) => Promise<{ error: string | null }>
   signUp: (email: string, password: string, name: string, inviteCode?: string) => Promise<{ error: string | null }>
+  signUpWithSMS: (phone: string, code: string, name: string, email?: string, inviteCode?: string) => Promise<{ error: string | null }>
   signOut: () => void
   setToken: (token: string | null) => void
   updateAvatar: (file: File) => Promise<{ error: string | null }>
@@ -75,10 +78,49 @@ export function createAuthStore(config: AuthStoreConfig) {
       }
     },
 
+    sendSMSCode: async (phone, purpose, options) => {
+      try {
+        await config.api.post('auth/sms/send', {
+          json: { phone, purpose, invite_code: options?.inviteCode },
+        })
+        return { error: null }
+      } catch (e) {
+        return { error: e instanceof Error ? e.message : 'SMS send failed' }
+      }
+    },
+
+    signInWithSMS: async (phone, code) => {
+      try {
+        const data = await config.api.post('auth/sms/login', {
+          json: { phone, code },
+        }).json<AuthResponse>()
+        storeToken(data.token)
+        set({ user: data.user, token: data.token })
+        config.onSignIn?.(data.token, data.user)
+        return { error: null }
+      } catch (e) {
+        return { error: e instanceof Error ? e.message : 'Login failed' }
+      }
+    },
+
     signUp: async (email, password, name, inviteCode) => {
       try {
         const data = await config.api.post('auth/register', {
           json: { email, password, name, invite_code: inviteCode },
+        }).json<AuthResponse>()
+        storeToken(data.token)
+        set({ user: data.user, token: data.token })
+        config.onSignIn?.(data.token, data.user)
+        return { error: null }
+      } catch (e) {
+        return { error: e instanceof Error ? e.message : 'Registration failed' }
+      }
+    },
+
+    signUpWithSMS: async (phone, code, name, email, inviteCode) => {
+      try {
+        const data = await config.api.post('auth/sms/register', {
+          json: { phone, code, name, email, invite_code: inviteCode },
         }).json<AuthResponse>()
         storeToken(data.token)
         set({ user: data.user, token: data.token })

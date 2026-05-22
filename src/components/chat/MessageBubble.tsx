@@ -7,6 +7,7 @@ import { MarkdownRenderer } from './MarkdownRenderer.js'
 import { ImagePreview } from './ImagePreview.js'
 import { AskUserCard } from './AskUserCard.js'
 import { StorageAttachmentPreview } from './StorageAttachmentPreview.js'
+import { SkillIcon } from '../skills/SkillIcon.js'
 
 interface Props {
   message: ChatMessage
@@ -301,7 +302,7 @@ export function MessageBubble({
                     className="inline-flex max-w-[220px] items-center gap-1 rounded-md border border-[#d8dde6] bg-white px-2 py-1 text-[10px] font-medium text-[#333840] hover:border-[#9297a0]"
                     onClick={() => setOpenSkillId(open ? null : key)}
                   >
-                    <Zap className="h-3 w-3 shrink-0 text-[#254fad]" />
+                    <SkillIcon name={skill.skill_name} iconUrl={skill.skill_icon_url} className="size-4 rounded bg-[#f8fafc]" fallback={<Zap className="h-3 w-3" />} />
                     <span className="min-w-0 truncate">/{skill.skill_display_name || skill.skill_name}</span>
                     <span className="shrink-0 text-[#777169]">@{skill.agent_name}</span>
                   </button>

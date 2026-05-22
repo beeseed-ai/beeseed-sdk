@@ -6,6 +6,7 @@ import { fileNameFromStorageRef, storageRefFromKey } from '../../lib/storage-ref
 import { useStorage } from '../../hooks/use-storage.js'
 import { MentionMenu, getFilteredCount, getFilteredMember } from './MentionMenu.js'
 import { StorageFileIcon, storageFileLabelForRef } from './StorageAttachmentPreview.js'
+import { SkillIcon } from '../skills/SkillIcon.js'
 
 const CHAT_UPLOAD_PREFIX = '__chat_uploads/'
 const MAX_SELECTED_SKILLS = 5
@@ -223,6 +224,7 @@ export function MessageInput({
       skill_name: skill.name,
       skill_display_name: skill.display_name,
       skill_description: skill.description,
+      skill_icon_url: skill.icon_url,
       agent_id: agent.agent_id,
       agent_name: agent.agent_name,
       source,
@@ -558,6 +560,12 @@ export function MessageInput({
                     )}
                     onMouseDown={(e) => { e.preventDefault(); chooseSkill(skill, skillSlashStart >= 0 ? 'slash' : 'skill_button') }}
                   >
+                    <SkillIcon
+                      name={skill.name}
+                      iconUrl={skill.icon_url}
+                      className={cn('size-8 rounded-lg border', index === skillIndex ? 'border-white/20 bg-white/15 text-white' : 'border-[#dddddd] bg-white')}
+                      fallback={<Zap className="size-3.5" />}
+                    />
                     <span className="grid min-w-0 flex-1 gap-1.5 sm:grid-cols-[minmax(96px,max-content)_minmax(0,1fr)_auto] sm:items-center sm:gap-2">
                       <span className={cn('min-w-0 truncate text-sm font-medium', index === skillIndex ? 'text-white' : 'text-[#181d26]')}>
                         {skillDisplayName(skill)}
@@ -599,7 +607,7 @@ export function MessageInput({
                 title={item.skill_description || item.skill_name}
                 className="inline-flex max-w-full items-center gap-1.5 rounded-md border border-[#d8dde6] bg-[#f8fafc] px-2 py-1 text-xs font-medium text-[#333840]"
               >
-                <Zap className="h-3.5 w-3.5 shrink-0 text-[#254fad]" />
+                <SkillIcon name={item.skill_name} iconUrl={item.skill_icon_url} className="size-5 rounded bg-white" fallback={<Zap className="h-3.5 w-3.5" />} />
                 <span className="min-w-0 max-w-[180px] truncate">/{item.skill_display_name || item.skill_name}</span>
                 <button
                   type="button"

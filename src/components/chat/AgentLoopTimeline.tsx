@@ -4,6 +4,7 @@ import type { AgentLoopState, AgentLoopTurn, AgentLoopToolCall, AgentLoopSkillUs
 import { cn } from '../../lib/cn.js'
 import { ThinkingBlock } from './ThinkingBlock.js'
 import { MarkdownRenderer } from './MarkdownRenderer.js'
+import { SkillIcon } from '../skills/SkillIcon.js'
 
 interface Props {
   loop: AgentLoopState
@@ -95,7 +96,12 @@ function SkillUseLine({ skill }: { skill: AgentLoopSkillUse }) {
         onClick={() => setDetailOpen(!detailOpen)}
       >
         <ChevronRight className={cn('size-3 shrink-0 transition-transform text-[#999]', detailOpen && 'rotate-90')} />
-        <Sparkles className={cn('size-3 shrink-0', failed ? 'text-red-600' : 'text-[#254fad]')} />
+        <SkillIcon
+          name={skill.name}
+          iconUrl={skill.iconUrl}
+          className={cn('size-4 rounded bg-transparent', failed ? 'text-red-600' : 'text-[#254fad]')}
+          fallback={<Sparkles className="size-3" />}
+        />
         <span className="font-medium text-[#181d26]">{label}</span>
         <span>{failed ? '不可用' : '已启用'}</span>
         <span className="rounded border border-[#dddddd] px-1.5 py-0.5 text-[10px] text-[#777169]">{skill.status}</span>
