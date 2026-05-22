@@ -1,11 +1,13 @@
 import { useEffect, useState, type ReactNode } from 'react'
-import { MessageSquareText, BookOpen, ListChecks, Plus, LogOut, Bell, Hash, Shield, User } from 'lucide-react'
+import { MessageSquareText, BookOpen, ListChecks, Plus, LogOut, Bell, Hash, Shield, User, Trash2 } from 'lucide-react'
 import type { FeatureView, ChannelWithMeta } from '../../core/types.js'
 import { cn } from '../../lib/cn.js'
 import { useAuth } from '../../hooks/use-auth.js'
 import { useAppConfig } from '../../hooks/use-app-config.js'
 import { useNotifications } from '../../hooks/use-notifications.js'
+import { useChannels } from '../../hooks/use-channels.js'
 import { CreateChannelDialog } from '../channels/CreateChannelDialog.js'
+import { NotificationList } from '../notifications/NotificationList.js'
 import { ProfileModal } from '../user/ProfileModal.js'
 import { Avatar, AvatarFallback, AvatarImage } from '../ui/avatar.js'
 
@@ -29,15 +31,24 @@ interface Props {
 export function LeftNavSidebar({ activeFeature, onFeatureChange, channels, currentChannelId, onChannelSelect, footerMeta, className }: Props) {
   const { user, signOut } = useAuth()
   const { branding } = useAppConfig()
+  const { deleteChannel } = useChannels()
   const { unreadCount } = useNotifications()
   const [createDialogOpen, setCreateDialogOpen] = useState(false)
   const [menuOpen, setMenuOpen] = useState(false)
   const [profileOpen, setProfileOpen] = useState(false)
+  const [notificationsOpen, setNotificationsOpen] = useState(false)
   const [logoFailed, setLogoFailed] = useState(false)
   const isAdmin = user?.role === 'owner' || user?.role === 'admin' || user?.role === 'super_admin'
   const navItems = isAdmin ? [...BASE_NAV_ITEMS, { id: 'admin' as const, label: '管理后台', icon: Shield }] : BASE_NAV_ITEMS
   const brandInitial = Array.from(branding.title)[0] || 'B'
   const hasLogo = Boolean(branding.logo && !logoFailed)
+
+  async function handleDeleteChannel(channel: ChannelWithMeta) {
+    const name = channel.name || '对话'
+    if (!window.confirm(`删除频道「${name}」？单人频道会从列表移除，多人频道需要到管理后台删除。`)) return
+    const result = await deleteChannel(channel.id)
+    if (result.error) window.alert(result.error)
+  }
 
   useEffect(() => {
     setLogoFailed(false)
@@ -76,7 +87,6 @@ export function LeftNavSidebar({ activeFeature, onFeatureChange, channels, curre
           <MessageSquareText className="w-4 h-4 text-muted-foreground" />
           <span>新建频道</span>
         </button>
-
         {navItems.map((item) => {
           const Icon = item.icon
           const active = activeFeature === item.id
@@ -113,26 +123,43 @@ export function LeftNavSidebar({ activeFeature, onFeatureChange, channels, curre
         <div className="flex-1 overflow-y-auto px-2 space-y-px" data-testid="app-channel-list">
           {channels.map((channel) => {
             const active = channel.id === currentChannelId
+            const canDelete = Boolean(user?.id && channel.created_by === user.id)
             return (
-              <button
+              <div
                 key={channel.id}
                 data-testid="app-channel-item"
                 data-channel-id={channel.id}
                 data-channel-name={channel.name || '对话'}
-                onClick={() => { onChannelSelect(channel.id); onFeatureChange('chat') }}
                 className={cn(
-                  'flex items-center gap-2 w-full rounded-md px-2 py-1.5 text-sm transition-colors group',
+                  'group flex items-center gap-1 rounded-md transition-colors',
                   active ? 'bg-black/[0.07] text-foreground font-medium' : 'text-foreground/70 hover:bg-black/[0.04]',
                 )}
               >
-                <Hash className="w-3.5 h-3.5 shrink-0 text-muted-foreground/50" />
-                <span className="flex-1 truncate text-left">{channel.name || '对话'}</span>
-                {channel.unread_count > 0 && (
-                  <span className="w-5 h-5 rounded-full bg-primary text-primary-foreground text-[10px] flex items-center justify-center font-medium shrink-0">
-                    {channel.unread_count > 99 ? '99' : channel.unread_count}
-                  </span>
+                <button
+                  type="button"
+                  onClick={() => { onChannelSelect(channel.id); onFeatureChange('chat') }}
+                  className="flex min-w-0 flex-1 items-center gap-2 rounded-md px-2 py-1.5 text-sm"
+                >
+                  <Hash className="w-3.5 h-3.5 shrink-0 text-muted-foreground/50" />
+                  <span className="flex-1 truncate text-left">{channel.name || '对话'}</span>
+                  {channel.unread_count > 0 && (
+                    <span className="w-5 h-5 rounded-full bg-primary text-primary-foreground text-[10px] flex items-center justify-center font-medium shrink-0">
+                      {channel.unread_count > 99 ? '99' : channel.unread_count}
+                    </span>
+                  )}
+                </button>
+                {canDelete && (
+                  <button
+                    type="button"
+                    title="删除频道"
+                    aria-label={`删除频道 ${channel.name || '对话'}`}
+                    onClick={() => void handleDeleteChannel(channel)}
+                    className="mr-1 hidden size-6 shrink-0 items-center justify-center rounded text-muted-foreground hover:bg-red-50 hover:text-red-600 group-hover:flex focus:flex"
+                  >
+                    <Trash2 className="size-3.5" />
+                  </button>
                 )}
-              </button>
+              </div>
             )
           })}
         </div>
@@ -157,7 +184,11 @@ export function LeftNavSidebar({ activeFeature, onFeatureChange, channels, curre
               <div className="text-[10px] text-muted-foreground truncate">{user?.email}</div>
             </div>
           </button>
-          <button className="relative p-1 rounded hover:bg-black/5 transition-colors">
+          <button
+            type="button"
+            className="relative p-1 rounded hover:bg-black/5 transition-colors"
+            onClick={() => setNotificationsOpen((open) => !open)}
+          >
             <Bell className="w-4 h-4 text-muted-foreground" />
             {unreadCount > 0 && (
               <span className="absolute -top-0.5 -right-0.5 w-3.5 h-3.5 rounded-full bg-destructive text-destructive-foreground text-[9px] flex items-center justify-center font-bold">
@@ -166,6 +197,14 @@ export function LeftNavSidebar({ activeFeature, onFeatureChange, channels, curre
             )}
           </button>
         </div>
+        {notificationsOpen && (
+          <>
+            <div className="fixed inset-0 z-40" onClick={() => setNotificationsOpen(false)} />
+            <div className="absolute bottom-0 left-[calc(100%+8px)] z-50 w-[min(380px,calc(100vw-224px))] overflow-hidden rounded-lg border border-border bg-white shadow-lg">
+              <NotificationList className="max-h-[min(480px,calc(100vh-96px))] w-full" />
+            </div>
+          </>
+        )}
         {footerMeta && (
           <div className="mt-2 border-t border-border/60 pt-2">
             {footerMeta}

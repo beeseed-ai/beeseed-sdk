@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { Bot, Check, Copy, MessageSquare, RefreshCw, Search, UserPlus, Users, X } from 'lucide-react'
+import { Bot, Check, Copy, MessageSquare, RefreshCw, RotateCcw, Search, Trash2, UserPlus, Users, X } from 'lucide-react'
 import { cn } from '../../lib/cn.js'
 import { useBeeSeedContext } from '../../provider/BeeSeedProvider.js'
 import { useDetailPanel } from '../../hooks/use-detail-panel.js'
@@ -72,10 +72,11 @@ function roleBadgeVariant(role: string): 'default' | 'secondary' | 'outline' {
 
 function channelIssues(channel: AdminChannel) {
   const issues: string[] = []
+  if (channel.deleted_at) issues.push('已删除')
   if ((channel.user_count ?? 0) === 0) issues.push('无用户')
   if ((channel.agent_count ?? 0) === 0) issues.push('无 Agent')
   if (!channel.owner_email && !channel.owner_name) issues.push('无创建者')
-  if (parseSettings(channel.settings).archived === true) issues.push('已归档')
+  if (channel.archived_at || parseSettings(channel.settings).archived === true) issues.push('已归档')
   return issues
 }
 
@@ -166,7 +167,8 @@ export function ChannelManageTab() {
   const memberAgentIds = new Set(agentMembers.map((member) => member.agent_id).filter(Boolean))
   const availableUsers = users.filter((user) => !memberUserIds.has(user.id) && !user.is_disabled)
   const availableAgents = (detail?.available_agents ?? []).filter((agent) => !memberAgentIds.has(agent.id))
-  const selectedArchived = selectedChannel ? parseSettings(selectedChannel.settings).archived === true : false
+  const selectedArchived = selectedChannel ? Boolean(selectedChannel.archived_at || parseSettings(selectedChannel.settings).archived === true) : false
+  const selectedDeleted = Boolean(selectedChannel?.deleted_at)
   const selectedIssues = selectedChannel ? channelIssues(selectedChannel) : []
 
   async function refreshAll(channelId = selectedId) {
@@ -205,6 +207,36 @@ export function ChannelManageTab() {
       await refreshAll(selectedChannel.id)
     } catch {
       setError('归档状态更新失败')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  async function deleteChannel() {
+    if (!selectedChannel) return
+    const label = channelName(selectedChannel)
+    if (!window.confirm(`删除频道实例「${label}」？频道会从用户列表隐藏，消息和成员记录保留，可在管理后台恢复。`)) return
+    setSaving(true)
+    setError('')
+    try {
+      await api.delete(`admin/channels/${selectedChannel.id}`, { json: { reason: 'admin_delete' } })
+      await refreshAll(selectedChannel.id)
+    } catch {
+      setError('删除频道失败')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  async function restoreChannel() {
+    if (!selectedChannel) return
+    setSaving(true)
+    setError('')
+    try {
+      await api.post(`admin/channels/${selectedChannel.id}/restore`)
+      await refreshAll(selectedChannel.id)
+    } catch {
+      setError('恢复频道失败')
     } finally {
       setSaving(false)
     }
@@ -363,7 +395,7 @@ export function ChannelManageTab() {
                           {issues.length === 0 ? (
                             <Badge variant="success" className="text-[10px] font-normal">正常</Badge>
                           ) : issues.map((issue) => (
-                            <Badge key={issue} variant={issue === '已归档' ? 'secondary' : 'warning'} className="text-[10px] font-normal">
+                            <Badge key={issue} variant={issue === '已归档' || issue === '已删除' ? 'secondary' : 'warning'} className="text-[10px] font-normal">
                               {issue}
                             </Badge>
                           ))}
@@ -400,13 +432,13 @@ export function ChannelManageTab() {
                         {copied ? <Check className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />}
                         {copied ? '已复制' : '复制 ID'}
                       </Button>
-                      <Button variant="outline" size="sm" onClick={openChannel}>进入频道</Button>
+                      <Button variant="outline" size="sm" onClick={openChannel} disabled={selectedDeleted}>进入频道</Button>
                     </div>
                   </div>
                   {selectedIssues.length > 0 && (
                     <div className="mt-4 flex flex-wrap gap-2">
                       {selectedIssues.map((issue) => (
-                        <Badge key={issue} variant={issue === '已归档' ? 'secondary' : 'warning'} className="font-normal">{issue}</Badge>
+                        <Badge key={issue} variant={issue === '已归档' || issue === '已删除' ? 'secondary' : 'warning'} className="font-normal">{issue}</Badge>
                       ))}
                     </div>
                   )}
@@ -420,26 +452,37 @@ export function ChannelManageTab() {
                 <div className="rounded-xl border border-border bg-white p-5 shadow-sm">
                   <div className="mb-4 flex items-center justify-between">
                     <h3 className="text-sm font-semibold text-[#181d26]">基础设置</h3>
-                    <Button size="sm" onClick={() => void saveChannel()} disabled={saving}>
+                    <Button size="sm" onClick={() => void saveChannel()} disabled={saving || selectedDeleted}>
                       {saving ? '保存中...' : '保存'}
                     </Button>
                   </div>
                   <div className="grid gap-4 sm:grid-cols-[1fr_auto]">
                     <div className="space-y-2">
                       <label className="text-xs font-medium text-[#555]">频道名称</label>
-                      <Input value={nameDraft} onChange={(event) => setNameDraft(event.target.value)} />
+                      <Input value={nameDraft} onChange={(event) => setNameDraft(event.target.value)} disabled={selectedDeleted} />
                     </div>
-                    <div className="flex items-end">
+                    <div className="flex flex-wrap items-end gap-2">
                       <Button
                         variant={selectedArchived ? 'outline' : 'destructive'}
                         onClick={() => void setArchived(!selectedArchived)}
-                        disabled={saving}
+                        disabled={saving || selectedDeleted}
                       >
                         {selectedArchived ? '取消归档标记' : '标记归档'}
                       </Button>
+                      {selectedDeleted ? (
+                        <Button variant="outline" onClick={() => void restoreChannel()} disabled={saving}>
+                          <RotateCcw className="h-4 w-4" />
+                          恢复频道
+                        </Button>
+                      ) : (
+                        <Button variant="destructive" onClick={() => void deleteChannel()} disabled={saving}>
+                          <Trash2 className="h-4 w-4" />
+                          删除频道
+                        </Button>
+                      )}
                     </div>
                   </div>
-                  <p className="mt-2 text-xs text-muted-foreground">归档目前是管理标记，不会删除频道数据。</p>
+                  <p className="mt-2 text-xs text-muted-foreground">归档是管理标记；删除会隐藏频道实例并停止该频道 Agent，可在这里恢复。</p>
                 </div>
 
                 <div className="rounded-xl border border-border bg-white p-5 shadow-sm">
@@ -451,14 +494,15 @@ export function ChannelManageTab() {
                     <select
                       value={addUserId}
                       onChange={(event) => setAddUserId(event.target.value)}
-                      className="h-8 rounded-lg border border-border bg-white px-2.5 text-sm outline-none focus:border-[#9297a0]"
+                      disabled={selectedDeleted}
+                      className="h-8 rounded-lg border border-border bg-white px-2.5 text-sm outline-none focus:border-[#9297a0] disabled:cursor-not-allowed disabled:bg-muted"
                     >
                       <option value="">选择要加入的用户</option>
                       {availableUsers.map((user) => (
                         <option key={user.id} value={user.id}>{user.name} · {user.email}</option>
                       ))}
                     </select>
-                    <Button variant="outline" onClick={() => void addMembers()} disabled={!addUserId || saving}>
+                    <Button variant="outline" onClick={() => void addMembers()} disabled={!addUserId || saving || selectedDeleted}>
                       <UserPlus className="h-4 w-4" />
                       添加用户
                     </Button>
@@ -472,7 +516,7 @@ export function ChannelManageTab() {
                         member={member}
                         onRoleChange={(role) => member.user_id && void updateUserRole(member.user_id, role)}
                         onRemove={() => void removeMember(member)}
-                        saving={saving}
+                        saving={saving || selectedDeleted}
                       />
                     ))}
                   </div>
@@ -487,14 +531,15 @@ export function ChannelManageTab() {
                     <select
                       value={addAgentId}
                       onChange={(event) => setAddAgentId(event.target.value)}
-                      className="h-8 rounded-lg border border-border bg-white px-2.5 text-sm outline-none focus:border-[#9297a0]"
+                      disabled={selectedDeleted}
+                      className="h-8 rounded-lg border border-border bg-white px-2.5 text-sm outline-none focus:border-[#9297a0] disabled:cursor-not-allowed disabled:bg-muted"
                     >
                       <option value="">选择要加入的 Agent</option>
                       {availableAgents.map((agent) => (
                         <option key={agent.id} value={agent.id}>{agent.name || agent.id} · {agent.id}</option>
                       ))}
                     </select>
-                    <Button variant="outline" onClick={() => void addMembers()} disabled={!addAgentId || saving}>
+                    <Button variant="outline" onClick={() => void addMembers()} disabled={!addAgentId || saving || selectedDeleted}>
                       <Bot className="h-4 w-4" />
                       添加 Agent
                     </Button>
@@ -508,7 +553,7 @@ export function ChannelManageTab() {
                         member={member}
                         onCoordinatorChange={(checked) => member.agent_id && void updateAgentCoordinator(member.agent_id, checked)}
                         onRemove={() => void removeMember(member)}
-                        saving={saving}
+                        saving={saving || selectedDeleted}
                       />
                     ))}
                   </div>

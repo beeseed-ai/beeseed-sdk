@@ -14,6 +14,7 @@ export function useNotifications() {
     loading: state.loading,
     markRead: state.markRead,
     markAllRead: state.markAllRead,
+    act: state.act,
     refresh: state.refresh,
   }
 }

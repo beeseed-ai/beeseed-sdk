@@ -76,7 +76,11 @@ function createBeeSeedContext(config: BeeSeedConfig, updateAppConfig: (appConfig
   const tasksStore = createTasksStore({ api, useMock })
   const knowledgeStore = createKnowledgeStore({ api, useMock })
   const storageStore = createStorageStore({ api, useMock })
-  const notificationsStore = createNotificationsStore({ api, useMock })
+  const notificationsStore = createNotificationsStore({
+    api,
+    useMock,
+    onActionComplete: () => { void channelsStore.getState().fetchChannels() },
+  })
   const cronStore = createCronStore({ api, useMock })
   const agentsStore = createAgentsStore({ api, useMock })
   const appUsersStore = createAppUsersStore({ api, useMock })
@@ -110,6 +114,10 @@ function createBeeSeedContext(config: BeeSeedConfig, updateAppConfig: (appConfig
 
   const handleEvent = (event: WSEvent) => {
     console.log('[Provider] handleEvent', event.type)
+    if (event.type === 'kicked') {
+      authStore.getState().signOut()
+      return
+    }
     if (event.type === 'auth_ok') {
       channelsStore.getState().setChannels(event.channels ?? [])
     }
@@ -132,6 +140,9 @@ function createBeeSeedContext(config: BeeSeedConfig, updateAppConfig: (appConfig
           channelsStore.getState().markRead(event.channel_id)
         }
       })
+    }
+    if (event.type === 'notification') {
+      notificationsStore.getState().handleWsNotification(event.notification)
     }
     if (event.type === 'task_updated') {
       void tasksStore.getState().fetchTasks(event.channel_id)

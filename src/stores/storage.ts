@@ -84,7 +84,7 @@ export function createStorageStore(config: StorageStoreConfig) {
         }).json<{ object: StorageObject; upload_url: string; method: string; headers?: Record<string, string> }>()
 
         const headers = presign.headers && Object.keys(presign.headers).length > 0 ? presign.headers : undefined
-        const uploadBody = file.slice(0, file.size, contentType)
+        const uploadBody = await file.arrayBuffer()
         await uploadWithProgress(presign.upload_url, presign.method || 'PUT', uploadBody, headers, (progress) => {
           set({ uploadProgress: progress })
         })
@@ -161,7 +161,7 @@ export type StorageStore = ReturnType<typeof createStorageStore>
 function uploadWithProgress(
   url: string,
   method: string,
-  body: Blob,
+  body: Blob | ArrayBuffer,
   headers: Record<string, string> | undefined,
   onProgress: (progress: number) => void,
 ) {

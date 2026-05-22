@@ -51,6 +51,11 @@ export interface Channel {
   settings?: string
   created_at: string
   updated_at: string
+  archived_at?: string | null
+  archived_by?: string | null
+  deleted_at?: string | null
+  deleted_by?: string | null
+  delete_reason?: string | null
 }
 
 export interface ChannelWithMeta extends Channel {
@@ -71,7 +76,7 @@ export interface ChannelMember {
   user_id?: string
   agent_id?: string
   nickname?: string
-  role: 'owner' | 'member' | 'coordinator'
+  role: 'owner' | 'admin' | 'member' | 'coordinator'
   is_coordinator: boolean
   ext_info?: Record<string, unknown> | string
   joined_at: string
@@ -571,7 +576,11 @@ export interface AppNotification {
   title: string
   content?: string
   metadata?: Record<string, unknown>
+  action_type?: string
+  action_status?: 'pending' | 'accepted' | 'declined' | 'cancelled'
+  actor_user_id?: string
   is_read: boolean
+  acted_at?: string
   created_at: string
 }
 
@@ -649,6 +658,8 @@ export type WSEvent =
   // UI events
   | { type: 'routing_info'; channel_id: string; routing_info: { routing_method: string; target_agent_ids: string[]; reason: string } }
   | { type: 'channels_updated'; channel_id?: string }
+  | { type: 'notification'; notification: AppNotification }
+  | { type: 'kicked'; reason?: string }
   | { type: 'typing'; channel_id: string; agent_id?: string; run_id?: string }
   | { type: 'task_updated'; channel_id: string; task: Task }
 

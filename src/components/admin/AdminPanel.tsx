@@ -27,8 +27,8 @@ export function AdminPanel() {
 
   return (
     <div className="flex-1 flex flex-col overflow-hidden">
-      <div className="flex items-center gap-1 px-4 py-2 border-b border-border bg-white">
-        <h2 className="text-sm font-semibold mr-4">管理面板</h2>
+      <div className="flex shrink-0 items-center gap-1 overflow-x-auto border-b border-border bg-white px-4 py-2">
+        <h2 className="mr-4 shrink-0 text-sm font-semibold">管理面板</h2>
         {tabs.map((tab) => {
           const Icon = tab.icon
           return (
@@ -36,7 +36,7 @@ export function AdminPanel() {
               key={tab.id}
               onClick={() => setActiveTab(tab.id)}
               className={cn(
-                'flex items-center gap-1.5 px-3 py-1.5 rounded-md text-sm transition-colors',
+                'flex shrink-0 items-center gap-1.5 px-3 py-1.5 rounded-md text-sm transition-colors',
                 activeTab === tab.id
                   ? 'bg-[#f5f5f5] text-[#1a1a1a] font-medium'
                   : 'text-[#888] hover:text-[#555] hover:bg-[#fafafa]',
@@ -85,7 +85,7 @@ function AppSettingsPanel() {
   return (
     <div className="flex h-full overflow-hidden bg-[#fafafa]">
       <div className="flex-1 overflow-y-auto">
-        <div className="mx-auto max-w-5xl space-y-6 p-8">
+        <div className="mx-auto max-w-5xl space-y-6 p-4 sm:p-8">
           <div>
             <h1 className="text-xl font-bold text-[#1a1a1a]">设置</h1>
             <p className="mt-1 text-sm text-muted-foreground">配置标准模板的品牌和频道策略。</p>

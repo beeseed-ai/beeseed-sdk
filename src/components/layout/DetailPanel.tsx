@@ -1,4 +1,4 @@
-import { AlertTriangle, ArrowUpRight, CalendarClock, CheckCircle2, ChevronDown, ChevronRight, Circle, Clock, FileText, FolderOpen, ListChecks, Maximize2, MessageSquareQuote, PauseCircle, Plus, Repeat2, Save, Search, Trash2, Upload, Users } from 'lucide-react'
+import { AlertTriangle, ArrowUpRight, CalendarClock, CheckCircle2, ChevronDown, ChevronRight, Circle, Clock, FileText, FolderOpen, ListChecks, Maximize2, MessageSquareQuote, PauseCircle, Plus, Repeat2, Save, Search, Trash2, Upload, Users, UserPlus } from 'lucide-react'
 import { useMemo, useState } from 'react'
 import type { CalendarEvent, ChannelMemberInfo, ModelTierName, Task, StorageObject } from '../../core/types.js'
 import { cn } from '../../lib/cn.js'
@@ -98,6 +98,15 @@ function directoryDisplayName(dir: string) {
   return dir.replace(/\/$/, '').split('/').pop() || dir
 }
 
+function parseInviteEmails(value: string) {
+  return Array.from(new Set(
+    value
+      .split(/[\s,;，；]+/)
+      .map((email) => email.trim().toLowerCase())
+      .filter(Boolean),
+  ))
+}
+
 export function DetailPanel({ channelId, members = [], tasks = [], files = [], onCreateTask, onMembersChanged, className }: Props) {
   const { api, channelsStore } = useBeeSeedContext()
   const { user } = useAuth()
@@ -124,6 +133,9 @@ export function DetailPanel({ channelId, members = [], tasks = [], files = [], o
   const [filesOpen, setFilesOpen] = useState(true)
   const [storagePreviewRef, setStoragePreviewRef] = useState<string | null>(null)
   const [membersOpen, setMembersOpen] = useState(true)
+  const [userInviteOpen, setUserInviteOpen] = useState(false)
+  const [inviteEmails, setInviteEmails] = useState('')
+  const [inviteStatus, setInviteStatus] = useState('')
   const [storageOpen, setStorageOpen] = useState(false)
   const [agentSettingsOpen, setAgentSettingsOpen] = useState(false)
   const [selectedAgent, setSelectedAgent] = useState<ChannelMemberInfo | null>(null)
@@ -147,6 +159,7 @@ export function DetailPanel({ channelId, members = [], tasks = [], files = [], o
   const currentMember = user ? users.find((m) => m.user_id === user.id) : null
   const canEditAgents = currentMember?.role === 'owner' || currentMember?.role === 'coordinator'
   const canManageAgentMembers = currentMember?.role === 'owner'
+  const canInviteUsers = currentMember?.role === 'owner' || currentMember?.role === 'admin'
   const canConfigureAgentTier = Boolean(currentMember)
   const agentNames = new Map(agents.map((agent) => [agent.agent_id, agent.display_name || agent.agent_id || 'Agent']))
   const channelAgentIDs = useMemo(() => new Set(agents.map((agent) => agent.agent_id).filter(Boolean) as string[]), [agents])
@@ -319,6 +332,19 @@ export function DetailPanel({ channelId, members = [], tasks = [], files = [], o
     if (!selectedAgent?.agent_id) return
     const removed = await removeChannelAgent(selectedAgent.agent_id)
     if (removed) setAgentSettingsOpen(false)
+  }
+
+  async function inviteUserToChannel() {
+    const emails = parseInviteEmails(inviteEmails)
+    if (!channelId || emails.length === 0) return
+    setInviteStatus('')
+    const result = await channelsStore.getState().inviteUsers(channelId, emails)
+    if (result.error) {
+      setInviteStatus(result.error)
+      return
+    }
+    setInviteEmails('')
+    setInviteStatus('邀请已发送，等待对方接受。')
   }
 
   async function openSkillModal() {
@@ -587,6 +613,16 @@ export function DetailPanel({ channelId, members = [], tasks = [], files = [], o
                 <Plus className="w-3.5 h-3.5" />
               </button>
             )}
+            {canInviteUsers && (
+              <button
+                type="button"
+                title="邀请用户"
+                className="rounded p-1 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+                onClick={() => { setInviteStatus(''); setUserInviteOpen(true) }}
+              >
+                <UserPlus className="w-3.5 h-3.5" />
+              </button>
+            )}
           </div>
           {membersOpen && (
             <div className="px-4 pb-3">
@@ -659,6 +695,33 @@ export function DetailPanel({ channelId, members = [], tasks = [], files = [], o
         </DialogContent>
       </Dialog>
       {storagePreviewRef && <StoragePreviewDialog channelId={channelId} refText={storagePreviewRef} onClose={() => setStoragePreviewRef(null)} />}
+
+      <Dialog open={userInviteOpen} onOpenChange={setUserInviteOpen}>
+        <DialogContent className="w-[min(360px,calc(100vw-2rem))]" onClose={() => setUserInviteOpen(false)}>
+          <DialogHeader>
+            <DialogTitle>邀请用户</DialogTitle>
+          </DialogHeader>
+          <div className="mt-4 space-y-3">
+            <Input
+              value={inviteEmails}
+              onChange={(event) => { setInviteEmails(event.target.value); setInviteStatus('') }}
+              placeholder="输入用户邮箱"
+            />
+            <div className="text-[10px] leading-4 text-muted-foreground">多个邮箱可用逗号或空格分隔。</div>
+            {inviteStatus && (
+              <div className={cn('text-xs', inviteStatus.includes('已发送') ? 'text-emerald-700' : 'text-destructive')}>
+                {inviteStatus}
+              </div>
+            )}
+          </div>
+          <DialogFooter className="mt-4">
+            <Button type="button" variant="outline" onClick={() => setUserInviteOpen(false)}>关闭</Button>
+            <Button type="button" disabled={parseInviteEmails(inviteEmails).length === 0} onClick={() => { void inviteUserToChannel() }}>
+              发送邀请
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       <TaskDetailSheet
         channelId={channelId}

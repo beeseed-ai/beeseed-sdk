@@ -11,6 +11,7 @@ export interface NotificationsState {
   refresh: () => Promise<void>
   markRead: (id: number) => Promise<void>
   markAllRead: () => Promise<void>
+  act: (id: number, action: 'accept' | 'decline') => Promise<{ error: string | null }>
   handleWsNotification: (n: AppNotification) => void
   reset: () => void
 }
@@ -18,6 +19,7 @@ export interface NotificationsState {
 export interface NotificationsStoreConfig {
   api: KyInstance
   useMock?: boolean
+  onActionComplete?: () => void
 }
 
 export function createNotificationsStore(config: NotificationsStoreConfig) {
@@ -63,8 +65,32 @@ export function createNotificationsStore(config: NotificationsStoreConfig) {
       } catch { /* */ }
     },
 
+    act: async (id, action) => {
+      if (config.useMock) {
+        const status = action === 'accept' ? 'accepted' : 'declined'
+        const updated = get().notifications.map((n) => n.id === id ? { ...n, action_status: status as AppNotification['action_status'], is_read: true, acted_at: new Date().toISOString() } : n)
+        set({ notifications: updated, unreadCount: updated.filter((n) => !n.is_read).length })
+        config.onActionComplete?.()
+        return { error: null }
+      }
+      try {
+        const data = await config.api
+          .post(`notifications/${id}/action`, { json: { action } })
+          .json<{ notification?: AppNotification }>()
+        const next = data.notification
+        const updated = get().notifications.map((n) => n.id === id ? { ...n, ...(next ?? {}), is_read: true } : n)
+        set({ notifications: updated, unreadCount: updated.filter((n) => !n.is_read).length })
+        config.onActionComplete?.()
+        return { error: null }
+      } catch (err) {
+        return { error: err instanceof Error ? err.message : '操作失败' }
+      }
+    },
+
     handleWsNotification: (n) => {
-      set({ notifications: [n, ...get().notifications], unreadCount: get().unreadCount + (n.is_read ? 0 : 1) })
+      const existing = get().notifications
+      const withoutDuplicate = existing.filter((item) => item.id !== n.id)
+      set({ notifications: [n, ...withoutDuplicate], unreadCount: withoutDuplicate.filter((item) => !item.is_read).length + (n.is_read ? 0 : 1) })
     },
 
     reset: () => set({ notifications: [], unreadCount: 0, loading: false }),

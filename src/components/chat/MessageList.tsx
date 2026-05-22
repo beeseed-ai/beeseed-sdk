@@ -341,6 +341,7 @@ export function MessageList({
   const visibleStreams = useMemo(() => (
     (streams ?? (stream ? [stream] : []))
       .filter((activeStream) => {
+        if (activeStream.agentLoop && activeStream.agentLoop.status !== 'running') return false
         if (activeStream.agentLoop?.status === 'completed' && activeStream.agentLoop.finalContent) return false
         if (activeStream.agentLoop?.events?.length) return false
         return true

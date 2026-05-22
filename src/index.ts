@@ -84,6 +84,7 @@ export { DetailPanel } from './components/layout/index.js'
 export { AccordionSection } from './components/layout/index.js'
 
 // Components — Feature Panels
+export { AdminPanel } from './components/admin/index.js'
 export { TaskPanel } from './components/tasks/index.js'
 export { TaskItem } from './components/tasks/index.js'
 export { CreateTaskDialog } from './components/tasks/index.js'
