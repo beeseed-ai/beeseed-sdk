@@ -10,7 +10,7 @@ interface Props {
 }
 
 export function LoginForm({ onSwitchToRegister, className }: Props) {
-  const { signIn, signInWithSMS, sendSMSCode } = useAuth()
+  const { signIn, signInWithSMS, signUpWithSMS, sendSMSCode } = useAuth()
   const { branding } = useAppConfig()
   const [logoFailed, setLogoFailed] = useState(false)
   const [mode, setMode] = useState<'password' | 'sms'>('password')
@@ -21,6 +21,7 @@ export function LoginForm({ onSwitchToRegister, className }: Props) {
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
   const [sendingCode, setSendingCode] = useState(false)
+  const [smsPurpose, setSmsPurpose] = useState<'login' | 'register'>('login')
   const hasLogo = Boolean(branding.logo && !logoFailed)
 
   async function handleSubmit(e: FormEvent) {
@@ -29,7 +30,9 @@ export function LoginForm({ onSwitchToRegister, className }: Props) {
       if (!phone || !code) { setError('请填写手机号和验证码'); return }
       setLoading(true)
       setError('')
-      const result = await signInWithSMS(phone, code)
+      const result = smsPurpose === 'register'
+        ? await signUpWithSMS(phone, code, phone)
+        : await signInWithSMS(phone, code)
       if (result.error) setError(result.error)
       setLoading(false)
       return
@@ -48,6 +51,7 @@ export function LoginForm({ onSwitchToRegister, className }: Props) {
     setError('')
     const result = await sendSMSCode(phone, 'login')
     if (result.error) setError(result.error)
+    else setSmsPurpose(result.purpose || 'login')
     setSendingCode(false)
   }
 
@@ -116,7 +120,10 @@ export function LoginForm({ onSwitchToRegister, className }: Props) {
                 <Input
                   type="tel"
                   value={phone}
-                  onChange={(e) => setPhone(e.target.value)}
+                  onChange={(e) => {
+                    setPhone(e.target.value)
+                    setSmsPurpose('login')
+                  }}
                   placeholder="输入手机号"
                 />
               </div>

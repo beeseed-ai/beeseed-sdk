@@ -11,7 +11,7 @@ export interface AuthState {
 
   init: () => Promise<void>
   signIn: (email: string, password: string) => Promise<{ error: string | null }>
-  sendSMSCode: (phone: string, purpose: 'login' | 'register', options?: { inviteCode?: string }) => Promise<{ error: string | null }>
+  sendSMSCode: (phone: string, purpose: 'login' | 'register', options?: { inviteCode?: string }) => Promise<{ error: string | null; purpose?: 'login' | 'register' }>
   signInWithSMS: (phone: string, code: string) => Promise<{ error: string | null }>
   signUp: (email: string, password: string, name: string, inviteCode?: string) => Promise<{ error: string | null }>
   signUpWithSMS: (phone: string, code: string, name: string, email?: string, inviteCode?: string) => Promise<{ error: string | null }>
@@ -80,10 +80,10 @@ export function createAuthStore(config: AuthStoreConfig) {
 
     sendSMSCode: async (phone, purpose, options) => {
       try {
-        await config.api.post('auth/sms/send', {
+        const data = await config.api.post('auth/sms/send', {
           json: { phone, purpose, invite_code: options?.inviteCode },
-        })
-        return { error: null }
+        }).json<{ purpose?: 'login' | 'register' }>()
+        return { error: null, purpose: data.purpose || purpose }
       } catch (e) {
         return { error: e instanceof Error ? e.message : 'SMS send failed' }
       }
