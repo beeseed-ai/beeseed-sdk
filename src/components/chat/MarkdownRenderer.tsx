@@ -12,12 +12,13 @@ function processInlineTokens(
   children: ReactNode,
   onMentionClick?: (name: string) => void,
   onStorageRefClick?: (key: string) => void,
+  storageRefAvailable?: (refText: string) => boolean,
 ): ReactNode {
-  if (typeof children === 'string') return splitInlineTokens(children, onMentionClick, onStorageRefClick)
+  if (typeof children === 'string') return splitInlineTokens(children, onMentionClick, onStorageRefClick, storageRefAvailable)
   if (Array.isArray(children)) {
     return children.map((child, i) => {
       if (typeof child === 'string') {
-        const result = splitInlineTokens(child, onMentionClick, onStorageRefClick)
+        const result = splitInlineTokens(child, onMentionClick, onStorageRefClick, storageRefAvailable)
         if (Array.isArray(result)) {
           return result.map((el, j) =>
             typeof el === 'string' ? el : <span key={`${i}-${j}`}>{el}</span>,
@@ -35,6 +36,7 @@ function splitInlineTokens(
   text: string,
   onMentionClick?: (name: string) => void,
   onStorageRefClick?: (key: string) => void,
+  storageRefAvailable?: (refText: string) => boolean,
 ): ReactNode {
   const storageParts: ReactNode[] = []
   let lastIndex = 0
@@ -45,7 +47,11 @@ function splitInlineTokens(
     const full = storageMatch[0]
     const idx = storageMatch.index
     if (idx > lastIndex) storageParts.push(text.slice(lastIndex, idx))
-    storageParts.push(<StorageRefChip key={`storage-${idx}`} refText={full} onClick={onStorageRefClick} />)
+    storageParts.push(
+      storageRefAvailable?.(full) === true
+        ? <StorageRefChip key={`storage-${idx}`} refText={full} onClick={onStorageRefClick} />
+        : full,
+    )
     lastIndex = idx + full.length
   }
   if (storageParts.length === 0) {
@@ -97,6 +103,7 @@ interface MarkdownRendererProps {
   onMentionClick?: (name: string) => void
   onFileClick?: (path: string) => void
   onStorageRefClick?: (key: string) => void
+  storageRefAvailable?: (refText: string) => boolean
 }
 
 export const MarkdownRenderer = memo(function MarkdownRenderer({
@@ -105,6 +112,7 @@ export const MarkdownRenderer = memo(function MarkdownRenderer({
   onMentionClick,
   onFileClick,
   onStorageRefClick,
+  storageRefAvailable,
 }: MarkdownRendererProps) {
   const processed = useMemo(() => {
     return content
@@ -118,7 +126,7 @@ export const MarkdownRenderer = memo(function MarkdownRenderer({
         remarkPlugins={[remarkGfm, remarkBreaks]}
         components={{
           p(props: { children?: ReactNode }) {
-            const withMentions = processInlineTokens(props.children, onMentionClick, onStorageRefClick)
+            const withMentions = processInlineTokens(props.children, onMentionClick, onStorageRefClick, storageRefAvailable)
             return <p className="my-1 leading-relaxed">{withMentions}</p>
           },
           code(props: { className?: string; children?: ReactNode }) {
@@ -132,7 +140,12 @@ export const MarkdownRenderer = memo(function MarkdownRenderer({
             }
             const text = String(props.children).replace(/\n$/, '')
             if (text.startsWith('storage://')) {
-              return <StorageRefChip refText={text} onClick={onStorageRefClick} />
+              if (storageRefAvailable?.(text) === true) return <StorageRefChip refText={text} onClick={onStorageRefClick} />
+              return (
+                <code className="px-1.5 py-0.5 rounded bg-muted text-[0.9em] font-mono">
+                  {props.children}
+                </code>
+              )
             }
             if (onFileClick && isLikelyFilePath(text)) {
               return (
@@ -155,7 +168,8 @@ export const MarkdownRenderer = memo(function MarkdownRenderer({
           },
           a(props: { children?: ReactNode; href?: string }) {
             if (props.href?.startsWith('storage://')) {
-              return <StorageRefChip refText={props.href} onClick={onStorageRefClick} />
+              if (storageRefAvailable?.(props.href) === true) return <StorageRefChip refText={props.href} onClick={onStorageRefClick} />
+              return <span>{props.children ?? props.href}</span>
             }
             return (
               <a

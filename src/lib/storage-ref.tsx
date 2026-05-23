@@ -33,13 +33,36 @@ export function storageRefsFromText(text: string) {
   return refs
 }
 
-export function stripStorageReferenceBlock(text: string) {
+function normalizeStorageRef(ref: string) {
+  return storageRefFromKey(keyFromStorageRef(ref))
+}
+
+function shouldStripStorageRef(ref: string, refsToStrip?: Set<string>) {
+  if (!refsToStrip) return true
+  return refsToStrip.has(normalizeStorageRef(ref))
+}
+
+export function stripStorageReferenceBlock(text: string, refsToStrip?: Set<string>) {
   const lines = text.split('\n')
   const out: string[] = []
+  let pendingReferenceLabel: string | null = null
   for (const line of lines) {
     const trimmed = line.trim()
-    if (/^引用文件[:：]?$/.test(trimmed)) continue
-    if (/^-?\s*storage:\/\//.test(trimmed)) continue
+    if (/^引用文件[:：]?$/.test(trimmed)) {
+      pendingReferenceLabel = line
+      continue
+    }
+
+    const refMatch = trimmed.match(/^-?\s*(storage:\/\/\S+)\s*$/)
+    if (refMatch?.[1] && shouldStripStorageRef(refMatch[1], refsToStrip)) {
+      pendingReferenceLabel = null
+      continue
+    }
+
+    if (pendingReferenceLabel !== null) {
+      out.push(pendingReferenceLabel)
+      pendingReferenceLabel = null
+    }
     out.push(line)
   }
   return out.join('\n').replace(/\n{3,}/g, '\n\n').trim()

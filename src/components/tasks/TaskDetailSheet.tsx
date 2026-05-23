@@ -62,8 +62,16 @@ export function TaskDetailSheet({ channelId, task, members, channelName, open, o
     return null
   }
 
-  const assignedAgent = agents.find((agent) => agent.agent_id === task.assigned_agent_id)
   const awaitingVerification = task.verification_status === 'pending' || task.scheduler_state === 'awaiting_verify'
+  const waitingAssignment = task.status === 'pending' && task.scheduler_state === 'manual' && !task.assigned_agent_id
+  const statusBadge = awaitingVerification
+    ? { label: '待验收', variant: 'warning' as const }
+    : waitingAssignment
+      ? { label: '待分配', variant: 'outline' as const }
+    : {
+        label: STATUS_LABEL[task.status],
+        variant: (task.status === 'done' ? 'success' : task.status === 'failed' ? 'destructive' : task.status === 'blocked' ? 'warning' : task.status === 'pending' ? 'outline' : 'default') as 'outline' | 'default' | 'success' | 'destructive' | 'warning',
+      }
 
   async function submitComment() {
     const content = commentText.trim()
@@ -109,14 +117,11 @@ export function TaskDetailSheet({ channelId, task, members, channelName, open, o
         <div className="min-w-0">
           <div className="text-sm font-semibold truncate">{task.title}</div>
           <div className="mt-1 flex items-center gap-2">
-            <Badge variant={task.status === 'done' ? 'success' : task.status === 'failed' ? 'destructive' : task.status === 'blocked' ? 'warning' : task.status === 'pending' ? 'outline' : 'default'} className="text-[10px]">
-              {STATUS_LABEL[task.status]}
+            <Badge variant={statusBadge.variant} className="text-[10px]">
+              {statusBadge.label}
             </Badge>
             {task.scheduler_state && (
               <span className="text-[10px] text-muted-foreground">{task.scheduler_state}</span>
-            )}
-            {awaitingVerification && (
-              <Badge variant="warning" className="text-[10px]">待验收</Badge>
             )}
           </div>
         </div>
@@ -141,6 +146,12 @@ export function TaskDetailSheet({ channelId, task, members, channelName, open, o
                   退回重做
                 </Button>
               </div>
+            </section>
+          )}
+          {waitingAssignment && (
+            <section className="rounded-md border border-border bg-muted/40 px-3 py-3">
+              <div className="text-sm font-medium text-foreground">任务尚未分配执行人</div>
+              <div className="mt-1 text-sm leading-5 text-muted-foreground">分配给频道内 Agent 后，任务才会进入调度执行。</div>
             </section>
           )}
 
@@ -207,9 +218,6 @@ export function TaskDetailSheet({ channelId, task, members, channelName, open, o
             {task.agent_completed_at && <ReadOnlyRow label="Agent完成" value={formatDateTime(task.agent_completed_at)} />}
             {task.verified_at && <ReadOnlyRow label="验收时间" value={formatDateTime(task.verified_at)} />}
             {task.failure_code && <ReadOnlyRow label="失败类型" value={task.failure_code} />}
-            {assignedAgent?.ext_info && (
-              <ReadOnlyRow label="执行人信息" value={formatExtInfo(assignedAgent.ext_info)} />
-            )}
           </section>
 
           <section>
@@ -308,12 +316,4 @@ function toDateTimeLocal(value?: string) {
   if (Number.isNaN(date.getTime())) return ''
   const pad = (part: number) => String(part).padStart(2, '0')
   return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`
-}
-
-function formatExtInfo(value: ChannelMemberInfo['ext_info']) {
-  if (!value) return ''
-  if (typeof value === 'string') return value
-  return Object.entries(value)
-    .map(([key, val]) => `${key}: ${Array.isArray(val) ? val.join(', ') : String(val)}`)
-    .join('\n')
 }

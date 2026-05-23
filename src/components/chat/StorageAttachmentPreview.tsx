@@ -41,6 +41,69 @@ function uniqueRefs(refs: string[]) {
   return refs.filter((ref, i) => refs.indexOf(ref) === i)
 }
 
+function normalizedRef(ref: string) {
+  return `storage://${encodeURI(keyFromStorageRef(ref).replace(/^\/+/, ''))}`
+}
+
+const storageRefExistenceCache = new Map<string, boolean>()
+
+function storageRefCacheKey(channelId: string, refText: string) {
+  return `${channelId}\u0000${keyFromStorageRef(refText)}`
+}
+
+export function useExistingStorageRefs(channelId: string, refs: string[]) {
+  const { api, config } = useBeeSeedContext()
+  const unique = useMemo(() => uniqueRefs(refs).map(normalizedRef), [refs])
+  const [existing, setExisting] = useState<Set<string>>(() => new Set())
+
+  useEffect(() => {
+    let cancelled = false
+
+    if (unique.length === 0) {
+      setExisting(new Set())
+      return
+    }
+
+    if (config.useMockData) {
+      setExisting(new Set(unique))
+      return
+    }
+
+    const next = new Set<string>()
+    const pending: Promise<void>[] = []
+
+    for (const refText of unique) {
+      const cacheKey = storageRefCacheKey(channelId, refText)
+      const cached = storageRefExistenceCache.get(cacheKey)
+      if (cached === true) {
+        next.add(refText)
+        continue
+      }
+
+      pending.push(
+        api.post(`channels/${channelId}/storage/presign-download`, {
+          json: { key: keyFromStorageRef(refText) },
+        }).json<{ url: string }>()
+          .then(() => {
+            storageRefExistenceCache.set(cacheKey, true)
+            next.add(refText)
+          })
+          .catch(() => {}),
+      )
+    }
+
+    setExisting(new Set(next))
+    void Promise.allSettled(pending).then(() => {
+      if (!cancelled) setExisting(new Set(next))
+    })
+
+    return () => { cancelled = true }
+  }, [api, channelId, config.useMockData, unique])
+
+  const isExistingRef = (refText: string) => existing.has(normalizedRef(refText))
+  return { existingRefs: unique.filter((refText) => existing.has(refText)), isExistingRef }
+}
+
 function extOf(ref: string) {
   const name = fileNameFromStorageRef(ref)
   const idx = name.lastIndexOf('.')
@@ -283,7 +346,7 @@ function StorageImageAttachment({ channelId, refText }: { channelId: string; ref
   }, [api, config.useMockData, refText, channelId])
 
   if (failed) {
-    return <StorageFileAttachment channelId={channelId} refText={refText} />
+    return null
   }
 
   return (
@@ -349,7 +412,7 @@ function StorageFileAttachment({ channelId, refText }: { channelId: string; refT
 }
 
 export function StorageAttachmentPreview({ channelId, refs, compact }: Props) {
-  const items = useMemo(() => uniqueRefs(refs), [refs])
+  const { existingRefs: items } = useExistingStorageRefs(channelId, refs)
   if (items.length === 0) return null
 
   return (

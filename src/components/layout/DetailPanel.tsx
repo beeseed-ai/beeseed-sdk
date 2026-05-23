@@ -1019,7 +1019,13 @@ const TASK_STATUS_META: Record<Task['status'], { label: string; icon: typeof Cir
 }
 
 function CompactTaskRow({ task, assignedLabel, onClick }: { task: Task; assignedLabel?: string; onClick: () => void }) {
-  const meta = TASK_STATUS_META[task.status]
+  const awaitingVerification = task.verification_status === 'pending' || task.scheduler_state === 'awaiting_verify'
+  const waitingAssignment = task.status === 'pending' && task.scheduler_state === 'manual' && !task.assigned_agent_id
+  const meta = awaitingVerification
+    ? { label: '待验收', icon: CheckCircle2, badge: 'warning' as const }
+    : waitingAssignment
+      ? { label: '待分配', icon: Clock, badge: 'outline' as const }
+    : TASK_STATUS_META[task.status]
   const StatusIcon = meta.icon
   const dependencyCount = task.depends_on_task_ids?.length || 0
 
@@ -1032,10 +1038,11 @@ function CompactTaskRow({ task, assignedLabel, onClick }: { task: Task; assigned
       <div className="flex items-start gap-2">
         <StatusIcon className={cn(
           'mt-0.5 h-3.5 w-3.5 shrink-0',
+          awaitingVerification && 'text-amber-500',
           task.status === 'done' && 'text-green-600',
           task.status === 'failed' && 'text-red-500',
           task.status === 'blocked' && 'text-amber-500',
-          task.status === 'in_progress' && 'text-blue-500',
+          task.status === 'in_progress' && !awaitingVerification && 'text-blue-500',
           task.status === 'pending' && 'text-muted-foreground',
         )} />
         <div className="min-w-0 flex-1">

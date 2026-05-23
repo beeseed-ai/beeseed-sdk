@@ -22,8 +22,14 @@ interface Props {
 
 export function TaskItem({ task, onClick, onDelete, assignedLabel, className }: Props) {
   const config = STATUS_CONFIG[task.status] || STATUS_CONFIG.pending
-  const Icon = config.icon
   const awaitingVerification = task.verification_status === 'pending' || task.scheduler_state === 'awaiting_verify'
+  const waitingAssignment = task.status === 'pending' && task.scheduler_state === 'manual' && !task.assigned_agent_id
+  const displayConfig = awaitingVerification
+    ? { icon: CheckCircle2, color: 'text-amber-500', label: '待验收', variant: 'warning' as const }
+    : waitingAssignment
+      ? { icon: Clock, color: 'text-muted-foreground', label: '待分配', variant: 'outline' as const }
+    : config
+  const Icon = displayConfig.icon
 
   return (
     <div className={cn('group mb-2 flex items-start gap-3 rounded-lg border border-border bg-white p-3 transition-colors hover:bg-muted', className)}>
@@ -36,12 +42,9 @@ export function TaskItem({ task, onClick, onDelete, assignedLabel, className }: 
           {(assignedLabel || task.assigned_name || task.assigned_agent_id) && (
             <span className="text-[10px] text-muted-foreground">@{assignedLabel || task.assigned_name || task.assigned_agent_id}</span>
           )}
-          <Badge variant={config.variant} className="text-[10px] px-1.5 py-0">{config.label}</Badge>
+          <Badge variant={displayConfig.variant} className="text-[10px] px-1.5 py-0">{displayConfig.label}</Badge>
           {task.scheduler_state === 'pending_deps' && (
             <Badge variant="outline" className="text-[10px] px-1.5 py-0">等待依赖</Badge>
-          )}
-          {awaitingVerification && (
-            <Badge variant="warning" className="text-[10px] px-1.5 py-0">待验收</Badge>
           )}
           {task.failure_code && (
             <span className="max-w-[120px] truncate text-[10px] text-destructive">{task.failure_code}</span>

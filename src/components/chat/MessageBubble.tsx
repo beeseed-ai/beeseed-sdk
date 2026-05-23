@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react'
+import { useState, useCallback, useMemo } from 'react'
 import { Copy, Check, CornerDownLeft, Zap } from 'lucide-react'
 import type { ChatMessage } from '../../core/types.js'
 import { cn } from '../../lib/cn.js'
@@ -6,7 +6,7 @@ import { storageRefsFromText, stripStorageReferenceBlock } from '../../lib/stora
 import { MarkdownRenderer } from './MarkdownRenderer.js'
 import { ImagePreview } from './ImagePreview.js'
 import { AskUserCard } from './AskUserCard.js'
-import { StorageAttachmentPreview } from './StorageAttachmentPreview.js'
+import { StorageAttachmentPreview, useExistingStorageRefs } from './StorageAttachmentPreview.js'
 import { SkillIcon } from '../skills/SkillIcon.js'
 
 interface Props {
@@ -68,6 +68,9 @@ export function MessageBubble({
   const [copied, setCopied] = useState(false)
   const [previewImage, setPreviewImage] = useState<string | null>(null)
   const [openSkillId, setOpenSkillId] = useState<string | null>(null)
+  const storageRefs = useMemo(() => storageRefsFromText(message.content), [message.content])
+  const { existingRefs, isExistingRef } = useExistingStorageRefs(channelId, storageRefs)
+  const existingRefSet = useMemo(() => new Set(existingRefs), [existingRefs])
 
   const handleCopy = useCallback(() => {
     void navigator.clipboard.writeText(message.content)
@@ -151,8 +154,7 @@ export function MessageBubble({
 
   const isUser = message.role === 'user'
   const isImage = message.contentType === 'image'
-  const storageRefs = storageRefsFromText(message.content)
-  const visibleContent = storageRefs.length > 0 ? stripStorageReferenceBlock(message.content) : message.content
+  const visibleContent = existingRefs.length > 0 ? stripStorageReferenceBlock(message.content, existingRefSet) : message.content
 
   return (
     <div
@@ -242,9 +244,10 @@ export function MessageBubble({
                     content={visibleContent}
                     className="prose prose-sm max-w-none break-words text-inherit [&_p]:my-1 [&_p:first-child]:mt-0 [&_p:last-child]:mb-0"
                     onMentionClick={onMentionClick}
+                    storageRefAvailable={isExistingRef}
                   />
                 )}
-                {storageRefs.length > 0 && <StorageAttachmentPreview channelId={channelId} refs={storageRefs} compact={!visibleContent} />}
+                {existingRefs.length > 0 && <StorageAttachmentPreview channelId={channelId} refs={existingRefs} compact={!visibleContent} />}
               </>
             ) : (
               <>
@@ -253,9 +256,10 @@ export function MessageBubble({
                     content={visibleContent}
                     className="prose prose-base max-w-none break-words [&_pre]:overflow-x-auto [&_pre]:max-w-full [&_pre]:rounded-lg [&_pre]:bg-[#f5f5f5] [&_pre]:p-3 [&_pre]:text-xs [&_code.inline-code]:rounded [&_code.inline-code]:bg-[#f5f5f5] [&_code.inline-code]:px-1.5 [&_code.inline-code]:py-0.5 [&_code.inline-code]:text-xs [&_a]:text-black [&_a]:underline [&_p]:my-2 [&_p:last-child]:mb-0 [&_p:first-child]:mt-0 [&_ul]:my-1 [&_li]:my-0 [&_ol]:list-decimal [&_ol]:pl-5 [&_ul]:list-disc [&_ul]:pl-5 [&_hr]:my-4 [&_hr]:border-t [&_hr]:border-[#e5e5e5] [&_table]:border-collapse [&_table]:w-full [&_th]:border [&_th]:border-[#e5e5e5] [&_th]:px-3 [&_th]:py-1.5 [&_th]:bg-[#f5f5f5] [&_th]:text-left [&_td]:border [&_td]:border-[#e5e5e5] [&_td]:px-3 [&_td]:py-1.5"
                     onMentionClick={onMentionClick}
+                    storageRefAvailable={isExistingRef}
                   />
                 )}
-                {storageRefs.length > 0 && <StorageAttachmentPreview channelId={channelId} refs={storageRefs} compact={!visibleContent} />}
+                {existingRefs.length > 0 && <StorageAttachmentPreview channelId={channelId} refs={existingRefs} compact={!visibleContent} />}
               </>
             )}
           </div>
