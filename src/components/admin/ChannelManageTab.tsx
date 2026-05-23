@@ -1,18 +1,11 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { Bot, Check, Copy, MessageSquare, RefreshCw, RotateCcw, Search, Trash2, UserPlus, Users, X } from 'lucide-react'
+import { BookOpen, MessageSquare, Plus, RefreshCw, Save, Trash2 } from 'lucide-react'
+import type { KnowledgeBase } from '../../core/types.js'
 import { cn } from '../../lib/cn.js'
 import { useBeeSeedContext } from '../../provider/BeeSeedProvider.js'
-import { useDetailPanel } from '../../hooks/use-detail-panel.js'
 import { Button } from '../ui/button.js'
 import { Input } from '../ui/input.js'
 import { Badge } from '../ui/badge.js'
-import type { AppUser, ChannelMemberInfo, ChannelWithMeta } from '../../core/types.js'
-
-interface AdminChannel extends ChannelWithMeta {
-  user_count?: number
-  agent_count?: number
-  message_count?: number
-}
 
 interface AgentTemplateOption {
   id: string
@@ -23,622 +16,528 @@ interface AgentTemplateOption {
   avatar_preset?: string
 }
 
-interface ChannelDetail {
-  channel: AdminChannel
-  members: ChannelMemberInfo[]
-  available_agents: AgentTemplateOption[]
-}
-
-function parseSettings(settings?: string): Record<string, unknown> {
-  if (!settings) return {}
-  try {
-    const parsed = JSON.parse(settings)
-    return parsed && typeof parsed === 'object' ? parsed as Record<string, unknown> : {}
-  } catch {
-    return {}
+interface ChannelTemplate {
+  id?: string
+  type: 'create' | 'join'
+  channel_id?: string
+  name: string
+  description?: string
+  icon?: string
+  agents: string[]
+  knowledge?: string[]
+  welcome_message?: string
+  storage?: {
+    enabled?: boolean
+    visibility?: string
+    members_can_upload?: boolean
+    members_can_delete_own?: boolean
   }
 }
 
-function channelName(channel: AdminChannel | null | undefined) {
-  return channel?.name?.trim() || '未命名频道'
+interface ChannelSettingsResponse {
+  mode: 'all_users' | 'admin_only' | 'owner_only' | 'disabled'
+  default_agent_ids: string[]
+  max_channels_per_user: number
+  require_purpose: boolean
+  default_channel_type: string
+  channel_templates?: ChannelTemplate[]
+  available_agents?: AgentTemplateOption[]
 }
 
-function formatDate(value?: string | null) {
-  if (!value) return '无'
-  const date = new Date(value)
-  if (Number.isNaN(date.getTime())) return '无'
-  return date.toLocaleString()
+interface KnowledgeBasesResponse {
+  bases?: KnowledgeBase[]
 }
 
-function shortID(value: string) {
-  return value.length > 8 ? value.slice(0, 8) : value
+interface ApplyTemplatesResponse {
+  users_processed: number
+  channels_created: number
+  members_joined: number
+  failed: number
 }
 
-function memberName(member: ChannelMemberInfo) {
-  return member.display_name || member.nickname || member.agent_id || member.user_id || '成员'
+const DEFAULT_POLICY: Omit<ChannelSettingsResponse, 'channel_templates' | 'available_agents'> = {
+  mode: 'all_users',
+  default_agent_ids: ['assistant'],
+  max_channels_per_user: 0,
+  require_purpose: false,
+  default_channel_type: 'create',
 }
 
-function roleLabel(role: string) {
-  if (role === 'owner') return 'Owner'
-  if (role === 'admin') return '管理员'
-  return '成员'
+function newChannelTemplate(): ChannelTemplate {
+  return {
+    id: createTemplateId(),
+    type: 'create',
+    name: '新频道模板',
+    description: '',
+    icon: 'bot',
+    agents: ['assistant'],
+    knowledge: [],
+    welcome_message: '你好！有什么可以帮你的？',
+  }
 }
 
-function roleBadgeVariant(role: string): 'default' | 'secondary' | 'outline' {
-  if (role === 'owner') return 'default'
-  if (role === 'admin') return 'secondary'
-  return 'outline'
+function createTemplateId() {
+  if (typeof crypto !== 'undefined' && 'randomUUID' in crypto) {
+    return crypto.randomUUID()
+  }
+  return `template-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`
 }
 
-function channelIssues(channel: AdminChannel) {
-  const issues: string[] = []
-  if (channel.deleted_at) issues.push('已删除')
-  if ((channel.user_count ?? 0) === 0) issues.push('无用户')
-  if ((channel.agent_count ?? 0) === 0) issues.push('无 Agent')
-  if (!channel.owner_email && !channel.owner_name) issues.push('无创建者')
-  if (channel.archived_at || parseSettings(channel.settings).archived === true) issues.push('已归档')
-  return issues
+function normalizeTemplates(templates: ChannelTemplate[] | undefined): ChannelTemplate[] {
+  const items = templates ?? [newChannelTemplate()]
+  return items.map((template) => ({
+    id: template.id || createTemplateId(),
+    type: template.type === 'join' ? 'join' : 'create',
+    channel_id: template.channel_id ?? '',
+    name: template.name?.trim() || '新频道模板',
+    description: template.description ?? '',
+    icon: template.icon || 'bot',
+    agents: template.agents?.length ? template.agents : ['assistant'],
+    knowledge: template.knowledge ?? [],
+    welcome_message: template.welcome_message ?? '',
+    storage: template.storage,
+  }))
+}
+
+function agentLabel(agentId: string, agents: AgentTemplateOption[]) {
+  const agent = agents.find((item) => item.id === agentId)
+  return agent?.name || agent?.role || agentId
+}
+
+function knowledgeLabel(knowledgeId: string, bases: KnowledgeBase[]) {
+  const base = bases.find((item) => item.id === knowledgeId)
+  return base?.display_name || base?.name || knowledgeId
+}
+
+function isManagedDefaultKnowledgeBase(base: KnowledgeBase) {
+  return base.name === 'default' && (
+    base.description === 'Default app knowledge base'
+      || base.description === 'Default channel knowledge base'
+  )
+}
+
+function isTemplateSelectableKnowledgeBase(base: KnowledgeBase) {
+  return base.is_active !== false
+    && !isManagedDefaultKnowledgeBase(base)
+    && !base.channel_id
+    && (base.scope_type === 'app' || base.scope_type === 'organization' || base.scope_type === 'platform')
+}
+
+function knowledgeScopeLabel(scope: KnowledgeBase['scope_type']) {
+  if (scope === 'app') return 'App'
+  if (scope === 'organization') return '组织'
+  if (scope === 'platform') return '平台'
+  return '频道'
+}
+
+function toggleItem(items: string[], item: string) {
+  return items.includes(item) ? items.filter((value) => value !== item) : [...items, item]
 }
 
 export function ChannelManageTab() {
-  const { api, channelsStore } = useBeeSeedContext()
-  const { setActiveFeature } = useDetailPanel()
-  const [channels, setChannels] = useState<AdminChannel[]>([])
-  const [selectedId, setSelectedId] = useState<string | null>(null)
-  const [detail, setDetail] = useState<ChannelDetail | null>(null)
-  const [users, setUsers] = useState<AppUser[]>([])
-  const [query, setQuery] = useState('')
+  const { api } = useBeeSeedContext()
+  const [policy, setPolicy] = useState(DEFAULT_POLICY)
+  const [templates, setTemplates] = useState<ChannelTemplate[]>([])
+  const [availableAgents, setAvailableAgents] = useState<AgentTemplateOption[]>([])
+  const [availableKnowledgeBases, setAvailableKnowledgeBases] = useState<KnowledgeBase[]>([])
+  const [selectedIndex, setSelectedIndex] = useState(0)
   const [loading, setLoading] = useState(true)
-  const [detailLoading, setDetailLoading] = useState(false)
   const [saving, setSaving] = useState(false)
-  const [nameDraft, setNameDraft] = useState('')
-  const [copied, setCopied] = useState(false)
-  const [addUserId, setAddUserId] = useState('')
-  const [addAgentId, setAddAgentId] = useState('')
+  const [dirty, setDirty] = useState(false)
+  const [saved, setSaved] = useState(false)
+  const [applying, setApplying] = useState(false)
+  const [applyResult, setApplyResult] = useState<ApplyTemplatesResponse | null>(null)
   const [error, setError] = useState('')
 
-  const loadChannels = useCallback(async () => {
+  const selectedTemplate = templates[selectedIndex] ?? null
+  const selectedAgents = selectedTemplate?.agents ?? []
+  const selectableKnowledgeIds = useMemo(() => new Set(availableKnowledgeBases.map((base) => base.id)), [availableKnowledgeBases])
+  const selectedKnowledge = useMemo(
+    () => (selectedTemplate?.knowledge ?? []).filter((knowledgeId) => selectableKnowledgeIds.has(knowledgeId)),
+    [selectableKnowledgeIds, selectedTemplate],
+  )
+
+  const loadSettings = useCallback(async () => {
     setLoading(true)
     setError('')
     try {
-      const data = await api.get('admin/channels').json<AdminChannel[]>()
-      setChannels(data)
-      setSelectedId((current) => current ?? data[0]?.id ?? null)
+      const data = await api.get('admin/settings/channels').json<ChannelSettingsResponse>()
+      setPolicy({
+        mode: data.mode || DEFAULT_POLICY.mode,
+        default_agent_ids: data.default_agent_ids ?? DEFAULT_POLICY.default_agent_ids,
+        max_channels_per_user: data.max_channels_per_user ?? DEFAULT_POLICY.max_channels_per_user,
+        require_purpose: Boolean(data.require_purpose),
+        default_channel_type: data.default_channel_type || DEFAULT_POLICY.default_channel_type,
+      })
+      const nextTemplates = normalizeTemplates(data.channel_templates)
+      setTemplates(nextTemplates)
+      setAvailableAgents(data.available_agents ?? [])
+      setSelectedIndex((current) => Math.min(current, Math.max(0, nextTemplates.length - 1)))
+      setDirty(false)
+      setApplyResult(null)
+      void api.get('knowledge/bases').json<KnowledgeBasesResponse>()
+        .then((knowledgeData) => {
+          setAvailableKnowledgeBases((knowledgeData.bases ?? []).filter(isTemplateSelectableKnowledgeBase))
+        })
+        .catch(() => setAvailableKnowledgeBases([]))
     } catch {
-      setError('频道列表加载失败')
+      setError('频道模板加载失败')
+      setTemplates([])
+      setAvailableAgents([])
+      setAvailableKnowledgeBases([])
     } finally {
       setLoading(false)
     }
   }, [api])
 
-  const loadDetail = useCallback(async (channelId: string) => {
-    setDetailLoading(true)
+  useEffect(() => {
+    void loadSettings()
+  }, [loadSettings])
+
+  const templateAgents = useMemo(() => {
+    if (!selectedTemplate) return []
+    return selectedTemplate.agents.map((agentId) => ({
+      id: agentId,
+      label: agentLabel(agentId, availableAgents),
+    }))
+  }, [availableAgents, selectedTemplate])
+
+  const templateKnowledgeBases = useMemo(() => {
+    if (!selectedTemplate) return []
+    return selectedKnowledge.map((knowledgeId) => ({
+      id: knowledgeId,
+      label: knowledgeLabel(knowledgeId, availableKnowledgeBases),
+    }))
+  }, [availableKnowledgeBases, selectedKnowledge, selectedTemplate])
+
+  function updateTemplate(patch: Partial<ChannelTemplate>) {
+    setTemplates((current) => current.map((template, index) => (
+      index === selectedIndex ? { ...template, ...patch } : template
+    )))
+    setDirty(true)
+    setSaved(false)
     setError('')
-    try {
-      const data = await api.get(`admin/channels/${channelId}`).json<ChannelDetail>()
-      setDetail(data)
-      setNameDraft(data.channel.name ?? '')
-      setAddUserId('')
-      setAddAgentId('')
-    } catch {
-      setError('频道详情加载失败')
-    } finally {
-      setDetailLoading(false)
-    }
-  }, [api])
+  }
 
-  useEffect(() => { void loadChannels() }, [loadChannels])
-
-  useEffect(() => {
-    if (!selectedId) {
-      setDetail(null)
-      return
-    }
-    void loadDetail(selectedId)
-  }, [loadDetail, selectedId])
-
-  useEffect(() => {
-    api.get('admin/users', { searchParams: { limit: '200' } })
-      .json<{ items: AppUser[] }>()
-      .then((data) => setUsers(data.items ?? []))
-      .catch(() => setUsers([]))
-  }, [api])
-
-  const filteredChannels = useMemo(() => {
-    const needle = query.trim().toLowerCase()
-    if (!needle) return channels
-    return channels.filter((channel) => {
-      const haystack = [
-        channel.name,
-        channel.id,
-        channel.owner_name,
-        channel.owner_email,
-        channel.last_message,
-      ].filter(Boolean).join(' ').toLowerCase()
-      return haystack.includes(needle)
+  function addTemplate() {
+    const template = newChannelTemplate()
+    setTemplates((current) => {
+      setSelectedIndex(current.length)
+      return [...current, template]
     })
-  }, [channels, query])
-
-  const selectedChannel = detail?.channel ?? channels.find((channel) => channel.id === selectedId) ?? null
-  const members = detail?.members ?? []
-  const userMembers = members.filter((member) => member.member_type === 'user')
-  const agentMembers = members.filter((member) => member.member_type === 'agent')
-  const memberUserIds = new Set(userMembers.map((member) => member.user_id).filter(Boolean))
-  const memberAgentIds = new Set(agentMembers.map((member) => member.agent_id).filter(Boolean))
-  const availableUsers = users.filter((user) => !memberUserIds.has(user.id) && !user.is_disabled)
-  const availableAgents = (detail?.available_agents ?? []).filter((agent) => !memberAgentIds.has(agent.id))
-  const selectedArchived = selectedChannel ? Boolean(selectedChannel.archived_at || parseSettings(selectedChannel.settings).archived === true) : false
-  const selectedDeleted = Boolean(selectedChannel?.deleted_at)
-  const selectedIssues = selectedChannel ? channelIssues(selectedChannel) : []
-
-  async function refreshAll(channelId = selectedId) {
-    await loadChannels()
-    if (channelId) await loadDetail(channelId)
-    void channelsStore.getState().fetchChannels()
+    setDirty(true)
+    setSaved(false)
   }
 
-  async function saveChannel() {
-    if (!selectedChannel) return
-    const cleanName = nameDraft.trim()
-    if (!cleanName) {
-      setError('频道名称不能为空')
-      return
-    }
-    setSaving(true)
+  function deleteTemplate(index: number) {
+    setTemplates((current) => {
+      const next = current.filter((_, itemIndex) => itemIndex !== index)
+      setSelectedIndex((selected) => Math.min(selected, Math.max(0, next.length - 1)))
+      return next
+    })
+    setDirty(true)
+    setSaved(false)
+  }
+
+  function toggleAgent(agentId: string) {
+    if (!selectedTemplate) return
+    const agents = toggleItem(selectedTemplate.agents, agentId)
+    updateTemplate({ agents: agents.length > 0 ? agents : ['assistant'] })
+  }
+
+  function toggleKnowledgeBase(knowledgeId: string) {
+    if (!selectedTemplate) return
+    updateTemplate({ knowledge: toggleItem(selectedKnowledge, knowledgeId) })
+  }
+
+  async function applyTemplatesToExistingUsers() {
+    setApplying(true)
     setError('')
+    setApplyResult(null)
     try {
-      await api.patch(`admin/channels/${selectedChannel.id}`, {
-        json: { name: cleanName },
-      })
-      await refreshAll(selectedChannel.id)
-    } catch {
-      setError('频道保存失败')
+      if (dirty) {
+        setError('请先保存频道模板后再同步到已有用户')
+        return
+      }
+      const result = await api.post('admin/settings/channels/apply-templates').json<ApplyTemplatesResponse>()
+      setApplyResult(result)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : '同步频道模板失败')
     } finally {
-      setSaving(false)
+      setApplying(false)
     }
   }
 
-  async function setArchived(archived: boolean) {
-    if (!selectedChannel) return
+  async function saveTemplates() {
+    if (!dirty) return
     setSaving(true)
     setError('')
     try {
-      await api.patch(`admin/channels/${selectedChannel.id}`, { json: { archived } })
-      await refreshAll(selectedChannel.id)
-    } catch {
-      setError('归档状态更新失败')
-    } finally {
-      setSaving(false)
-    }
-  }
-
-  async function deleteChannel() {
-    if (!selectedChannel) return
-    const label = channelName(selectedChannel)
-    if (!window.confirm(`删除频道实例「${label}」？频道会从用户列表隐藏，消息和成员记录保留，可在管理后台恢复。`)) return
-    setSaving(true)
-    setError('')
-    try {
-      await api.delete(`admin/channels/${selectedChannel.id}`, { json: { reason: 'admin_delete' } })
-      await refreshAll(selectedChannel.id)
-    } catch {
-      setError('删除频道失败')
-    } finally {
-      setSaving(false)
-    }
-  }
-
-  async function restoreChannel() {
-    if (!selectedChannel) return
-    setSaving(true)
-    setError('')
-    try {
-      await api.post(`admin/channels/${selectedChannel.id}/restore`)
-      await refreshAll(selectedChannel.id)
-    } catch {
-      setError('恢复频道失败')
-    } finally {
-      setSaving(false)
-    }
-  }
-
-  async function addMembers() {
-    if (!selectedChannel || (!addUserId && !addAgentId)) return
-    setSaving(true)
-    setError('')
-    try {
-      await api.post(`admin/channels/${selectedChannel.id}/members`, {
+      const invalidJoinTemplate = templates.find((template) => template.type === 'join' && !template.channel_id?.trim())
+      if (invalidJoinTemplate) {
+        setError(`模板「${invalidJoinTemplate.name || '未命名模板'}」需要填写目标频道 ID`)
+        return
+      }
+      const cleanTemplates = normalizeTemplates(templates).map((template) => ({
+        ...template,
+        id: template.id || createTemplateId(),
+        channel_id: template.type === 'join' ? template.channel_id?.trim() : '',
+        name: template.name.trim() || '新频道模板',
+        description: template.description?.trim() || '',
+        icon: template.icon?.trim() || 'bot',
+        knowledge: (template.knowledge ?? []).filter((knowledgeId) => selectableKnowledgeIds.has(knowledgeId)),
+        welcome_message: template.welcome_message?.trim() || '',
+      }))
+      const savedSettings = await api.patch('admin/settings/channels', {
         json: {
-          user_ids: addUserId ? [addUserId] : [],
-          agent_ids: addAgentId ? [addAgentId] : [],
+          ...policy,
+          channel_templates: cleanTemplates,
         },
-      }).json<ChannelMemberInfo[]>()
-      await refreshAll(selectedChannel.id)
-    } catch {
-      setError('添加成员失败')
-    } finally {
-      setSaving(false)
-    }
-  }
-
-  async function updateUserRole(userId: string, role: string) {
-    if (!selectedChannel) return
-    setSaving(true)
-    setError('')
-    try {
-      await api.patch(`admin/channels/${selectedChannel.id}/members/users/${encodeURIComponent(userId)}`, { json: { role } })
-      await refreshAll(selectedChannel.id)
-    } catch {
-      setError('成员角色更新失败')
-    } finally {
-      setSaving(false)
-    }
-  }
-
-  async function updateAgentCoordinator(agentId: string, isCoordinator: boolean) {
-    if (!selectedChannel) return
-    setSaving(true)
-    setError('')
-    try {
-      await api.patch(`admin/channels/${selectedChannel.id}/members/agents/${encodeURIComponent(agentId)}`, {
-        json: { role: 'member', is_coordinator: isCoordinator },
+      }).json<ChannelSettingsResponse>()
+      const nextTemplates = normalizeTemplates(savedSettings.channel_templates)
+      setPolicy({
+        mode: savedSettings.mode || policy.mode,
+        default_agent_ids: savedSettings.default_agent_ids ?? policy.default_agent_ids,
+        max_channels_per_user: savedSettings.max_channels_per_user ?? policy.max_channels_per_user,
+        require_purpose: Boolean(savedSettings.require_purpose),
+        default_channel_type: savedSettings.default_channel_type || policy.default_channel_type,
       })
-      await refreshAll(selectedChannel.id)
-    } catch {
-      setError('Agent 状态更新失败')
+      setTemplates(nextTemplates)
+      setAvailableAgents(savedSettings.available_agents ?? availableAgents)
+      setSelectedIndex((current) => Math.min(current, Math.max(0, nextTemplates.length - 1)))
+      setDirty(false)
+      setSaved(true)
+      window.setTimeout(() => setSaved(false), 1800)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : '频道模板保存失败')
     } finally {
       setSaving(false)
     }
   }
 
-  async function removeMember(member: ChannelMemberInfo) {
-    if (!selectedChannel) return
-    const id = member.member_type === 'agent' ? member.agent_id : member.user_id
-    if (!id) return
-    setSaving(true)
-    setError('')
-    const kind = member.member_type === 'agent' ? 'agents' : 'users'
-    try {
-      await api.delete(`admin/channels/${selectedChannel.id}/members/${kind}/${encodeURIComponent(id)}`)
-      await refreshAll(selectedChannel.id)
-    } catch {
-      setError(member.member_type === 'agent' ? '移除 Agent 失败' : '移除用户失败')
-    } finally {
-      setSaving(false)
-    }
-  }
-
-  async function copyChannelId() {
-    if (!selectedChannel) return
-    try {
-      await navigator.clipboard.writeText(selectedChannel.id)
-      setCopied(true)
-      window.setTimeout(() => setCopied(false), 1500)
-    } catch {
-      setError('复制失败')
-    }
-  }
-
-  function openChannel() {
-    if (!selectedChannel) return
-    channelsStore.getState().setCurrentChannel(selectedChannel.id)
-    setActiveFeature('chat')
+  if (loading) {
+    return <div className="flex flex-1 items-center justify-center text-sm text-[#999]">加载中...</div>
   }
 
   return (
     <div className="flex h-full overflow-hidden bg-[#fafafa]">
-      <div className="flex min-w-0 flex-1 flex-col">
-        <div className="border-b border-border bg-white px-6 py-4">
-          <div className="flex flex-wrap items-center justify-between gap-3">
+      <div className="flex-1 overflow-y-auto">
+        <div className="mx-auto max-w-5xl space-y-6 p-8">
+          <div className="flex items-center justify-between">
             <div>
               <h1 className="text-xl font-bold text-[#1a1a1a]">频道管理</h1>
-              <p className="mt-1 text-sm text-muted-foreground">查看频道运行状态，维护成员、Agent 和基础配置。</p>
+              <p className="mt-1 text-sm text-muted-foreground">
+                {templates.length} 个频道模板
+                {applyResult && (
+                  <span className="ml-2">
+                    已同步 {applyResult.users_processed} 个用户，新增 {applyResult.channels_created} 个频道
+                  </span>
+                )}
+              </p>
             </div>
-            <Button variant="outline" onClick={() => void refreshAll()} disabled={loading || detailLoading}>
-              <RefreshCw className={cn('h-4 w-4', (loading || detailLoading) && 'animate-spin')} />
-              刷新
-            </Button>
+            <button
+              type="button"
+              onClick={() => void applyTemplatesToExistingUsers()}
+              disabled={applying || saving}
+              className="inline-flex h-9 items-center gap-2 rounded-lg border border-border bg-white px-3 text-sm font-medium text-[#181d26] transition-colors hover:bg-muted disabled:pointer-events-none disabled:opacity-50"
+            >
+              <RefreshCw className={cn('h-4 w-4', applying && 'animate-spin')} />
+              {applying ? '同步中...' : '同步到已有用户'}
+            </button>
           </div>
-          {error && (
-            <div className="mt-3 rounded-lg border border-[#aa2d00]/25 bg-[#fff4ef] px-3 py-2 text-sm text-[#aa2d00]">
-              {error}
-            </div>
-          )}
-        </div>
 
-        <div className="grid min-h-0 flex-1 grid-cols-1 lg:grid-cols-[minmax(360px,0.92fr)_minmax(420px,1.08fr)]">
-          <section className="min-h-0 border-r border-border bg-white">
-            <div className="border-b border-border p-4">
-              <div className="relative">
-                <Search className="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-                <Input
-                  value={query}
-                  onChange={(event) => setQuery(event.target.value)}
-                  placeholder="搜索频道、创建者或 ID"
-                  className="pl-8"
-                />
+          <div className="grid gap-6 lg:grid-cols-[280px_minmax(0,1fr)]">
+            <div className="overflow-hidden rounded-xl border border-border bg-white shadow-sm">
+              <div className="flex items-center justify-between border-b border-border px-5 py-4">
+                <h3 className="text-sm font-semibold text-[#1a1a1a]">频道模板</h3>
+                <button
+                  type="button"
+                  onClick={addTemplate}
+                  className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-border bg-white text-[#181d26] transition-colors hover:bg-muted"
+                  title="添加频道模板"
+                  aria-label="添加频道模板"
+                >
+                  <Plus className="h-4 w-4" />
+                </button>
               </div>
-            </div>
-            <div className="h-full overflow-y-auto pb-20">
-              {loading ? (
-                <div className="p-8 text-center text-sm text-muted-foreground">加载频道...</div>
-              ) : filteredChannels.length === 0 ? (
-                <div className="p-8 text-center text-sm text-muted-foreground">暂无匹配频道</div>
-              ) : (
-                <div className="divide-y divide-border">
-                  {filteredChannels.map((channel) => {
-                    const active = channel.id === selectedId
-                    const issues = channelIssues(channel)
-                    return (
-                      <button
-                        key={channel.id}
-                        type="button"
-                        onClick={() => setSelectedId(channel.id)}
-                        className={cn(
-                          'flex w-full flex-col gap-2 px-4 py-3 text-left transition-colors hover:bg-[#f8fafc]',
-                          active && 'bg-[#f2f4f7]',
-                        )}
-                      >
-                        <div className="flex min-w-0 items-center justify-between gap-3">
-                          <span className="min-w-0 truncate text-sm font-medium text-[#181d26]">{channelName(channel)}</span>
-                          <span className="shrink-0 font-mono text-xs text-muted-foreground">{shortID(channel.id)}</span>
-                        </div>
-                        <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
-                          <span>{channel.user_count ?? 0} 用户</span>
-                          <span>{channel.agent_count ?? 0} Agent</span>
-                          <span>{channel.message_count ?? 0} 消息</span>
-                        </div>
-                        {channel.last_message && (
-                          <p className="truncate text-xs text-[#555]">{channel.last_message}</p>
-                        )}
-                        <div className="flex flex-wrap items-center gap-1.5">
-                          {issues.length === 0 ? (
-                            <Badge variant="success" className="text-[10px] font-normal">正常</Badge>
-                          ) : issues.map((issue) => (
-                            <Badge key={issue} variant={issue === '已归档' || issue === '已删除' ? 'secondary' : 'warning'} className="text-[10px] font-normal">
-                              {issue}
-                            </Badge>
-                          ))}
-                        </div>
-                      </button>
-                    )
-                  })}
+              {error && (
+                <div className="mx-3 mt-3 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700">
+                  {error}
                 </div>
               )}
+              <div className="max-h-[640px] space-y-2 overflow-y-auto p-3">
+                {templates.length === 0 ? (
+                  <div className="rounded-lg border border-border p-3 text-xs leading-5 text-muted-foreground">
+                    暂无频道模板
+                  </div>
+                ) : templates.map((template, index) => (
+                  <div
+                    key={template.id || `${template.name}-${index}`}
+                    className={cn(
+                      'flex w-full items-center gap-2 rounded-lg border p-2 transition-colors',
+                      selectedIndex === index ? 'border-primary bg-primary/5' : 'border-border hover:bg-muted',
+                    )}
+                  >
+                    <button
+                      type="button"
+                      onClick={() => setSelectedIndex(index)}
+                      className="flex min-w-0 flex-1 items-center gap-3 rounded-md p-1 text-left"
+                    >
+                      <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-[#181d26]/10">
+                        <MessageSquare className="h-4 w-4 text-[#181d26]" />
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <div className="truncate text-sm font-medium text-[#1a1a1a]">{template.name || '未命名模板'}</div>
+                        <div className="mt-0.5 truncate text-xs text-muted-foreground">
+                          {template.type === 'join' ? '加入已有频道' : '创建频道'} · {template.agents.length} Agent
+                          {template.knowledge?.length ? ` · ${template.knowledge.length} 知识库` : ''}
+                        </div>
+                      </div>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => deleteTemplate(index)}
+                      className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-white hover:text-red-600"
+                      title="删除模板"
+                      aria-label="删除模板"
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </button>
+                  </div>
+                ))}
+              </div>
             </div>
-          </section>
 
-          <section className="min-h-0 overflow-y-auto">
-            {!selectedChannel ? (
-              <div className="flex h-full items-center justify-center text-sm text-muted-foreground">选择一个频道查看详情</div>
-            ) : detailLoading ? (
-              <div className="flex h-full items-center justify-center text-sm text-muted-foreground">加载详情...</div>
-            ) : (
-              <div className="space-y-5 p-6">
-                <div className="rounded-xl border border-border bg-white p-5 shadow-sm">
-                  <div className="flex flex-wrap items-start justify-between gap-3">
+            <div className="overflow-hidden rounded-xl border border-border bg-white shadow-sm">
+              {selectedTemplate ? (
+                <>
+                  <div className="flex items-center justify-between border-b border-border px-5 py-4">
                     <div className="min-w-0">
-                      <div className="flex items-center gap-2">
-                        <MessageSquare className="h-4 w-4 text-muted-foreground" />
-                        <h2 className="min-w-0 truncate text-lg font-semibold text-[#181d26]">{channelName(selectedChannel)}</h2>
-                      </div>
-                      <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
-                        <span>创建者：{selectedChannel.owner_name || selectedChannel.owner_email || '未知'}</span>
-                        <span>更新：{formatDate(selectedChannel.updated_at)}</span>
-                      </div>
+                      <h3 className="truncate text-sm font-semibold text-[#1a1a1a]">{selectedTemplate.name || '未命名模板'}</h3>
+                      <span className="text-xs text-muted-foreground">
+                        {selectedTemplate.type === 'join' ? '加入已有频道' : '创建频道'} · 默认 {selectedAgents.length} 个 Agent
+                      </span>
                     </div>
-                    <div className="flex flex-wrap items-center gap-2">
-                      <Button variant="outline" size="sm" onClick={() => void copyChannelId()}>
-                        {copied ? <Check className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />}
-                        {copied ? '已复制' : '复制 ID'}
-                      </Button>
-                      <Button variant="outline" size="sm" onClick={openChannel} disabled={selectedDeleted}>进入频道</Button>
-                    </div>
+                    <button
+                      type="button"
+                      onClick={() => void saveTemplates()}
+                      disabled={saving || !dirty}
+                      className="inline-flex h-9 items-center gap-2 rounded-lg bg-[#181d26] px-3 text-sm font-medium text-white transition-colors hover:bg-[#0d1218] disabled:pointer-events-none disabled:opacity-50"
+                    >
+                      <Save className="h-4 w-4" />
+                      {saving ? '保存中...' : saved ? '已保存' : '保存'}
+                    </button>
                   </div>
-                  {selectedIssues.length > 0 && (
-                    <div className="mt-4 flex flex-wrap gap-2">
-                      {selectedIssues.map((issue) => (
-                        <Badge key={issue} variant={issue === '已归档' || issue === '已删除' ? 'secondary' : 'warning'} className="font-normal">{issue}</Badge>
-                      ))}
-                    </div>
-                  )}
-                  <div className="mt-5 grid gap-3 sm:grid-cols-3">
-                    <Metric label="用户" value={userMembers.length} />
-                    <Metric label="Agent" value={agentMembers.length} />
-                    <Metric label="消息" value={selectedChannel.message_count ?? 0} />
-                  </div>
-                </div>
 
-                <div className="rounded-xl border border-border bg-white p-5 shadow-sm">
-                  <div className="mb-4 flex items-center justify-between">
-                    <h3 className="text-sm font-semibold text-[#181d26]">基础设置</h3>
-                    <Button size="sm" onClick={() => void saveChannel()} disabled={saving || selectedDeleted}>
-                      {saving ? '保存中...' : '保存'}
-                    </Button>
-                  </div>
-                  <div className="grid gap-4 sm:grid-cols-[1fr_auto]">
-                    <div className="space-y-2">
-                      <label className="text-xs font-medium text-[#555]">频道名称</label>
-                      <Input value={nameDraft} onChange={(event) => setNameDraft(event.target.value)} disabled={selectedDeleted} />
+                  <div className="space-y-5 p-5">
+                    <div className="grid gap-4 sm:grid-cols-2">
+                      <div>
+                        <label className="mb-1.5 block text-xs font-medium text-[#555]">模板名称</label>
+                        <Input value={selectedTemplate.name} onChange={(event) => updateTemplate({ name: event.target.value })} />
+                      </div>
+                      <div>
+                        <label className="mb-1.5 block text-xs font-medium text-[#555]">类型</label>
+                        <select
+                          value={selectedTemplate.type}
+                          onChange={(event) => updateTemplate({ type: event.target.value === 'join' ? 'join' : 'create' })}
+                          className="h-9 w-full rounded-lg border border-border bg-white px-3 text-sm text-[#1a1a1a] outline-none focus:border-[#9297a0] focus:ring-2 focus:ring-[#9297a0]/20"
+                        >
+                          <option value="create">创建新频道</option>
+                          <option value="join">加入已有频道</option>
+                        </select>
+                      </div>
                     </div>
-                    <div className="flex flex-wrap items-end gap-2">
-                      <Button
-                        variant={selectedArchived ? 'outline' : 'destructive'}
-                        onClick={() => void setArchived(!selectedArchived)}
-                        disabled={saving || selectedDeleted}
-                      >
-                        {selectedArchived ? '取消归档标记' : '标记归档'}
-                      </Button>
-                      {selectedDeleted ? (
-                        <Button variant="outline" onClick={() => void restoreChannel()} disabled={saving}>
-                          <RotateCcw className="h-4 w-4" />
-                          恢复频道
-                        </Button>
+
+                    {selectedTemplate.type === 'join' && (
+                      <div>
+                        <label className="mb-1.5 block text-xs font-medium text-[#555]">目标频道 ID</label>
+                        <Input value={selectedTemplate.channel_id ?? ''} onChange={(event) => updateTemplate({ channel_id: event.target.value })} />
+                      </div>
+                    )}
+
+                    <div>
+                      <label className="mb-1.5 block text-xs font-medium text-[#555]">描述</label>
+                      <Input value={selectedTemplate.description ?? ''} onChange={(event) => updateTemplate({ description: event.target.value })} />
+                    </div>
+
+                    <div>
+                      <label className="mb-1.5 block text-xs font-medium text-[#555]">欢迎消息</label>
+                      <textarea
+                        value={selectedTemplate.welcome_message ?? ''}
+                        onChange={(event) => updateTemplate({ welcome_message: event.target.value })}
+                        rows={4}
+                        className="w-full rounded-lg border border-border bg-white px-3 py-2 text-sm text-[#1a1a1a] outline-none focus:border-[#9297a0] focus:ring-2 focus:ring-[#9297a0]/20"
+                      />
+                    </div>
+
+                    <div className="space-y-3 rounded-lg border border-border bg-[#fafafa] p-3">
+                      <div className="flex items-center justify-between gap-3">
+                        <div>
+                          <div className="text-sm font-medium text-[#181d26]">默认 Agent</div>
+                          <div className="mt-0.5 text-xs text-muted-foreground">{templateAgents.map((item) => item.label).join('、') || 'assistant'}</div>
+                        </div>
+                        <Badge variant="secondary" className="shrink-0 text-[10px] font-normal">{selectedAgents.length}</Badge>
+                      </div>
+                      <div className="flex flex-wrap gap-2">
+                        {availableAgents.map((agent) => {
+                          const active = selectedAgents.includes(agent.id)
+                          return (
+                            <Button
+                              key={agent.id}
+                              type="button"
+                              variant={active ? 'default' : 'outline'}
+                              size="sm"
+                              onClick={() => toggleAgent(agent.id)}
+                            >
+                              {agent.name || agent.role || agent.id}
+                            </Button>
+                          )
+                        })}
+                      </div>
+                    </div>
+
+                    <div className="space-y-3 rounded-lg border border-border bg-[#fafafa] p-3">
+                      <div className="flex items-center justify-between gap-3">
+                        <div>
+                          <div className="text-sm font-medium text-[#181d26]">默认检索知识库</div>
+                          <div className="mt-0.5 text-xs text-muted-foreground">
+                            {templateKnowledgeBases.map((item) => item.label).join('、') || '仅使用频道知识库'}
+                          </div>
+                        </div>
+                        <Badge variant="secondary" className="shrink-0 text-[10px] font-normal">{selectedKnowledge.length}</Badge>
+                      </div>
+                      {availableKnowledgeBases.length === 0 ? (
+                        <div className="rounded-md border border-dashed border-border bg-white px-3 py-2 text-xs text-muted-foreground">
+                          暂无可选择的 App、组织或平台知识库
+                        </div>
                       ) : (
-                        <Button variant="destructive" onClick={() => void deleteChannel()} disabled={saving}>
-                          <Trash2 className="h-4 w-4" />
-                          删除频道
-                        </Button>
+                        <div className="flex flex-wrap gap-2">
+                          {availableKnowledgeBases.map((base) => {
+                            const active = selectedKnowledge.includes(base.id)
+                            return (
+                              <Button
+                                key={base.id}
+                                type="button"
+                                variant={active ? 'default' : 'outline'}
+                                size="sm"
+                                onClick={() => toggleKnowledgeBase(base.id)}
+                              >
+                                <BookOpen className="mr-1.5 h-3.5 w-3.5" />
+                                {knowledgeScopeLabel(base.scope_type)} · {base.display_name || base.name}
+                              </Button>
+                            )
+                          })}
+                        </div>
                       )}
                     </div>
                   </div>
-                  <p className="mt-2 text-xs text-muted-foreground">归档是管理标记；删除会隐藏频道实例并停止该频道 Agent，可在这里恢复。</p>
-                </div>
-
-                <div className="rounded-xl border border-border bg-white p-5 shadow-sm">
-                  <div className="mb-4 flex items-center gap-2">
-                    <Users className="h-4 w-4 text-muted-foreground" />
-                    <h3 className="text-sm font-semibold text-[#181d26]">用户成员</h3>
-                  </div>
-                  <div className="mb-4 grid gap-2 sm:grid-cols-[1fr_auto]">
-                    <select
-                      value={addUserId}
-                      onChange={(event) => setAddUserId(event.target.value)}
-                      disabled={selectedDeleted}
-                      className="h-8 rounded-lg border border-border bg-white px-2.5 text-sm outline-none focus:border-[#9297a0] disabled:cursor-not-allowed disabled:bg-muted"
-                    >
-                      <option value="">选择要加入的用户</option>
-                      {availableUsers.map((user) => (
-                        <option key={user.id} value={user.id}>{user.name} · {user.email}</option>
-                      ))}
-                    </select>
-                    <Button variant="outline" onClick={() => void addMembers()} disabled={!addUserId || saving || selectedDeleted}>
-                      <UserPlus className="h-4 w-4" />
-                      添加用户
-                    </Button>
-                  </div>
-                  <div className="divide-y divide-border rounded-lg border border-border">
-                    {userMembers.length === 0 ? (
-                      <div className="p-4 text-center text-sm text-muted-foreground">暂无用户成员</div>
-                    ) : userMembers.map((member) => (
-                      <MemberRow
-                        key={member.id}
-                        member={member}
-                        onRoleChange={(role) => member.user_id && void updateUserRole(member.user_id, role)}
-                        onRemove={() => void removeMember(member)}
-                        saving={saving || selectedDeleted}
-                      />
-                    ))}
-                  </div>
-                </div>
-
-                <div className="rounded-xl border border-border bg-white p-5 shadow-sm">
-                  <div className="mb-4 flex items-center gap-2">
-                    <Bot className="h-4 w-4 text-muted-foreground" />
-                    <h3 className="text-sm font-semibold text-[#181d26]">频道 Agent</h3>
-                  </div>
-                  <div className="mb-4 grid gap-2 sm:grid-cols-[1fr_auto]">
-                    <select
-                      value={addAgentId}
-                      onChange={(event) => setAddAgentId(event.target.value)}
-                      disabled={selectedDeleted}
-                      className="h-8 rounded-lg border border-border bg-white px-2.5 text-sm outline-none focus:border-[#9297a0] disabled:cursor-not-allowed disabled:bg-muted"
-                    >
-                      <option value="">选择要加入的 Agent</option>
-                      {availableAgents.map((agent) => (
-                        <option key={agent.id} value={agent.id}>{agent.name || agent.id} · {agent.id}</option>
-                      ))}
-                    </select>
-                    <Button variant="outline" onClick={() => void addMembers()} disabled={!addAgentId || saving || selectedDeleted}>
-                      <Bot className="h-4 w-4" />
-                      添加 Agent
-                    </Button>
-                  </div>
-                  <div className="divide-y divide-border rounded-lg border border-border">
-                    {agentMembers.length === 0 ? (
-                      <div className="p-4 text-center text-sm text-muted-foreground">暂无 Agent</div>
-                    ) : agentMembers.map((member) => (
-                      <AgentRow
-                        key={member.id}
-                        member={member}
-                        onCoordinatorChange={(checked) => member.agent_id && void updateAgentCoordinator(member.agent_id, checked)}
-                        onRemove={() => void removeMember(member)}
-                        saving={saving || selectedDeleted}
-                      />
-                    ))}
-                  </div>
-                </div>
-              </div>
-            )}
-          </section>
+                </>
+              ) : (
+                <div className="flex h-80 items-center justify-center text-sm text-muted-foreground">选择一个频道模板</div>
+              )}
+            </div>
+          </div>
         </div>
-      </div>
-    </div>
-  )
-}
-
-function Metric({ label, value }: { label: string; value: number }) {
-  return (
-    <div className="rounded-lg border border-border bg-[#f8fafc] px-3 py-2">
-      <div className="text-xs text-muted-foreground">{label}</div>
-      <div className="mt-1 text-lg font-semibold text-[#181d26]">{value}</div>
-    </div>
-  )
-}
-
-function MemberRow({ member, saving, onRoleChange, onRemove }: {
-  member: ChannelMemberInfo
-  saving: boolean
-  onRoleChange: (role: string) => void
-  onRemove: () => void
-}) {
-  return (
-    <div className="flex flex-wrap items-center justify-between gap-3 px-3 py-2">
-      <div className="min-w-0">
-        <div className="flex items-center gap-2">
-          <span className="truncate text-sm font-medium text-[#181d26]">{memberName(member)}</span>
-          <Badge variant={roleBadgeVariant(member.role)} className="text-[10px] font-normal">{roleLabel(member.role)}</Badge>
-        </div>
-        <div className="mt-0.5 truncate text-xs text-muted-foreground">{member.user_id}</div>
-      </div>
-      <div className="flex items-center gap-2">
-        <select
-          value={member.role}
-          onChange={(event) => onRoleChange(event.target.value)}
-          disabled={saving}
-          className="h-7 rounded-md border border-border bg-white px-2 text-xs outline-none focus:border-[#9297a0]"
-        >
-          <option value="owner">Owner</option>
-          <option value="admin">管理员</option>
-          <option value="member">成员</option>
-        </select>
-        <Button variant="ghost" size="icon-sm" onClick={onRemove} disabled={saving} title="移除成员">
-          <X className="h-3.5 w-3.5 text-muted-foreground" />
-        </Button>
-      </div>
-    </div>
-  )
-}
-
-function AgentRow({ member, saving, onCoordinatorChange, onRemove }: {
-  member: ChannelMemberInfo
-  saving: boolean
-  onCoordinatorChange: (checked: boolean) => void
-  onRemove: () => void
-}) {
-  return (
-    <div className="flex flex-wrap items-center justify-between gap-3 px-3 py-2">
-      <div className="min-w-0">
-        <div className="flex items-center gap-2">
-          <span className="truncate text-sm font-medium text-[#181d26]">{memberName(member)}</span>
-          {member.is_coordinator && <Badge variant="secondary" className="text-[10px] font-normal">协调者</Badge>}
-        </div>
-        <div className="mt-0.5 truncate text-xs text-muted-foreground">{member.agent_id}</div>
-      </div>
-      <div className="flex items-center gap-3">
-        <label className="flex items-center gap-1.5 text-xs text-[#555]">
-          <input
-            type="checkbox"
-            checked={member.is_coordinator}
-            onChange={(event) => onCoordinatorChange(event.target.checked)}
-            disabled={saving}
-            className="h-4 w-4 rounded border-border"
-          />
-          协调者
-        </label>
-        <Button variant="ghost" size="icon-sm" onClick={onRemove} disabled={saving} title="移除 Agent">
-          <X className="h-3.5 w-3.5 text-muted-foreground" />
-        </Button>
       </div>
     </div>
   )
