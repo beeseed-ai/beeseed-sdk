@@ -22,8 +22,34 @@ const tabs = [
 
 type TabId = (typeof tabs)[number]['id']
 
+const ADMIN_TAB_STORAGE_KEY = 'beeseed_admin_active_tab'
+const tabIds = new Set<TabId>(tabs.map((tab) => tab.id))
+
+function isTabId(value: string | null): value is TabId {
+  return value !== null && tabIds.has(value as TabId)
+}
+
+function getInitialAdminTab(): TabId {
+  if (typeof window === 'undefined') return 'agents'
+  try {
+    const saved = window.localStorage.getItem(ADMIN_TAB_STORAGE_KEY)
+    if (isTabId(saved)) return saved
+  } catch {
+    // Ignore storage failures; the default tab is still stable.
+  }
+  return 'agents'
+}
+
 export function AdminPanel() {
-  const [activeTab, setActiveTab] = useState<TabId>('agents')
+  const [activeTab, setActiveTab] = useState<TabId>(getInitialAdminTab)
+
+  useEffect(() => {
+    try {
+      window.localStorage.setItem(ADMIN_TAB_STORAGE_KEY, activeTab)
+    } catch {
+      // Storage can be unavailable in private or embedded contexts.
+    }
+  }, [activeTab])
 
   return (
     <div className="flex-1 flex flex-col overflow-hidden">
