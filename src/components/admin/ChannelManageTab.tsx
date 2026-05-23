@@ -135,7 +135,7 @@ function toggleItem(items: string[], item: string) {
 }
 
 export function ChannelManageTab() {
-  const { api } = useBeeSeedContext()
+  const { api, channelsStore } = useBeeSeedContext()
   const [policy, setPolicy] = useState(DEFAULT_POLICY)
   const [templates, setTemplates] = useState<ChannelTemplate[]>([])
   const [availableAgents, setAvailableAgents] = useState<AgentTemplateOption[]>([])
@@ -261,6 +261,7 @@ export function ChannelManageTab() {
       }
       const result = await api.post('admin/settings/channels/apply-templates').json<ApplyTemplatesResponse>()
       setApplyResult(result)
+      void channelsStore.getState().fetchChannels()
     } catch (err) {
       setError(err instanceof Error ? err.message : '同步频道模板失败')
     } finally {
