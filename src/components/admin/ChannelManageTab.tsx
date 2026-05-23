@@ -51,6 +51,7 @@ interface KnowledgeBasesResponse {
 interface ApplyTemplatesResponse {
   users_processed: number
   channels_created: number
+  channels_deleted?: number
   members_joined: number
   failed: number
 }
@@ -331,7 +332,7 @@ export function ChannelManageTab() {
                 {templates.length} 个频道模板
                 {applyResult && (
                   <span className="ml-2">
-                    已同步 {applyResult.users_processed} 个用户，新增 {applyResult.channels_created} 个频道
+                    已同步 {applyResult.users_processed} 个用户，新增 {applyResult.channels_created} 个频道，删除 {applyResult.channels_deleted ?? 0} 个频道
                   </span>
                 )}
               </p>
