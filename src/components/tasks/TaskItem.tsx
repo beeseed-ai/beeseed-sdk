@@ -12,6 +12,34 @@ const STATUS_CONFIG = {
   blocked: { icon: Ban, color: 'text-amber-500', label: '阻塞', variant: 'warning' as const },
 }
 
+const TASK_TYPE_CONFIG = {
+  manual: {
+    label: '手动',
+    title: '手动任务',
+    className: 'border-[#9297a0]/40 bg-[#f8fafc] text-[#41454d]',
+  },
+  agent: {
+    label: 'Agent',
+    title: '即时 Agent 任务',
+    className: 'border-[#458fff]/30 bg-[#458fff]/10 text-[#254fad]',
+  },
+  once: {
+    label: '计划',
+    title: '一次性计划任务',
+    className: 'border-amber-300/60 bg-amber-50 text-amber-800',
+  },
+  recurring: {
+    label: '定时',
+    title: '周期定时任务实例',
+    className: 'border-emerald-300/60 bg-emerald-50 text-emerald-800',
+  },
+  dependency: {
+    label: '依赖',
+    title: '多步骤依赖任务',
+    className: 'border-[#aa2d00]/25 bg-[#aa2d00]/10 text-[#aa2d00]',
+  },
+} as const
+
 interface Props {
   task: Task
   onClick?: () => void
@@ -30,6 +58,7 @@ export function TaskItem({ task, onClick, onDelete, assignedLabel, className }: 
       ? { icon: Clock, color: 'text-muted-foreground', label: '待分配', variant: 'outline' as const }
     : config
   const Icon = displayConfig.icon
+  const typeConfig = getTaskTypeConfig(task)
 
   return (
     <div className={cn('group mb-2 flex items-start gap-3 rounded-lg border border-border bg-white p-3 transition-colors hover:bg-muted', className)}>
@@ -37,7 +66,10 @@ export function TaskItem({ task, onClick, onDelete, assignedLabel, className }: 
         <Icon className={cn('w-4 h-4', config.color)} />
       </button>
       <div className="flex-1 min-w-0">
-        <button type="button" onClick={onClick} className="block w-full text-left text-sm truncate">{task.title}</button>
+        <div className="flex min-w-0 items-center gap-2">
+          <TaskTypeBadge config={typeConfig} />
+          <button type="button" onClick={onClick} className="block min-w-0 flex-1 truncate text-left text-sm">{task.title}</button>
+        </div>
         <div className="flex items-center gap-2 mt-0.5">
           {(assignedLabel || task.assigned_name || task.assigned_agent_id) && (
             <span className="text-[10px] text-muted-foreground">@{assignedLabel || task.assigned_name || task.assigned_agent_id}</span>
@@ -74,5 +106,33 @@ export function TaskItem({ task, onClick, onDelete, assignedLabel, className }: 
         </Button>
       )}
     </div>
+  )
+}
+
+function getTaskTypeConfig(task: Task) {
+  if (task.scheduler_state === 'pending_deps' || (task.depends_on_task_ids && task.depends_on_task_ids.length > 0)) {
+    return TASK_TYPE_CONFIG.dependency
+  }
+  if (task.parent_task_id && task.schedule_id) {
+    return TASK_TYPE_CONFIG.recurring
+  }
+  if (task.schedule_id || task.scheduler_state === 'waiting_time' || task.scheduled_start_at) {
+    return TASK_TYPE_CONFIG.once
+  }
+  if (task.assigned_agent_id) {
+    return TASK_TYPE_CONFIG.agent
+  }
+  return TASK_TYPE_CONFIG.manual
+}
+
+function TaskTypeBadge({ config }: { config: typeof TASK_TYPE_CONFIG[keyof typeof TASK_TYPE_CONFIG] }) {
+  return (
+    <Badge
+      variant="outline"
+      title={config.title}
+      className={cn('h-5 shrink-0 px-1.5 py-0 text-[10px] font-medium leading-none', config.className)}
+    >
+      {config.label}
+    </Badge>
   )
 }

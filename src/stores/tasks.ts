@@ -16,7 +16,10 @@ export type CreateScheduledTaskInput = {
   catch_up_policy?: TaskSchedule['catch_up_policy']
 }
 
-export type UpdateTaskInput = Partial<Omit<Task, 'due_at' | 'scheduled_start_at'>> & {
+export type UpdateTaskInput = Partial<Omit<Task, 'due_at' | 'scheduled_start_at' | 'assigned_type' | 'assigned_user_id' | 'assigned_agent_id'>> & {
+  assigned_type?: Task['assigned_type'] | null
+  assigned_user_id?: string | null
+  assigned_agent_id?: string | null
   due_at?: string | null
   scheduled_start_at?: string | null
 }
@@ -285,6 +288,9 @@ function applyTaskPatch(task: Task, patch: UpdateTaskInput): Task {
   const next = { ...task, ...patch } as Task
   if (patch.due_at === null) delete next.due_at
   if (patch.scheduled_start_at === null) delete next.scheduled_start_at
+  if (patch.assigned_type === null) delete next.assigned_type
+  if (patch.assigned_user_id === null) delete next.assigned_user_id
+  if (patch.assigned_agent_id === null) delete next.assigned_agent_id
   return next
 }
 

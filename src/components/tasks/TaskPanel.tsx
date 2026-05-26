@@ -3,6 +3,7 @@ import { Activity, AlertTriangle, CalendarClock, CheckCircle2, ChevronDown, Chev
 import { useTasks } from '../../hooks/use-tasks.js'
 import { useChannels } from '../../hooks/use-channels.js'
 import type { CalendarEvent, ChannelMemberInfo, Task, TaskSchedulerMetrics } from '../../core/types.js'
+import type { CreateScheduledTaskInput } from '../../stores/tasks.js'
 import { TaskItem } from './TaskItem.js'
 import { CreateTaskDialog } from './CreateTaskDialog.js'
 import { CreateScheduledTaskDialog } from './CreateScheduledTaskDialog.js'
@@ -67,7 +68,11 @@ export function TaskPanel({ channelId, members = [], createTaskRequest = 0 }: Pr
   })).filter(({ tasks: pTasks }) => pTasks.length > 0)
   const orphanTasks = tasks.filter((t) => !t.project_id)
   const selectedTask = selectedTaskId ? tasks.find((task) => task.id === selectedTaskId) || null : null
-  const selectedEvents = calendarEvents.filter((event) => isSameLocalDay(new Date(event.start_at), selectedDate))
+  const oneTimeCalendarEvents = calendarEvents.filter((event) => !event.is_recurring)
+  const recurringSchedules = scheduledTasks.filter((schedule) => schedule.kind === 'recurring')
+  const selectedEvents = oneTimeCalendarEvents
+    .filter((event) => isSameLocalDay(new Date(event.start_at), selectedDate))
+    .sort((a, b) => new Date(a.start_at).getTime() - new Date(b.start_at).getTime())
   const openTask = (task: Task) => setSelectedTaskId(task.id)
   const openEventTask = (event: CalendarEvent) => {
     if (!event.task_id) return
@@ -92,7 +97,7 @@ export function TaskPanel({ channelId, members = [], createTaskRequest = 0 }: Pr
   const handleCreateScheduledTask = async (data: Parameters<typeof createScheduledTask>[0]) => {
     const created = await createScheduledTask(data)
     if (created) {
-      setActiveTab('schedules')
+      setActiveTab(isRecurringScheduleInput(data) ? 'schedules' : 'calendar')
       await fetchScheduledTasks()
       await refreshCalendarRange()
       await fetchMetrics()
@@ -130,9 +135,9 @@ export function TaskPanel({ channelId, members = [], createTaskRequest = 0 }: Pr
         <div className="border-b border-border px-3 py-2">
           <TaskMetricsStrip metrics={metrics} loading={metricsLoading} />
           <TabsList className="w-full">
-            <TabsTrigger value="tasks" className="flex-1 gap-1.5"><CheckCircle2 className="w-3.5 h-3.5" />任务清单</TabsTrigger>
-            <TabsTrigger value="calendar" className="flex-1 gap-1.5"><CalendarClock className="w-3.5 h-3.5" />日历</TabsTrigger>
-            <TabsTrigger value="schedules" className="flex-1 gap-1.5"><Repeat2 className="w-3.5 h-3.5" />自动任务</TabsTrigger>
+            <TabsTrigger value="tasks" className="flex-1 gap-1.5"><CheckCircle2 className="w-3.5 h-3.5" />任务清单<TabCountBadge count={tasks.length} tone="focus" /></TabsTrigger>
+            <TabsTrigger value="calendar" className="flex-1 gap-1.5"><CalendarClock className="w-3.5 h-3.5" />日历<TabCountBadge count={oneTimeCalendarEvents.length} tone="calendar" /></TabsTrigger>
+            <TabsTrigger value="schedules" className="flex-1 gap-1.5"><Repeat2 className="w-3.5 h-3.5" />重复任务<TabCountBadge count={recurringSchedules.length} tone="repeat" /></TabsTrigger>
           </TabsList>
         </div>
 
@@ -166,21 +171,33 @@ export function TaskPanel({ channelId, members = [], createTaskRequest = 0 }: Pr
           )}
         </TabsContent>
 
-        <TabsContent value="calendar" className="flex-1 overflow-y-auto p-4">
+        <TabsContent value="calendar" className="flex-1 overflow-y-auto bg-[#fbfcfd] p-3 sm:p-5">
           <CalendarMonth
             month={calendarMonth}
             selectedDate={selectedDate}
-            events={calendarEvents}
+            events={oneTimeCalendarEvents}
             onSelectDate={setSelectedDate}
             onPreviousMonth={() => setCalendarMonth((value) => new Date(value.getFullYear(), value.getMonth() - 1, 1))}
             onNextMonth={() => setCalendarMonth((value) => new Date(value.getFullYear(), value.getMonth() + 1, 1))}
+            onToday={() => {
+              const today = startOfDay(new Date())
+              setCalendarMonth(startOfMonth(today))
+              setSelectedDate(today)
+            }}
           />
-          <div className="mt-3 border-t border-border pt-2">
-            <div className="px-1 py-1 text-xs font-medium text-muted-foreground">{formatDayTitle(selectedDate)}</div>
+          <div className="mt-4 rounded-lg border border-border bg-white px-3 py-3 shadow-sm">
+            <div className="flex flex-wrap items-center justify-between gap-2 border-b border-border pb-2">
+              <div>
+                <div className="text-sm font-semibold text-[#181d26]">{formatDayTitle(selectedDate)}</div>
+                <div className="mt-0.5 text-xs text-muted-foreground">
+                  {selectedEvents.length > 0 ? `${selectedEvents.length} 个日程` : '没有安排'}
+                </div>
+              </div>
+            </div>
             {selectedEvents.length === 0 ? (
-              <div className="px-1 py-3 text-sm text-muted-foreground">当天无任务</div>
+              <div className="py-8 text-center text-sm text-muted-foreground">当天无任务</div>
             ) : (
-              <div className="space-y-1">
+              <div className="mt-3 space-y-2">
                 {selectedEvents.map((event) => (
                   <CalendarEventRow
                     key={event.id}
@@ -196,11 +213,11 @@ export function TaskPanel({ channelId, members = [], createTaskRequest = 0 }: Pr
         <TabsContent value="schedules" className="flex-1 overflow-y-auto p-3">
           {schedulesLoading ? (
             <div className="text-center text-sm text-muted-foreground py-8">加载中...</div>
-          ) : scheduledTasks.length === 0 ? (
-            <div className="text-center text-sm text-muted-foreground py-8">暂无自动任务</div>
+          ) : recurringSchedules.length === 0 ? (
+            <div className="text-center text-sm text-muted-foreground py-8">暂无重复任务</div>
           ) : (
             <div className="space-y-1">
-              {scheduledTasks.map((schedule) => (
+              {recurringSchedules.map((schedule) => (
                 <div key={schedule.id} className="rounded-md px-2 py-2 hover:bg-muted/50">
                   <div className="flex items-start justify-between gap-2">
                     <div className="min-w-0">
@@ -329,6 +346,25 @@ function ChannelSwitcher({
   )
 }
 
+function TabCountBadge({ count, tone }: { count: number; tone: 'focus' | 'calendar' | 'repeat' }) {
+  return (
+    <span
+      className={cn(
+        'ml-1 inline-flex h-4 min-w-4 items-center justify-center rounded-full border px-1 text-[10px] font-semibold leading-none',
+        tone === 'focus' && 'border-[#9297a0]/45 bg-[#181d26] text-white',
+        tone === 'calendar' && 'border-amber-200 bg-amber-50 text-amber-800',
+        tone === 'repeat' && 'border-emerald-200 bg-emerald-50 text-emerald-800',
+      )}
+    >
+      {count}
+    </span>
+  )
+}
+
+function isRecurringScheduleInput(data: CreateScheduledTaskInput) {
+  return Boolean(data.cron_expr?.trim() || data.recurrence_rule?.trim())
+}
+
 function CalendarMonth({
   month,
   selectedDate,
@@ -336,6 +372,7 @@ function CalendarMonth({
   onSelectDate,
   onPreviousMonth,
   onNextMonth,
+  onToday,
 }: {
   month: Date
   selectedDate: Date
@@ -343,23 +380,30 @@ function CalendarMonth({
   onSelectDate: (date: Date) => void
   onPreviousMonth: () => void
   onNextMonth: () => void
+  onToday: () => void
 }) {
   const range = getCalendarRange(month)
 
   return (
-    <div>
-      <div className="mb-3 flex items-center justify-between">
-        <Button size="icon-sm" variant="ghost" title="上个月" onClick={onPreviousMonth}>
-          <ChevronLeft className="w-4 h-4" />
-        </Button>
-        <div className="text-sm font-medium">{month.toLocaleDateString('zh-CN', { year: 'numeric', month: 'long' })}</div>
-        <Button size="icon-sm" variant="ghost" title="下个月" onClick={onNextMonth}>
-          <ChevronRight className="w-4 h-4" />
-        </Button>
+    <div className="rounded-lg border border-border bg-white shadow-sm">
+      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border px-3 py-3 sm:px-4">
+        <div className="flex items-center gap-2">
+          <Button size="icon-sm" variant="ghost" title="上个月" onClick={onPreviousMonth}>
+            <ChevronLeft className="w-4 h-4" />
+          </Button>
+          <Button size="icon-sm" variant="ghost" title="下个月" onClick={onNextMonth}>
+            <ChevronRight className="w-4 h-4" />
+          </Button>
+        </div>
+        <div className="min-w-[10rem] text-center">
+          <div className="text-lg font-semibold text-[#181d26]">{formatMonthTitle(month)}</div>
+          <div className="text-xs text-muted-foreground">点击日期查看当天任务</div>
+        </div>
+        <Button size="sm" variant="outline" onClick={onToday}>今天</Button>
       </div>
       <div className="grid grid-cols-7 border-l border-t border-border">
         {WEEKDAYS.map((day) => (
-          <div key={day} className="border-r border-b border-border bg-muted/40 py-1 text-center text-[10px] font-medium text-muted-foreground">
+          <div key={day} className="border-r border-b border-border bg-[#f8fafc] py-2 text-center text-xs font-semibold text-[#41454d]">
             {day}
           </div>
         ))}
@@ -367,34 +411,45 @@ function CalendarMonth({
           const dayEvents = events.filter((event) => isSameLocalDay(new Date(event.start_at), date))
           const inMonth = date.getMonth() === month.getMonth()
           const selected = isSameLocalDay(date, selectedDate)
+          const today = isSameLocalDay(date, new Date())
           return (
             <button
               key={date.toISOString()}
               type="button"
               onClick={() => onSelectDate(date)}
+              aria-label={`${formatDayTitle(date)}，${dayEvents.length} 个日程`}
               className={cn(
-                'min-h-[76px] border-r border-b border-border p-1 text-left align-top transition-colors hover:bg-muted/40',
-                !inMonth && 'bg-muted/20 text-muted-foreground/50',
-                selected && 'bg-primary/5 ring-1 ring-inset ring-primary/30',
+                'min-h-[112px] border-r border-b border-border bg-white p-2 text-left align-top transition-colors hover:bg-[#f8fafc] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#9297a0]/45 sm:min-h-[124px]',
+                !inMonth && 'bg-[#fafafa] text-muted-foreground/50',
+                selected && 'bg-[#f5e9d4]/45 ring-2 ring-inset ring-[#181d26]',
               )}
             >
-              <div className="mb-1 flex items-center justify-between">
-                <span className={cn('text-[11px]', isSameLocalDay(date, new Date()) && 'font-semibold text-primary')}>{date.getDate()}</span>
-                {dayEvents.length > 0 && <span className="size-1.5 rounded-full bg-primary" />}
+              <div className="mb-2 flex items-center justify-between gap-2">
+                <span
+                  className={cn(
+                    'inline-flex h-6 min-w-6 items-center justify-center rounded-full px-1 text-sm font-medium text-[#181d26]',
+                    !inMonth && 'text-muted-foreground/50',
+                    today && 'bg-[#181d26] text-white',
+                  )}
+                >
+                  {date.getDate()}
+                </span>
+                {dayEvents.length > 0 && (
+                  <span className="rounded-full bg-[#181d26] px-1.5 py-0.5 text-[10px] font-medium leading-none text-white">
+                    {dayEvents.length}
+                  </span>
+                )}
               </div>
-              <div className="space-y-1">
+              <div className="space-y-1.5">
                 {dayEvents.slice(0, 2).map((event) => (
                   <div
                     key={event.id}
-                    className={cn(
-                      'truncate rounded-sm px-1 py-0.5 text-[10px] leading-3',
-                      event.is_recurring ? 'bg-primary/10 text-primary' : 'bg-muted text-foreground',
-                    )}
+                    className={cn('truncate rounded-md border px-2 py-1 text-xs font-medium leading-4', getCalendarEventClass(event))}
                   >
                     {event.title}
                   </div>
                 ))}
-                {dayEvents.length > 2 && <div className="text-[10px] text-muted-foreground">+{dayEvents.length - 2}</div>}
+                {dayEvents.length > 2 && <div className="px-2 text-xs font-medium text-muted-foreground">+{dayEvents.length - 2} 更多</div>}
               </div>
             </button>
           )
@@ -407,13 +462,18 @@ function CalendarMonth({
 function CalendarEventRow({ event, onOpenTask }: { event: CalendarEvent; onOpenTask?: () => void }) {
   const content = (
     <>
-      <CalendarClock className="w-4 h-4 mt-0.5 text-muted-foreground shrink-0" />
+      <div className={cn('mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-md border', getCalendarEventIconClass(event))}>
+        <CalendarClock className="h-4 w-4" />
+      </div>
       <div className="min-w-0 flex-1">
-        <div className="truncate text-sm">{event.title}</div>
-        <div className="mt-1 flex items-center gap-2">
-          <span className="text-[10px] text-muted-foreground">{formatDateTime(event.start_at)}</span>
-          {event.is_recurring && <Badge variant="outline" className="text-[10px] px-1.5 py-0">重复</Badge>}
-          {event.type === 'projected_occurrence' && <Badge variant="outline" className="text-[10px] px-1.5 py-0">预计</Badge>}
+        <div className="truncate text-sm font-medium text-[#181d26]">{event.title}</div>
+        <div className="mt-1.5 flex flex-wrap items-center gap-2">
+          <span className="text-xs text-muted-foreground">{formatDateTime(event.start_at)}</span>
+          {event.is_recurring && <Badge variant="outline" className="px-1.5 py-0 text-[10px]">重复</Badge>}
+          {event.type === 'projected_occurrence' && <Badge variant="outline" className="px-1.5 py-0 text-[10px]">预计</Badge>}
+          <Badge variant="outline" className={cn('px-1.5 py-0 text-[10px]', getCalendarStatusClass(event.status))}>
+            {formatEventStatus(event.status)}
+          </Badge>
         </div>
       </div>
     </>
@@ -421,17 +481,77 @@ function CalendarEventRow({ event, onOpenTask }: { event: CalendarEvent; onOpenT
 
   if (onOpenTask) {
     return (
-      <button type="button" onClick={onOpenTask} className="flex w-full items-start gap-2 rounded-md px-2 py-2 text-left hover:bg-muted/50">
+      <button type="button" onClick={onOpenTask} className="flex w-full items-start gap-3 rounded-md border border-border bg-background px-3 py-3 text-left transition-colors hover:bg-[#f8fafc] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#9297a0]/40">
         {content}
       </button>
     )
   }
 
   return (
-    <div className="flex items-start gap-2 rounded-md px-2 py-2 hover:bg-muted/50">
+    <div className="flex items-start gap-3 rounded-md border border-border bg-background px-3 py-3">
       {content}
     </div>
   )
+}
+
+function getCalendarEventClass(event: CalendarEvent) {
+  if (event.is_recurring) {
+    return 'border-emerald-200 bg-emerald-50 text-emerald-900'
+  }
+  if (event.type === 'projected_occurrence') {
+    return 'border-[#458fff]/30 bg-[#458fff]/10 text-[#254fad]'
+  }
+  switch (event.status) {
+  case 'done':
+    return 'border-green-200 bg-green-50 text-green-900'
+  case 'failed':
+    return 'border-red-200 bg-red-50 text-red-900'
+  case 'blocked':
+    return 'border-amber-200 bg-amber-50 text-amber-900'
+  default:
+    return 'border-[#dddddd] bg-[#f8fafc] text-[#181d26]'
+  }
+}
+
+function getCalendarEventIconClass(event: CalendarEvent) {
+  if (event.is_recurring) return 'border-emerald-200 bg-emerald-50 text-emerald-800'
+  if (event.type === 'projected_occurrence') return 'border-[#458fff]/30 bg-[#458fff]/10 text-[#254fad]'
+  if (event.status === 'done') return 'border-green-200 bg-green-50 text-green-800'
+  if (event.status === 'failed') return 'border-red-200 bg-red-50 text-red-800'
+  if (event.status === 'blocked') return 'border-amber-200 bg-amber-50 text-amber-800'
+  return 'border-[#dddddd] bg-[#f8fafc] text-[#41454d]'
+}
+
+function getCalendarStatusClass(status: string) {
+  switch (status) {
+  case 'done':
+    return 'border-green-200 bg-green-50 text-green-800'
+  case 'failed':
+    return 'border-red-200 bg-red-50 text-red-800'
+  case 'blocked':
+    return 'border-amber-200 bg-amber-50 text-amber-800'
+  case 'in_progress':
+    return 'border-[#458fff]/30 bg-[#458fff]/10 text-[#254fad]'
+  default:
+    return 'border-[#dddddd] bg-[#f8fafc] text-[#41454d]'
+  }
+}
+
+function formatEventStatus(status: string) {
+  switch (status) {
+  case 'pending':
+    return '待处理'
+  case 'in_progress':
+    return '进行中'
+  case 'done':
+    return '已完成'
+  case 'failed':
+    return '失败'
+  case 'blocked':
+    return '阻塞'
+  default:
+    return status || '未开始'
+  }
 }
 
 function getCalendarRange(month: Date) {
@@ -463,6 +583,10 @@ function isSameLocalDay(a: Date, b: Date) {
 
 function formatDayTitle(value: Date) {
   return value.toLocaleDateString('zh-CN', { month: 'long', day: 'numeric', weekday: 'long' })
+}
+
+function formatMonthTitle(value: Date) {
+  return value.toLocaleDateString('zh-CN', { year: 'numeric', month: 'long' })
 }
 
 function formatDateTime(value?: string) {

@@ -187,9 +187,10 @@ export function TaskDetailSheet({ channelId, task, members, channelName, open, o
               <select
                 value={task.assigned_agent_id || ''}
                 onChange={(event) => {
+                  const agentID = event.target.value
                   void updateTask(task.id, {
-                    assigned_agent_id: event.target.value || undefined,
-                    assigned_type: event.target.value ? 'agent' : undefined,
+                    assigned_agent_id: agentID || null,
+                    assigned_type: agentID ? 'agent' : null,
                   }).then(onTaskChanged)
                 }}
                 className="h-8 rounded-lg border border-input bg-background px-2 text-sm outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"

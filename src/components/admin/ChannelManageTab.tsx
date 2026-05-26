@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { ArrowDown, ArrowUp, BookOpen, MessageSquare, Plus, RefreshCw, Save, Trash2 } from 'lucide-react'
+import { ArrowDown, ArrowUp, BookOpen, Clock3, MessageSquare, Plus, RefreshCw, Save, Trash2 } from 'lucide-react'
 import type { KnowledgeBase } from '../../core/types.js'
 import { cn } from '../../lib/cn.js'
 import { useBeeSeedContext } from '../../provider/BeeSeedProvider.js'
@@ -33,6 +33,19 @@ interface ChannelTemplate {
     members_can_upload?: boolean
     members_can_delete_own?: boolean
   }
+  scheduled_tasks?: ChannelTemplateScheduledTask[]
+}
+
+interface ChannelTemplateScheduledTask {
+  id?: string
+  title: string
+  description?: string
+  assigned_agent_id?: string
+  cron_expr: string
+  timezone?: string
+  enabled?: boolean
+  overlap_policy?: 'skip' | 'queue' | 'parallel'
+  catch_up_policy?: 'none' | 'latest' | 'all'
 }
 
 interface ChannelSettingsResponse {
@@ -75,6 +88,21 @@ function newChannelTemplate(): ChannelTemplate {
     agents: ['assistant'],
     knowledge: [],
     welcome_message: '你好！有什么可以帮你的？',
+    scheduled_tasks: [],
+  }
+}
+
+function newScheduledTask(agentId = 'assistant'): ChannelTemplateScheduledTask {
+  return {
+    id: createTemplateId(),
+    title: '定时任务',
+    description: '',
+    assigned_agent_id: agentId,
+    cron_expr: '0 9 * * 1-5',
+    timezone: 'Asia/Shanghai',
+    enabled: true,
+    overlap_policy: 'skip',
+    catch_up_policy: 'latest',
   }
 }
 
@@ -99,6 +127,21 @@ function normalizeTemplates(templates: ChannelTemplate[] | undefined): ChannelTe
     knowledge: template.knowledge ?? [],
     welcome_message: template.welcome_message ?? '',
     storage: template.storage,
+    scheduled_tasks: normalizeScheduledTasks(template.scheduled_tasks, template.agents?.[0] || 'assistant'),
+  }))
+}
+
+function normalizeScheduledTasks(tasks: ChannelTemplateScheduledTask[] | undefined, defaultAgentId: string): ChannelTemplateScheduledTask[] {
+  return (tasks ?? []).map((task) => ({
+    id: task.id || createTemplateId(),
+    title: task.title?.trim() || '定时任务',
+    description: task.description ?? '',
+    assigned_agent_id: task.assigned_agent_id || defaultAgentId,
+    cron_expr: task.cron_expr?.trim() || '0 9 * * 1-5',
+    timezone: task.timezone?.trim() || 'Asia/Shanghai',
+    enabled: task.enabled !== false,
+    overlap_policy: task.overlap_policy || 'skip',
+    catch_up_policy: task.catch_up_policy || 'latest',
   }))
 }
 
@@ -272,6 +315,32 @@ export function ChannelManageTab() {
     updateTemplate({ knowledge: toggleItem(selectedKnowledge, knowledgeId) })
   }
 
+  function addScheduledTask() {
+    if (!selectedTemplate) return
+    updateTemplate({
+      scheduled_tasks: [
+        ...(selectedTemplate.scheduled_tasks ?? []),
+        newScheduledTask(selectedTemplate.agents[0] || 'assistant'),
+      ],
+    })
+  }
+
+  function updateScheduledTask(taskId: string | undefined, patch: Partial<ChannelTemplateScheduledTask>) {
+    if (!selectedTemplate) return
+    updateTemplate({
+      scheduled_tasks: (selectedTemplate.scheduled_tasks ?? []).map((task) => (
+        task.id === taskId ? { ...task, ...patch } : task
+      )),
+    })
+  }
+
+  function deleteScheduledTask(taskId: string | undefined) {
+    if (!selectedTemplate) return
+    updateTemplate({
+      scheduled_tasks: (selectedTemplate.scheduled_tasks ?? []).filter((task) => task.id !== taskId),
+    })
+  }
+
   async function applyTemplatesToExistingUsers() {
     setApplying(true)
     setError('')
@@ -301,6 +370,11 @@ export function ChannelManageTab() {
         setError(`模板「${invalidJoinTemplate.name || '未命名模板'}」需要填写目标频道 ID`)
         return
       }
+      const invalidScheduleTemplate = templates.find((template) => (template.scheduled_tasks ?? []).some((task) => !task.title?.trim() || !task.cron_expr?.trim()))
+      if (invalidScheduleTemplate) {
+        setError(`模板「${invalidScheduleTemplate.name || '未命名模板'}」中的定时任务需要填写标题和 Cron`)
+        return
+      }
       const cleanTemplates = normalizeTemplates(templates).map((template, index) => ({
         ...template,
         id: template.id || createTemplateId(),
@@ -311,6 +385,18 @@ export function ChannelManageTab() {
         icon: template.icon?.trim() || 'bot',
         knowledge: (template.knowledge ?? []).filter((knowledgeId) => selectableKnowledgeIds.has(knowledgeId)),
         welcome_message: template.welcome_message?.trim() || '',
+        scheduled_tasks: (template.scheduled_tasks ?? []).map((task) => ({
+          ...task,
+          id: task.id || createTemplateId(),
+          title: task.title.trim(),
+          description: task.description?.trim() || '',
+          assigned_agent_id: template.agents.includes(task.assigned_agent_id || '') ? task.assigned_agent_id : template.agents[0],
+          cron_expr: task.cron_expr.trim(),
+          timezone: task.timezone?.trim() || 'Asia/Shanghai',
+          enabled: task.enabled !== false,
+          overlap_policy: task.overlap_policy || 'skip',
+          catch_up_policy: task.catch_up_policy || 'latest',
+        })),
       }))
       const savedSettings = await api.patch('admin/settings/channels', {
         json: {
@@ -415,6 +501,7 @@ export function ChannelManageTab() {
                         <div className="mt-0.5 truncate text-xs text-muted-foreground">
                           #{index + 1} · {template.type === 'join' ? '加入已有频道' : '创建频道'} · {template.agents.length} Agent
                           {template.knowledge?.length ? ` · ${template.knowledge.length} 知识库` : ''}
+                          {template.scheduled_tasks?.length ? ` · ${template.scheduled_tasks.length} 定时` : ''}
                         </div>
                       </div>
                     </button>
@@ -462,6 +549,7 @@ export function ChannelManageTab() {
                       <h3 className="truncate text-sm font-semibold text-[#1a1a1a]">{selectedTemplate.name || '未命名模板'}</h3>
                       <span className="text-xs text-muted-foreground">
                         {selectedTemplate.type === 'join' ? '加入已有频道' : '创建频道'} · 默认 {selectedAgents.length} 个 Agent
+                        {selectedTemplate.scheduled_tasks?.length ? ` · ${selectedTemplate.scheduled_tasks.length} 个定时任务` : ''}
                       </span>
                     </div>
                     <button
@@ -573,6 +661,105 @@ export function ChannelManageTab() {
                               </Button>
                             )
                           })}
+                        </div>
+                      )}
+                    </div>
+
+                    <div className="space-y-3 rounded-lg border border-border bg-[#fafafa] p-3">
+                      <div className="flex items-center justify-between gap-3">
+                        <div>
+                          <div className="flex items-center gap-2 text-sm font-medium text-[#181d26]">
+                            <Clock3 className="h-4 w-4" />
+                            定时任务
+                          </div>
+                          <div className="mt-0.5 text-xs text-muted-foreground">
+                            新用户获得该频道模板时，会自动创建这些周期任务
+                          </div>
+                        </div>
+                        <Button type="button" variant="outline" size="sm" onClick={addScheduledTask}>
+                          <Plus className="mr-1.5 h-3.5 w-3.5" />
+                          添加
+                        </Button>
+                      </div>
+                      {(selectedTemplate.scheduled_tasks ?? []).length === 0 ? (
+                        <div className="rounded-md border border-dashed border-border bg-white px-3 py-3 text-xs text-muted-foreground">
+                          暂未配置定时任务
+                        </div>
+                      ) : (
+                        <div className="space-y-3">
+                          {(selectedTemplate.scheduled_tasks ?? []).map((task) => (
+                            <div key={task.id} className="rounded-lg border border-border bg-white p-3">
+                              <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_150px]">
+                                <div>
+                                  <label className="mb-1.5 block text-xs font-medium text-[#555]">任务标题</label>
+                                  <Input
+                                    value={task.title}
+                                    onChange={(event) => updateScheduledTask(task.id, { title: event.target.value })}
+                                  />
+                                </div>
+                                <div>
+                                  <label className="mb-1.5 block text-xs font-medium text-[#555]">执行 Agent</label>
+                                  <select
+                                    value={task.assigned_agent_id || selectedTemplate.agents[0] || 'assistant'}
+                                    onChange={(event) => updateScheduledTask(task.id, { assigned_agent_id: event.target.value })}
+                                    className="h-9 w-full rounded-lg border border-border bg-white px-3 text-sm text-[#1a1a1a] outline-none focus:border-[#9297a0] focus:ring-2 focus:ring-[#9297a0]/20"
+                                  >
+                                    {selectedTemplate.agents.map((agentId) => (
+                                      <option key={agentId} value={agentId}>{agentLabel(agentId, availableAgents)}</option>
+                                    ))}
+                                  </select>
+                                </div>
+                              </div>
+                              <div className="mt-3 grid gap-3 sm:grid-cols-[minmax(0,1fr)_150px_120px]">
+                                <div>
+                                  <label className="mb-1.5 block text-xs font-medium text-[#555]">Cron 表达式</label>
+                                  <Input
+                                    value={task.cron_expr}
+                                    placeholder="0 9 * * 1-5"
+                                    onChange={(event) => updateScheduledTask(task.id, { cron_expr: event.target.value })}
+                                  />
+                                </div>
+                                <div>
+                                  <label className="mb-1.5 block text-xs font-medium text-[#555]">时区</label>
+                                  <Input
+                                    value={task.timezone || 'Asia/Shanghai'}
+                                    onChange={(event) => updateScheduledTask(task.id, { timezone: event.target.value })}
+                                  />
+                                </div>
+                                <div>
+                                  <label className="mb-1.5 block text-xs font-medium text-[#555]">状态</label>
+                                  <select
+                                    value={task.enabled === false ? 'disabled' : 'enabled'}
+                                    onChange={(event) => updateScheduledTask(task.id, { enabled: event.target.value === 'enabled' })}
+                                    className="h-9 w-full rounded-lg border border-border bg-white px-3 text-sm text-[#1a1a1a] outline-none focus:border-[#9297a0] focus:ring-2 focus:ring-[#9297a0]/20"
+                                  >
+                                    <option value="enabled">启用</option>
+                                    <option value="disabled">停用</option>
+                                  </select>
+                                </div>
+                              </div>
+                              <div className="mt-3">
+                                <label className="mb-1.5 block text-xs font-medium text-[#555]">任务描述</label>
+                                <textarea
+                                  value={task.description ?? ''}
+                                  onChange={(event) => updateScheduledTask(task.id, { description: event.target.value })}
+                                  rows={3}
+                                  className="w-full rounded-lg border border-border bg-white px-3 py-2 text-sm text-[#1a1a1a] outline-none focus:border-[#9297a0] focus:ring-2 focus:ring-[#9297a0]/20"
+                                />
+                              </div>
+                              <div className="mt-3 flex items-center justify-between gap-3">
+                                <div className="text-xs text-muted-foreground">默认策略：运行中跳过重叠任务，只补最近一次漏跑</div>
+                                <button
+                                  type="button"
+                                  onClick={() => deleteScheduledTask(task.id)}
+                                  className="inline-flex h-8 items-center gap-1.5 rounded-md px-2 text-xs font-medium text-muted-foreground transition-colors hover:bg-red-50 hover:text-red-600"
+                                >
+                                  <Trash2 className="h-3.5 w-3.5" />
+                                  删除
+                                </button>
+                              </div>
+                            </div>
+                          ))}
                         </div>
                       )}
                     </div>

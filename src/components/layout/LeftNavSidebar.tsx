@@ -18,6 +18,22 @@ const BASE_NAV_ITEMS: NavItem[] = [
   { id: 'tasks', label: '任务', icon: ListChecks },
 ]
 
+function isTemplateManagedChannel(channel: ChannelWithMeta): boolean {
+  if (!channel.settings) return false
+  try {
+    const settings = JSON.parse(channel.settings) as {
+      channel_template?: { managed?: boolean; source?: string }
+    }
+    const template = settings.channel_template
+    if (!template || typeof template !== 'object') return false
+    if (template.source === 'user') return false
+    if (typeof template.managed === 'boolean') return template.managed
+    return true
+  } catch {
+    return false
+  }
+}
+
 interface Props {
   activeFeature: FeatureView
   onFeatureChange: (feature: FeatureView) => void
@@ -112,7 +128,7 @@ export function LeftNavSidebar({ activeFeature, onFeatureChange, channels, curre
               onClick={() => onFeatureChange(item.id)}
               className={cn(
                 'flex items-center gap-2.5 w-full rounded-md px-2.5 py-2 text-sm transition-colors',
-                active ? 'bg-black/5 text-foreground font-medium' : 'text-foreground/70 hover:bg-black/5',
+                active ? 'bg-[#181d26] text-white font-medium shadow-sm' : 'text-[#41454d] hover:bg-black/5 hover:text-[#181d26]',
               )}
             >
               <Icon className="w-4 h-4" />
@@ -147,8 +163,9 @@ export function LeftNavSidebar({ activeFeature, onFeatureChange, channels, curre
                 </div>
               )}
               {section.channels.map((channel) => {
-                const active = channel.id === currentChannelId
-                const canDelete = Boolean(user?.id && channel.created_by === user.id)
+                const active = activeFeature === 'chat' && channel.id === currentChannelId
+                const isProtectedTemplateChannel = isTemplateManagedChannel(channel)
+                const canDelete = Boolean(user?.id && channel.created_by === user.id && (!isProtectedTemplateChannel || isAdmin))
                 return (
                   <div
                     key={channel.id}
@@ -158,7 +175,7 @@ export function LeftNavSidebar({ activeFeature, onFeatureChange, channels, curre
                     data-channel-section={section.id}
                     className={cn(
                       'group flex items-center gap-1 rounded-md transition-colors',
-                      active ? 'bg-black/[0.07] text-foreground font-medium' : 'text-foreground/70 hover:bg-black/[0.04]',
+                      active ? 'bg-[#181d26] text-white font-medium shadow-sm' : 'text-[#41454d] hover:bg-black/[0.04] hover:text-[#181d26]',
                     )}
                   >
                     <button
@@ -166,10 +183,13 @@ export function LeftNavSidebar({ activeFeature, onFeatureChange, channels, curre
                       onClick={() => { onChannelSelect(channel.id); onFeatureChange('chat') }}
                       className="flex min-w-0 flex-1 items-center gap-2 rounded-md px-2 py-1.5 text-sm"
                     >
-                      <Hash className="w-3.5 h-3.5 shrink-0 text-muted-foreground/50" />
+                      <Hash className={cn('w-3.5 h-3.5 shrink-0', active ? 'text-white/75' : 'text-muted-foreground/50')} />
                       <span className="flex-1 truncate text-left">{channel.name || '对话'}</span>
                       {channel.unread_count > 0 && (
-                        <span className="w-5 h-5 rounded-full bg-primary text-primary-foreground text-[10px] flex items-center justify-center font-medium shrink-0">
+                        <span className={cn(
+                          'w-5 h-5 rounded-full text-[10px] flex items-center justify-center font-medium shrink-0',
+                          active ? 'bg-white text-[#181d26]' : 'bg-primary text-primary-foreground',
+                        )}>
                           {channel.unread_count > 99 ? '99' : channel.unread_count}
                         </span>
                       )}
@@ -180,7 +200,10 @@ export function LeftNavSidebar({ activeFeature, onFeatureChange, channels, curre
                         title="删除频道"
                         aria-label={`删除频道 ${channel.name || '对话'}`}
                         onClick={() => void handleDeleteChannel(channel)}
-                        className="mr-1 hidden size-6 shrink-0 items-center justify-center rounded text-muted-foreground hover:bg-red-50 hover:text-red-600 group-hover:flex focus:flex"
+                        className={cn(
+                          'mr-1 hidden size-6 shrink-0 items-center justify-center rounded group-hover:flex focus:flex',
+                          active ? 'text-white/70 hover:bg-white/10 hover:text-white' : 'text-muted-foreground hover:bg-red-50 hover:text-red-600',
+                        )}
                       >
                         <Trash2 className="size-3.5" />
                       </button>

@@ -85,6 +85,11 @@ type SigmaData = {
 }
 
 const ACTIVE_SOURCE_STATUSES = new Set(['pending', 'processing'])
+const SUPPORTED_KNOWLEDGE_UPLOAD_EXTENSIONS = new Set([
+  '.txt', '.md', '.markdown', '.json', '.jsonl', '.csv', '.tsv', '.yaml', '.yml',
+  '.html', '.htm', '.xml', '.log', '.pdf', '.png', '.jpg', '.jpeg', '.webp', '.gif', '.bmp',
+])
+const SUPPORTED_KNOWLEDGE_UPLOAD_ACCEPT = Array.from(SUPPORTED_KNOWLEDGE_UPLOAD_EXTENSIONS).join(',')
 const SOURCE_COLORS: Record<string, string> = {
   file_upload: '#0891b2',
   knowledge_pack: '#059669',
@@ -143,6 +148,22 @@ function hasNewReadySource(previous: KnowledgeSource[], next: KnowledgeSource[])
   })
 }
 
+function isSupportedKnowledgeUploadFile(file: File): boolean {
+  const name = file.name.toLowerCase()
+  const dotIndex = name.lastIndexOf('.')
+  const ext = dotIndex >= 0 ? name.slice(dotIndex) : ''
+  if (SUPPORTED_KNOWLEDGE_UPLOAD_EXTENSIONS.has(ext)) return true
+  const mimeType = file.type.toLowerCase()
+  if (mimeType.includes('openxmlformats-officedocument')) return false
+  return mimeType.startsWith('text/') ||
+    mimeType === 'application/pdf' ||
+    mimeType.startsWith('image/') ||
+    mimeType.includes('json') ||
+    mimeType.includes('yaml') ||
+    mimeType.endsWith('/xml') ||
+    mimeType.includes('+xml')
+}
+
 function normalizeGraphData(graph: KnowledgeGraphData | null | undefined): KnowledgeGraphData {
   return {
     sources: graph?.sources ?? [],
@@ -155,6 +176,7 @@ function normalizeGraphData(graph: KnowledgeGraphData | null | undefined): Knowl
 export function KnowledgeManageTab() {
   const { api } = useBeeSeedContext()
   const fileRef = useRef<HTMLInputElement>(null)
+  const directoryRef = useRef<HTMLInputElement>(null)
   const sourcesRef = useRef<KnowledgeSource[]>([])
   const [bases, setBases] = useState<KnowledgeBase[]>([])
   const [subscribableBases, setSubscribableBases] = useState<KnowledgeBase[]>([])
@@ -179,6 +201,7 @@ export function KnowledgeManageTab() {
   const [selection, setSelection] = useState<Selection>(null)
   const [channelOverview, setChannelOverview] = useState<ChannelKnowledgeOverview | null>(null)
   const [graphData, setGraphData] = useState<KnowledgeGraphData | null>(null)
+  const [uploadNotice, setUploadNotice] = useState('')
 
   const appBases = useMemo(() => bases.filter((base) => base.scope_type === 'app'), [bases])
   const channelBases = useMemo(() => bases.filter((base) => base.scope_type === 'channel'), [bases])
@@ -311,6 +334,7 @@ export function KnowledgeManageTab() {
   useEffect(() => {
     setGraphData(null)
     setSelection(null)
+    setUploadNotice('')
     sourcesRef.current = []
     void loadSources(selectedBaseId)
   }, [loadSources, selectedBaseId])
@@ -384,9 +408,18 @@ export function KnowledgeManageTab() {
 
   const uploadFiles = async (files: FileList | File[]) => {
     if (!selectedBase || files.length === 0) return
+    const allFiles = Array.from(files)
+    const supportedFiles = allFiles.filter(isSupportedKnowledgeUploadFile)
+    const filteredCount = allFiles.length - supportedFiles.length
+    setUploadNotice(`本次选择 ${allFiles.length} 个文件，过滤 ${filteredCount} 个不支持的文件。`)
+    if (supportedFiles.length === 0) {
+      if (fileRef.current) fileRef.current.value = ''
+      if (directoryRef.current) directoryRef.current.value = ''
+      return
+    }
     setUploading(true)
     try {
-      for (const file of Array.from(files)) {
+      for (const file of supportedFiles) {
         const form = new FormData()
         form.set('file', file)
         form.set('knowledge_base_id', selectedBase.id)
@@ -396,6 +429,7 @@ export function KnowledgeManageTab() {
     } finally {
       setUploading(false)
       if (fileRef.current) fileRef.current.value = ''
+      if (directoryRef.current) directoryRef.current.value = ''
     }
   }
 
@@ -565,6 +599,8 @@ export function KnowledgeManageTab() {
               dragging={dragging}
               uploading={uploading}
               fileRef={fileRef}
+              directoryRef={directoryRef}
+              uploadNotice={uploadNotice}
               onSelect={setSelection}
               onRefreshGraph={() => void loadGraph()}
               onDistill={() => void distillChannel()}
@@ -597,6 +633,8 @@ function KnowledgeWorkspace({
   dragging,
   uploading,
   fileRef,
+  directoryRef,
+  uploadNotice,
   onSelect,
   onRefreshGraph,
   onDistill,
@@ -617,6 +655,8 @@ function KnowledgeWorkspace({
   dragging: boolean
   uploading: boolean
   fileRef: RefObject<HTMLInputElement | null>
+  directoryRef: RefObject<HTMLInputElement | null>
+  uploadNotice: string
   onSelect: (selection: Selection) => void
   onRefreshGraph: () => void
   onDistill: () => void
@@ -663,6 +703,8 @@ function KnowledgeWorkspace({
                 dragging={dragging}
                 uploading={uploading}
                 fileRef={fileRef}
+                directoryRef={directoryRef}
+                uploadNotice={uploadNotice}
                 onDraggingChange={onDraggingChange}
                 onUpload={onUpload}
               />
@@ -785,7 +827,7 @@ function ExternalKnowledgeGroup({
       <div className="mb-2 flex items-center justify-between gap-2 px-1 text-xs font-medium text-muted-foreground">
         <div className="flex items-center gap-2">
           <BookOpen className="h-3.5 w-3.5" />
-          外部知识库
+	          组织授权知识库
         </div>
         <Button variant="ghost" size="icon-sm" onClick={onRefresh} title="刷新外部知识库">
           <RefreshCw className={cn('h-3.5 w-3.5', loading && 'animate-spin')} />
@@ -798,7 +840,7 @@ function ExternalKnowledgeGroup({
             加载外部知识库
           </div>
         ) : bases.length === 0 ? (
-          <div className="rounded-md border border-border px-3 py-2 text-xs text-muted-foreground">暂无外部知识库</div>
+	          <div className="rounded-md border border-border px-3 py-2 text-xs text-muted-foreground">组织尚未授权可订阅知识库</div>
         ) : bases.map((base) => {
           const subscribed = subscribedBaseIds.has(base.id)
           const available = base.is_active
@@ -984,15 +1026,26 @@ function UploadZone({
   dragging,
   uploading,
   fileRef,
+  directoryRef,
+  uploadNotice,
   onDraggingChange,
   onUpload,
 }: {
   dragging: boolean
   uploading: boolean
   fileRef: RefObject<HTMLInputElement | null>
+  directoryRef: RefObject<HTMLInputElement | null>
+  uploadNotice: string
   onDraggingChange: (value: boolean) => void
   onUpload: (files: FileList | File[]) => void
 }) {
+  useEffect(() => {
+    const input = directoryRef.current
+    if (!input) return
+    input.setAttribute('webkitdirectory', '')
+    input.setAttribute('directory', '')
+  }, [directoryRef])
+
   return (
     <div
       className={cn(
@@ -1008,20 +1061,26 @@ function UploadZone({
         onUpload(event.dataTransfer.files)
       }}
     >
-      <input ref={fileRef} type="file" multiple className="hidden" onChange={(event) => event.target.files && onUpload(event.target.files)} />
+      <input ref={fileRef} type="file" multiple accept={SUPPORTED_KNOWLEDGE_UPLOAD_ACCEPT} className="hidden" onChange={(event) => event.target.files && onUpload(event.target.files)} />
+      <input ref={directoryRef} type="file" multiple className="hidden" onChange={(event) => event.target.files && onUpload(event.target.files)} />
       <div className="flex items-center gap-2">
         <Button variant="secondary" onClick={() => fileRef.current?.click()} disabled={uploading}>
           <Upload className="h-4 w-4" />
           上传文件
         </Button>
-        <Button variant="outline" onClick={() => fileRef.current?.click()} disabled={uploading}>
+        <Button variant="outline" onClick={() => directoryRef.current?.click()} disabled={uploading}>
           <FolderOpen className="h-4 w-4" />
-          选择多个文件
+          选择目录上传
         </Button>
       </div>
       <div className="mt-3 text-sm text-muted-foreground">
         {uploading ? '正在上传并加入处理队列' : '或拖拽文件到这里'}
       </div>
+      {uploadNotice && (
+        <div className="mt-2 text-xs text-muted-foreground">
+          {uploadNotice}
+        </div>
+      )}
     </div>
   )
 }

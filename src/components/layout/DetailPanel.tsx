@@ -1,6 +1,7 @@
 import { AlertTriangle, ArrowUpRight, CalendarClock, CheckCircle2, ChevronDown, ChevronRight, Circle, Clock, FileText, FolderOpen, ListChecks, Maximize2, MessageSquareQuote, PauseCircle, Plus, Repeat2, Save, Search, Trash2, Upload, Users, UserPlus } from 'lucide-react'
 import { useMemo, useState } from 'react'
 import type { CalendarEvent, ChannelMemberInfo, ModelTierName, Task, StorageObject } from '../../core/types.js'
+import type { CreateScheduledTaskInput } from '../../stores/tasks.js'
 import { cn } from '../../lib/cn.js'
 import { formatBytes, formatTime } from '../../lib/format.js'
 import { storageDisplayName } from '../../lib/storage-display.js'
@@ -175,14 +176,18 @@ export function DetailPanel({ channelId, members = [], tasks = [], files = [], o
   const selectedTask = selectedTaskId ? channelTasks.find((task) => task.id === selectedTaskId) || null : null
   const now = Date.now()
   const activeTasks = useMemo(() => channelTasks.filter((task) => task.status !== 'done' && task.status !== 'failed'), [channelTasks])
-  const focusTasks = useMemo(() => [...activeTasks].sort(compareTasksForFocus).slice(0, 6), [activeTasks])
-  const upcomingEvents = useMemo(() => [...calendarEvents]
-    .filter((event) => new Date(event.start_at).getTime() >= now - 60_000)
-    .sort((a, b) => new Date(a.start_at).getTime() - new Date(b.start_at).getTime())
-    .slice(0, 6), [calendarEvents, now])
-  const visibleSchedules = useMemo(() => [...scheduledTasks]
-    .sort((a, b) => eventTimeValue(a.next_fire_at || a.run_at) - eventTimeValue(b.next_fire_at || b.run_at))
-    .slice(0, 6), [scheduledTasks])
+  const focusTaskItems = useMemo(() => activeTasks
+    .filter((task) => isFocusableTask(task, now))
+    .sort(compareTasksForFocus), [activeTasks, now])
+  const focusTasks = useMemo(() => focusTaskItems.slice(0, 6), [focusTaskItems])
+  const upcomingEventItems = useMemo(() => [...calendarEvents]
+    .filter((event) => !event.is_recurring && new Date(event.start_at).getTime() >= now - 60_000)
+    .sort((a, b) => new Date(a.start_at).getTime() - new Date(b.start_at).getTime()), [calendarEvents, now])
+  const upcomingEvents = useMemo(() => upcomingEventItems.slice(0, 6), [upcomingEventItems])
+  const recurringScheduleItems = useMemo(() => [...scheduledTasks]
+    .filter((schedule) => schedule.kind === 'recurring')
+    .sort((a, b) => eventTimeValue(a.next_fire_at || a.run_at) - eventTimeValue(b.next_fire_at || b.run_at)), [scheduledTasks])
+  const visibleSchedules = useMemo(() => recurringScheduleItems.slice(0, 6), [recurringScheduleItems])
   const runningCount = channelTasks.filter((task) => task.status === 'in_progress').length
   const blockedCount = channelTasks.filter((task) => task.status === 'blocked' || task.scheduler_state === 'pending_deps').length
   const doneCount = channelTasks.filter((task) => task.status === 'done').length
@@ -208,7 +213,7 @@ export function DetailPanel({ channelId, members = [], tasks = [], files = [], o
   async function handleCreateScheduledTask(data: Parameters<typeof createScheduledTask>[0]) {
     const created = await createScheduledTask(data)
     if (created) {
-      setTaskView('schedules')
+      setTaskView(isRecurringScheduleInput(data) ? 'schedules' : 'calendar')
       await fetchScheduledTasks()
       await fetchCalendar()
     }
@@ -422,9 +427,9 @@ export function DetailPanel({ channelId, members = [], tasks = [], files = [], o
                 <TaskStat label="完成" value={doneCount} tone="success" />
               </div>
               <div className="grid grid-cols-3 gap-1 rounded-md bg-muted p-1">
-                <TaskViewButton active={taskView === 'focus'} onClick={() => setTaskView('focus')}>焦点</TaskViewButton>
-                <TaskViewButton active={taskView === 'calendar'} onClick={() => setTaskView('calendar')}>日程</TaskViewButton>
-                <TaskViewButton active={taskView === 'schedules'} onClick={() => setTaskView('schedules')}>自动</TaskViewButton>
+                <TaskViewButton active={taskView === 'focus'} label="焦点" count={focusTaskItems.length} tone="focus" onClick={() => setTaskView('focus')} />
+                <TaskViewButton active={taskView === 'calendar'} label="日程" count={upcomingEventItems.length} tone="calendar" onClick={() => setTaskView('calendar')} />
+                <TaskViewButton active={taskView === 'schedules'} label="重复" count={recurringScheduleItems.length} tone="repeat" onClick={() => setTaskView('schedules')} />
               </div>
               {taskView === 'focus' && (
                 focusTasks.length === 0 ? (
@@ -455,7 +460,7 @@ export function DetailPanel({ channelId, members = [], tasks = [], files = [], o
               )}
               {taskView === 'schedules' && (
                 visibleSchedules.length === 0 ? (
-                  <EmptyTaskState label="暂无自动任务" />
+                  <EmptyTaskState label="暂无重复任务" />
                 ) : (
                   <div className="space-y-1.5">
                     {visibleSchedules.map((schedule) => (
@@ -987,19 +992,60 @@ function TaskStat({ label, value, tone = 'muted' }: { label: string; value: numb
   )
 }
 
-function TaskViewButton({ active, onClick, children }: { active: boolean; onClick: () => void; children: string }) {
+function TaskViewButton({
+  active,
+  onClick,
+  label,
+  count,
+  tone,
+}: {
+  active: boolean
+  onClick: () => void
+  label: string
+  count: number
+  tone: 'focus' | 'calendar' | 'repeat'
+}) {
   return (
     <button
       type="button"
       onClick={onClick}
       className={cn(
-        'rounded px-2 py-1 text-xs transition-colors',
+        'inline-flex items-center justify-center gap-1.5 rounded px-2 py-1 text-xs transition-colors',
         active ? 'bg-background text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground',
       )}
     >
-      {children}
+      <span>{label}</span>
+      <span
+        className={cn(
+          'inline-flex h-4 min-w-4 items-center justify-center rounded-full border px-1 text-[10px] font-semibold leading-none',
+          tone === 'focus' && 'border-[#9297a0]/45 bg-[#181d26] text-white',
+          tone === 'calendar' && 'border-amber-200 bg-amber-50 text-amber-800',
+          tone === 'repeat' && 'border-emerald-200 bg-emerald-50 text-emerald-800',
+        )}
+      >
+        {count}
+      </span>
     </button>
   )
+}
+
+function isRecurringScheduleInput(data: CreateScheduledTaskInput) {
+  return Boolean(data.cron_expr?.trim() || data.recurrence_rule?.trim())
+}
+
+function isFocusableTask(task: Task, now: number) {
+  if (task.scheduler_state === 'template' || task.scheduler_state === 'cancelled' || task.scheduler_state === 'waiting_time') {
+    return false
+  }
+
+  if (task.scheduled_start_at) {
+    const startAt = new Date(task.scheduled_start_at).getTime()
+    if (Number.isFinite(startAt) && startAt > now) {
+      return false
+    }
+  }
+
+  return true
 }
 
 function EmptyTaskState({ label }: { label: string }) {
@@ -1018,6 +1064,14 @@ const TASK_STATUS_META: Record<Task['status'], { label: string; icon: typeof Cir
   blocked: { label: '阻塞', icon: AlertTriangle, badge: 'warning' },
 }
 
+const TASK_TYPE_META = {
+  manual: { label: '手动', title: '手动任务', className: 'border-[#9297a0]/40 bg-[#f8fafc] text-[#41454d]' },
+  agent: { label: 'Agent', title: '即时 Agent 任务', className: 'border-[#458fff]/30 bg-[#458fff]/10 text-[#254fad]' },
+  once: { label: '计划', title: '一次性计划任务', className: 'border-amber-300/60 bg-amber-50 text-amber-800' },
+  recurring: { label: '定时', title: '周期定时任务实例', className: 'border-emerald-300/60 bg-emerald-50 text-emerald-800' },
+  dependency: { label: '依赖', title: '多步骤依赖任务', className: 'border-[#aa2d00]/25 bg-[#aa2d00]/10 text-[#aa2d00]' },
+} as const
+
 function CompactTaskRow({ task, assignedLabel, onClick }: { task: Task; assignedLabel?: string; onClick: () => void }) {
   const awaitingVerification = task.verification_status === 'pending' || task.scheduler_state === 'awaiting_verify'
   const waitingAssignment = task.status === 'pending' && task.scheduler_state === 'manual' && !task.assigned_agent_id
@@ -1028,6 +1082,7 @@ function CompactTaskRow({ task, assignedLabel, onClick }: { task: Task; assigned
     : TASK_STATUS_META[task.status]
   const StatusIcon = meta.icon
   const dependencyCount = task.depends_on_task_ids?.length || 0
+  const typeMeta = getTaskTypeMeta(task)
 
   return (
     <button
@@ -1046,7 +1101,10 @@ function CompactTaskRow({ task, assignedLabel, onClick }: { task: Task; assigned
           task.status === 'pending' && 'text-muted-foreground',
         )} />
         <div className="min-w-0 flex-1">
-          <div className="truncate text-xs font-medium">{task.title}</div>
+          <div className="flex min-w-0 items-center gap-1.5">
+            <TaskTypeBadge meta={typeMeta} />
+            <div className="min-w-0 flex-1 truncate text-xs font-medium">{task.title}</div>
+          </div>
           <div className="mt-1 flex flex-wrap items-center gap-x-1.5 gap-y-1 text-[10px] text-muted-foreground">
             <Badge variant={meta.badge} className="px-1.5 py-0 text-[10px] font-medium">
               {meta.label}
@@ -1059,6 +1117,34 @@ function CompactTaskRow({ task, assignedLabel, onClick }: { task: Task; assigned
         </div>
       </div>
     </button>
+  )
+}
+
+function getTaskTypeMeta(task: Task) {
+  if (task.scheduler_state === 'pending_deps' || (task.depends_on_task_ids && task.depends_on_task_ids.length > 0)) {
+    return TASK_TYPE_META.dependency
+  }
+  if (task.parent_task_id && task.schedule_id) {
+    return TASK_TYPE_META.recurring
+  }
+  if (task.schedule_id || task.scheduler_state === 'waiting_time' || task.scheduled_start_at) {
+    return TASK_TYPE_META.once
+  }
+  if (task.assigned_agent_id) {
+    return TASK_TYPE_META.agent
+  }
+  return TASK_TYPE_META.manual
+}
+
+function TaskTypeBadge({ meta }: { meta: typeof TASK_TYPE_META[keyof typeof TASK_TYPE_META] }) {
+  return (
+    <Badge
+      variant="outline"
+      title={meta.title}
+      className={cn('h-5 shrink-0 px-1.5 py-0 text-[10px] font-medium leading-none', meta.className)}
+    >
+      {meta.label}
+    </Badge>
   )
 }
 
