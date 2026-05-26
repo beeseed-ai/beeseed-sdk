@@ -1,4 +1,4 @@
-import { useEffect, useState, type ReactNode } from 'react'
+import { useEffect, useMemo, useState, type ReactNode } from 'react'
 import { MessageSquareText, BookOpen, ListChecks, Plus, LogOut, Bell, Hash, Shield, User, Trash2 } from 'lucide-react'
 import type { FeatureView, ChannelWithMeta } from '../../core/types.js'
 import { cn } from '../../lib/cn.js'
@@ -42,6 +42,22 @@ export function LeftNavSidebar({ activeFeature, onFeatureChange, channels, curre
   const navItems = isAdmin ? [...BASE_NAV_ITEMS, { id: 'admin' as const, label: '管理后台', icon: Shield }] : BASE_NAV_ITEMS
   const brandInitial = Array.from(branding.title)[0] || 'B'
   const hasLogo = Boolean(branding.logo && !logoFailed)
+  const channelSections = useMemo(() => {
+    const owned: ChannelWithMeta[] = []
+    const joined: ChannelWithMeta[] = []
+
+    for (const channel of channels) {
+      if (!user?.id || channel.created_by === user.id) owned.push(channel)
+      else joined.push(channel)
+    }
+
+    const hasJoinedChannels = joined.length > 0
+
+    return [
+      ...(owned.length > 0 ? [{ id: 'owned', label: hasJoinedChannels ? '我的频道' : '', channels: owned }] : []),
+      ...(joined.length > 0 ? [{ id: 'joined', label: '加入的频道', channels: joined }] : []),
+    ]
+  }, [channels, user?.id])
 
   async function handleDeleteChannel(channel: ChannelWithMeta) {
     const name = channel.name || '对话'
@@ -120,48 +136,60 @@ export function LeftNavSidebar({ activeFeature, onFeatureChange, channels, curre
           </div>
         </div>
 
-        <div className="flex-1 overflow-y-auto px-2 space-y-px" data-testid="app-channel-list">
-          {channels.map((channel) => {
-            const active = channel.id === currentChannelId
-            const canDelete = Boolean(user?.id && channel.created_by === user.id)
-            return (
-              <div
-                key={channel.id}
-                data-testid="app-channel-item"
-                data-channel-id={channel.id}
-                data-channel-name={channel.name || '对话'}
-                className={cn(
-                  'group flex items-center gap-1 rounded-md transition-colors',
-                  active ? 'bg-black/[0.07] text-foreground font-medium' : 'text-foreground/70 hover:bg-black/[0.04]',
-                )}
-              >
-                <button
-                  type="button"
-                  onClick={() => { onChannelSelect(channel.id); onFeatureChange('chat') }}
-                  className="flex min-w-0 flex-1 items-center gap-2 rounded-md px-2 py-1.5 text-sm"
-                >
-                  <Hash className="w-3.5 h-3.5 shrink-0 text-muted-foreground/50" />
-                  <span className="flex-1 truncate text-left">{channel.name || '对话'}</span>
-                  {channel.unread_count > 0 && (
-                    <span className="w-5 h-5 rounded-full bg-primary text-primary-foreground text-[10px] flex items-center justify-center font-medium shrink-0">
-                      {channel.unread_count > 99 ? '99' : channel.unread_count}
-                    </span>
-                  )}
-                </button>
-                {canDelete && (
-                  <button
-                    type="button"
-                    title="删除频道"
-                    aria-label={`删除频道 ${channel.name || '对话'}`}
-                    onClick={() => void handleDeleteChannel(channel)}
-                    className="mr-1 hidden size-6 shrink-0 items-center justify-center rounded text-muted-foreground hover:bg-red-50 hover:text-red-600 group-hover:flex focus:flex"
+        <div className="flex-1 overflow-y-auto px-2 pb-2" data-testid="app-channel-list">
+          {channels.length === 0 ? (
+            <div className="px-2 py-2 text-xs text-muted-foreground/70">暂无频道</div>
+          ) : channelSections.map((section) => (
+            <section key={section.id} className="space-y-px">
+              {section.label && (
+                <div className="px-2 pb-1 pt-2 text-[11px] font-medium text-muted-foreground/65">
+                  {section.label}
+                </div>
+              )}
+              {section.channels.map((channel) => {
+                const active = channel.id === currentChannelId
+                const canDelete = Boolean(user?.id && channel.created_by === user.id)
+                return (
+                  <div
+                    key={channel.id}
+                    data-testid="app-channel-item"
+                    data-channel-id={channel.id}
+                    data-channel-name={channel.name || '对话'}
+                    data-channel-section={section.id}
+                    className={cn(
+                      'group flex items-center gap-1 rounded-md transition-colors',
+                      active ? 'bg-black/[0.07] text-foreground font-medium' : 'text-foreground/70 hover:bg-black/[0.04]',
+                    )}
                   >
-                    <Trash2 className="size-3.5" />
-                  </button>
-                )}
-              </div>
-            )
-          })}
+                    <button
+                      type="button"
+                      onClick={() => { onChannelSelect(channel.id); onFeatureChange('chat') }}
+                      className="flex min-w-0 flex-1 items-center gap-2 rounded-md px-2 py-1.5 text-sm"
+                    >
+                      <Hash className="w-3.5 h-3.5 shrink-0 text-muted-foreground/50" />
+                      <span className="flex-1 truncate text-left">{channel.name || '对话'}</span>
+                      {channel.unread_count > 0 && (
+                        <span className="w-5 h-5 rounded-full bg-primary text-primary-foreground text-[10px] flex items-center justify-center font-medium shrink-0">
+                          {channel.unread_count > 99 ? '99' : channel.unread_count}
+                        </span>
+                      )}
+                    </button>
+                    {canDelete && (
+                      <button
+                        type="button"
+                        title="删除频道"
+                        aria-label={`删除频道 ${channel.name || '对话'}`}
+                        onClick={() => void handleDeleteChannel(channel)}
+                        className="mr-1 hidden size-6 shrink-0 items-center justify-center rounded text-muted-foreground hover:bg-red-50 hover:text-red-600 group-hover:flex focus:flex"
+                      >
+                        <Trash2 className="size-3.5" />
+                      </button>
+                    )}
+                  </div>
+                )
+              })}
+            </section>
+          ))}
         </div>
       </div>
 
