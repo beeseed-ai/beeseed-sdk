@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { BookOpen, MessageSquare, Plus, RefreshCw, Save, Trash2 } from 'lucide-react'
+import { ArrowDown, ArrowUp, BookOpen, MessageSquare, Plus, RefreshCw, Save, Trash2 } from 'lucide-react'
 import type { KnowledgeBase } from '../../core/types.js'
 import { cn } from '../../lib/cn.js'
 import { useBeeSeedContext } from '../../provider/BeeSeedProvider.js'
@@ -20,6 +20,7 @@ interface ChannelTemplate {
   id?: string
   type: 'create' | 'join'
   channel_id?: string
+  sort_order?: number
   name: string
   description?: string
   icon?: string
@@ -86,10 +87,11 @@ function createTemplateId() {
 
 function normalizeTemplates(templates: ChannelTemplate[] | undefined): ChannelTemplate[] {
   const items = templates ?? [newChannelTemplate()]
-  return items.map((template) => ({
+  return items.map((template, index) => ({
     id: template.id || createTemplateId(),
     type: template.type === 'join' ? 'join' : 'create',
     channel_id: template.channel_id ?? '',
+    sort_order: index,
     name: template.name?.trim() || '新频道模板',
     description: template.description ?? '',
     icon: template.icon || 'bot',
@@ -240,6 +242,25 @@ export function ChannelManageTab() {
     setSaved(false)
   }
 
+  function moveTemplate(index: number, direction: -1 | 1) {
+    setTemplates((current) => {
+      const targetIndex = index + direction
+      if (targetIndex < 0 || targetIndex >= current.length) return current
+      const next = [...current]
+      const [item] = next.splice(index, 1)
+      next.splice(targetIndex, 0, item)
+      setSelectedIndex((selected) => {
+        if (selected === index) return targetIndex
+        if (selected === targetIndex) return index
+        return selected
+      })
+      return next
+    })
+    setDirty(true)
+    setSaved(false)
+    setError('')
+  }
+
   function toggleAgent(agentId: string) {
     if (!selectedTemplate) return
     const agents = toggleItem(selectedTemplate.agents, agentId)
@@ -280,9 +301,10 @@ export function ChannelManageTab() {
         setError(`模板「${invalidJoinTemplate.name || '未命名模板'}」需要填写目标频道 ID`)
         return
       }
-      const cleanTemplates = normalizeTemplates(templates).map((template) => ({
+      const cleanTemplates = normalizeTemplates(templates).map((template, index) => ({
         ...template,
         id: template.id || createTemplateId(),
+        sort_order: index,
         channel_id: template.type === 'join' ? template.channel_id?.trim() : '',
         name: template.name.trim() || '新频道模板',
         description: template.description?.trim() || '',
@@ -391,11 +413,33 @@ export function ChannelManageTab() {
                       <div className="min-w-0 flex-1">
                         <div className="truncate text-sm font-medium text-[#1a1a1a]">{template.name || '未命名模板'}</div>
                         <div className="mt-0.5 truncate text-xs text-muted-foreground">
-                          {template.type === 'join' ? '加入已有频道' : '创建频道'} · {template.agents.length} Agent
+                          #{index + 1} · {template.type === 'join' ? '加入已有频道' : '创建频道'} · {template.agents.length} Agent
                           {template.knowledge?.length ? ` · ${template.knowledge.length} 知识库` : ''}
                         </div>
                       </div>
                     </button>
+                    <div className="flex shrink-0 items-center gap-0.5">
+                      <button
+                        type="button"
+                        onClick={() => moveTemplate(index, -1)}
+                        disabled={index === 0}
+                        className="inline-flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-white hover:text-[#181d26] disabled:pointer-events-none disabled:opacity-35"
+                        title="上移"
+                        aria-label={`上移模板 ${template.name || '未命名模板'}`}
+                      >
+                        <ArrowUp className="h-3.5 w-3.5" />
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => moveTemplate(index, 1)}
+                        disabled={index === templates.length - 1}
+                        className="inline-flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-white hover:text-[#181d26] disabled:pointer-events-none disabled:opacity-35"
+                        title="下移"
+                        aria-label={`下移模板 ${template.name || '未命名模板'}`}
+                      >
+                        <ArrowDown className="h-3.5 w-3.5" />
+                      </button>
+                    </div>
                     <button
                       type="button"
                       onClick={() => deleteTemplate(index)}
