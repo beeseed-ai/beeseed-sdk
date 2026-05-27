@@ -26,7 +26,9 @@ interface ChannelTemplate {
   icon?: string
   agents: string[]
   knowledge?: string[]
+  welcome_title?: string
   welcome_message?: string
+  quick_questions?: string[]
   storage?: {
     enabled?: boolean
     visibility?: string
@@ -87,7 +89,9 @@ function newChannelTemplate(): ChannelTemplate {
     icon: 'bot',
     agents: ['assistant'],
     knowledge: [],
-    welcome_message: '你好！有什么可以帮你的？',
+    welcome_title: '',
+    welcome_message: '你好！有什么可以帮到你的？',
+    quick_questions: ['你能帮我做什么？', '帮我总结这个频道', '给我一个下一步计划'],
     scheduled_tasks: [],
   }
 }
@@ -125,10 +129,24 @@ function normalizeTemplates(templates: ChannelTemplate[] | undefined): ChannelTe
     icon: template.icon || 'bot',
     agents: template.agents?.length ? template.agents : ['assistant'],
     knowledge: template.knowledge ?? [],
+    welcome_title: template.welcome_title ?? '',
     welcome_message: template.welcome_message ?? '',
+    quick_questions: normalizeQuickQuestions(template.quick_questions),
     storage: template.storage,
     scheduled_tasks: normalizeScheduledTasks(template.scheduled_tasks, template.agents?.[0] || 'assistant'),
   }))
+}
+
+function normalizeQuickQuestions(questions: string[] | undefined): string[] {
+  const seen = new Set<string>()
+  const items: string[] = []
+  for (const question of questions ?? []) {
+    const clean = question.trim()
+    if (!clean || seen.has(clean)) continue
+    seen.add(clean)
+    items.push(clean)
+  }
+  return items
 }
 
 function normalizeScheduledTasks(tasks: ChannelTemplateScheduledTask[] | undefined, defaultAgentId: string): ChannelTemplateScheduledTask[] {
@@ -341,6 +359,29 @@ export function ChannelManageTab() {
     })
   }
 
+  function addQuickQuestion() {
+    if (!selectedTemplate) return
+    updateTemplate({
+      quick_questions: [...(selectedTemplate.quick_questions ?? []), ''],
+    })
+  }
+
+  function updateQuickQuestion(index: number, value: string) {
+    if (!selectedTemplate) return
+    updateTemplate({
+      quick_questions: (selectedTemplate.quick_questions ?? []).map((question, itemIndex) => (
+        itemIndex === index ? value : question
+      )),
+    })
+  }
+
+  function deleteQuickQuestion(index: number) {
+    if (!selectedTemplate) return
+    updateTemplate({
+      quick_questions: (selectedTemplate.quick_questions ?? []).filter((_, itemIndex) => itemIndex !== index),
+    })
+  }
+
   async function applyTemplatesToExistingUsers() {
     setApplying(true)
     setError('')
@@ -384,7 +425,9 @@ export function ChannelManageTab() {
         description: template.description?.trim() || '',
         icon: template.icon?.trim() || 'bot',
         knowledge: (template.knowledge ?? []).filter((knowledgeId) => selectableKnowledgeIds.has(knowledgeId)),
+        welcome_title: template.welcome_title?.trim() || '',
         welcome_message: template.welcome_message?.trim() || '',
+        quick_questions: normalizeQuickQuestions(template.quick_questions),
         scheduled_tasks: (template.scheduled_tasks ?? []).map((task) => ({
           ...task,
           id: task.id || createTemplateId(),
@@ -501,6 +544,7 @@ export function ChannelManageTab() {
                         <div className="mt-0.5 truncate text-xs text-muted-foreground">
                           #{index + 1} · {template.type === 'join' ? '加入已有频道' : '创建频道'} · {template.agents.length} Agent
                           {template.knowledge?.length ? ` · ${template.knowledge.length} 知识库` : ''}
+                          {template.quick_questions?.filter((question) => question.trim()).length ? ` · ${template.quick_questions.filter((question) => question.trim()).length} 快捷提问` : ''}
                           {template.scheduled_tasks?.length ? ` · ${template.scheduled_tasks.length} 定时` : ''}
                         </div>
                       </div>
@@ -595,6 +639,16 @@ export function ChannelManageTab() {
                     </div>
 
                     <div>
+                      <label className="mb-1.5 block text-xs font-medium text-[#555]">欢迎标题</label>
+                      <Input
+                        value={selectedTemplate.welcome_title ?? ''}
+                        onChange={(event) => updateTemplate({ welcome_title: event.target.value })}
+                        placeholder="例如：Hi~ 我是嗷嗷"
+                      />
+                      <div className="mt-1 text-xs text-muted-foreground">留空时使用应用名自动生成。</div>
+                    </div>
+
+                    <div>
                       <label className="mb-1.5 block text-xs font-medium text-[#555]">欢迎消息</label>
                       <textarea
                         value={selectedTemplate.welcome_message ?? ''}
@@ -602,6 +656,50 @@ export function ChannelManageTab() {
                         rows={4}
                         className="w-full rounded-lg border border-border bg-white px-3 py-2 text-sm text-[#1a1a1a] outline-none focus:border-[#9297a0] focus:ring-2 focus:ring-[#9297a0]/20"
                       />
+                    </div>
+
+                    <div className="space-y-3 rounded-lg border border-border bg-[#fafafa] p-3">
+                      <div className="flex items-center justify-between gap-3">
+                        <div>
+                          <div className="text-sm font-medium text-[#181d26]">预设快速提问</div>
+                          <div className="mt-0.5 text-xs text-muted-foreground">展示在空频道欢迎语下方，用户点击后会立即发送该问题。</div>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={addQuickQuestion}
+                          className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-border bg-white text-[#181d26] transition-colors hover:bg-muted"
+                          title="添加快速提问"
+                          aria-label="添加快速提问"
+                        >
+                          <Plus className="h-4 w-4" />
+                        </button>
+                      </div>
+                      {(selectedTemplate.quick_questions ?? []).length === 0 ? (
+                        <div className="rounded-md border border-dashed border-border bg-white px-3 py-2 text-xs text-muted-foreground">
+                          暂无快速提问
+                        </div>
+                      ) : (
+                        <div className="space-y-2">
+                          {(selectedTemplate.quick_questions ?? []).map((question, index) => (
+                            <div key={index} className="flex items-center gap-2">
+                              <Input
+                                value={question}
+                                onChange={(event) => updateQuickQuestion(index, event.target.value)}
+                                placeholder="例如：帮我总结这份资料"
+                              />
+                              <button
+                                type="button"
+                                onClick={() => deleteQuickQuestion(index)}
+                                className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-border bg-white text-muted-foreground transition-colors hover:text-red-600"
+                                title="删除快速提问"
+                                aria-label={`删除快速提问 ${index + 1}`}
+                              >
+                                <Trash2 className="h-4 w-4" />
+                              </button>
+                            </div>
+                          ))}
+                        </div>
+                      )}
                     </div>
 
                     <div className="space-y-3 rounded-lg border border-border bg-[#fafafa] p-3">

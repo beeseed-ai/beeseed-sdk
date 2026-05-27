@@ -69,6 +69,12 @@ export interface ChannelWithMeta extends Channel {
   owner_email?: string
 }
 
+export interface ChannelRuntimeSettings {
+  welcome_title?: string
+  welcome_message?: string
+  quick_questions?: string[]
+}
+
 // ── Channel Member ──
 
 export interface ChannelMember {

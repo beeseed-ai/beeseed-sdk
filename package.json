@@ -45,15 +45,17 @@
     "graphology-layout-noverlap": "^0.4.2",
     "ky": "^2.0.2",
     "lucide-react": "^1.14.0",
+    "qrcode": "^1.5.4",
     "react-markdown": "^9.0.0",
-    "sigma": "^3.0.2",
     "remark-breaks": "^4.0.0",
     "remark-gfm": "^4.0.0",
+    "sigma": "^3.0.2",
     "tailwind-merge": "^3.5.0",
     "zustand": "^5.0.12"
   },
   "devDependencies": {
     "@tailwindcss/vite": "^4.2.4",
+    "@types/qrcode": "^1.5.6",
     "@types/react": "^19.2.14",
     "@types/react-dom": "^19.2.3",
     "@vitejs/plugin-react": "^6.0.1",
