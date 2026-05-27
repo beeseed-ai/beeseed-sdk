@@ -709,6 +709,11 @@ export interface AppRuntimeConfig {
   features?: Record<string, unknown>
   layout?: Record<string, unknown>
   customCSS?: string
+  platform?: {
+    external_url?: string
+    app_domain?: string
+    subdomain?: string
+  }
 }
 
 export interface BeeSeedConfig {
