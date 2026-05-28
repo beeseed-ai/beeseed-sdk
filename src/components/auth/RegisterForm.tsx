@@ -32,23 +32,18 @@ export function RegisterForm({ onSwitchToLogin, className }: Props) {
     if (!name) { setError('请填写昵称'); return }
     if (mode === 'sms') {
       if (!phone || !code) { setError('请填写手机号和验证码'); return }
+      if (registrationPolicy === 'invite' && !inviteCode) { setError('请填写加入邀请'); return }
       setLoading(true)
       setError('')
-      if (registrationPolicy === 'invite' && !inviteCode) { setError('请填写邀请码'); return }
       const result = await signUpWithSMS(phone, code, name, email, inviteCode)
       if (result.error) setError(result.error)
       setLoading(false)
       return
     }
     if (!email || !password) { setError('请填写邮箱和密码'); return }
-    if (registrationPolicy === 'invite' && !inviteCode) { setError('请填写邀请码'); return }
+    if (registrationPolicy === 'invite' && !inviteCode) { setError('请填写加入邀请'); return }
     setLoading(true)
     setError('')
-    // Notice: Passing inviteCode is just simulated here. The real API will need it in the payload.
-    // The instructions say to update UI, assuming signUp in authStore hasn't changed its API signature yet
-    // or will handle it implicitly if we update it. Actually, wait, plan says add it to payload.
-    // However, the instructions tell us to "add 'invite code' text input". We'll just pass it to signUp if it supported it.
-    // Let's assume we modify the signUp call later or just leave it for now since we're writing UI.
     const result = await signUp(email, password, name, inviteCode)
     if (result.error) setError(result.error)
     setLoading(false)
@@ -56,7 +51,7 @@ export function RegisterForm({ onSwitchToLogin, className }: Props) {
 
   async function handleSendCode() {
     if (!phone) { setError('请填写手机号'); return }
-    if (registrationPolicy === 'invite' && !inviteCode) { setError('请填写邀请码'); return }
+    if (registrationPolicy === 'invite' && !inviteCode) { setError('请填写加入邀请'); return }
     setSendingCode(true)
     setError('')
     const result = await sendSMSCode(phone, 'register', { inviteCode })
@@ -85,8 +80,8 @@ export function RegisterForm({ onSwitchToLogin, className }: Props) {
                 {Array.from(branding.title)[0] || 'B'}
               </div>
             )}
-            <h1 className="text-xl font-bold">注册已关闭</h1>
-            <p className="text-sm text-muted-foreground mt-4">{hasLogo ? '目前不开放注册。' : `${branding.title} 目前不开放注册。`}</p>
+            <h1 className="text-xl font-bold">暂不允许新成员加入</h1>
+            <p className="text-sm text-muted-foreground mt-4">{hasLogo ? '当前 App 暂不接收新成员。' : `${branding.title} 暂不接收新成员。`}</p>
           </div>
           {onSwitchToLogin && (
             <div className="text-sm mt-8">
@@ -122,8 +117,8 @@ export function RegisterForm({ onSwitchToLogin, className }: Props) {
           )}
           <div className="space-y-1">
             {!hasLogo && <div className="truncate text-sm font-medium text-muted-foreground">{branding.title}</div>}
-            <h1 className="text-xl font-semibold">注册</h1>
-            <p className="text-sm text-muted-foreground">创建一个新账号</p>
+            <h1 className="text-xl font-semibold">创建 Hive 账号</h1>
+            <p className="text-sm text-muted-foreground">使用 Hive 身份进入此 App</p>
           </div>
         </div>
 
@@ -196,17 +191,17 @@ export function RegisterForm({ onSwitchToLogin, className }: Props) {
           )}
           {registrationPolicy === 'invite' && (
             <div className="space-y-2">
-              <label className="text-sm font-medium">邀请码</label>
+              <label className="text-sm font-medium">加入邀请</label>
               <Input
                 type="text"
                 value={inviteCode}
                 onChange={(e) => setInviteCode(e.target.value)}
-                placeholder="输入邀请码"
+                placeholder="输入加入邀请"
               />
             </div>
           )}
           <Button className="w-full" disabled={loading}>
-            {loading ? '注册中...' : '注册'}
+            {loading ? '创建中...' : '创建并进入'}
           </Button>
         </form>
 
@@ -217,7 +212,7 @@ export function RegisterForm({ onSwitchToLogin, className }: Props) {
               className="text-muted-foreground hover:text-foreground underline-offset-4 hover:underline"
               onClick={onSwitchToLogin}
             >
-              已有账号？登录
+              已有 Hive 账号？登录
             </button>
           </div>
         )}

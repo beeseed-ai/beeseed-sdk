@@ -10,7 +10,11 @@ export function useAppSettings() {
 
   return {
     registrationPolicy: state.registrationPolicy,
+    accessPolicy: state.accessPolicy,
+    joinMode: state.joinMode,
+    allowNewHiveUsers: state.allowNewHiveUsers,
     loading: state.loading,
-    setRegistrationPolicy: state.setRegistrationPolicy
+    setRegistrationPolicy: state.setRegistrationPolicy,
+    setJoinMode: state.setJoinMode,
   }
 }

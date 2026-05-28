@@ -7,7 +7,7 @@ export type {
   Message, ChatMessage, AgentMeta, AgentConfig,
   ModelTierName, ModelTierConfig, ModelTierSettings,
   SkillShortcutAgent, SkillShortcutOption, SelectedSkillIntent,
-  WSEvent, WSCommand, AuthResponse, BeeSeedConfig, StreamState,
+  WSEvent, WSCommand, AuthResponse, BeeSeedConfig, StreamState, HiveProfileSnapshot,
   AppBrandingConfig, AppRuntimeConfig,
   // Ask-User
   AskUserQuestion, AskUserData,

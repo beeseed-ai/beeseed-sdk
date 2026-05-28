@@ -9,14 +9,40 @@ export interface User {
   avatar_url?: string
   role: string
   status: string
+  app_user_id?: string
+  app_membership_status?: AppMembershipStatus
   created_at: string
   updated_at: string
+}
+
+export interface HiveProfileSnapshot {
+  id: string
+  name?: string
+  avatar_url?: string | null
+  email?: string | null
+  email_verified_at?: string | null
+  phone?: string | null
+  phone_verified_at?: string | null
+  updated_at?: string
+  profile_version?: number
 }
 
 // ── App User Management ──
 
 export type AppRole = 'owner' | 'admin' | 'member'
 export type RegistrationPolicy = 'open' | 'invite' | 'closed'
+export type AppMembershipStatus = 'active' | 'disabled' | 'pending' | 'left'
+export type ApplicationEntryMode = 'public' | 'org_only' | 'invite_only' | 'closed'
+export type ApplicationJoinMode = 'auto' | 'invite' | 'approval' | 'closed'
+
+export interface ApplicationAccessPolicy {
+  app_id?: string
+  entry_mode: ApplicationEntryMode
+  join_mode: ApplicationJoinMode
+  allow_new_hive_users: boolean
+  profile_scope?: Record<string, boolean>
+  updated_at?: string
+}
 
 export interface AppUser {
   id: string
@@ -25,16 +51,34 @@ export interface AppUser {
   avatar_url?: string
   role: AppRole
   is_disabled: boolean
+  app_user_id?: string
+  app_membership_status?: AppMembershipStatus
   created_at: string
   updated_at: string
+}
+
+export interface AppMemberBlock {
+  id: string
+  app_id: string
+  user_id: string
+  app_user_id?: string
+  reason?: string
+  blocked_by?: string | null
+  blocked_at: string
+  revoked_by?: string | null
+  revoked_at?: string | null
+  user_name?: string
+  user_email?: string
+  user_avatar?: string | null
 }
 
 export interface Invite {
   id: string
   token_prefix: string
   code?: string
+  invite_url?: string
   note?: string | null
-  created_by: string
+  created_by?: string | null
   created_at: string
   expires_at?: string | null
   used_at?: string | null
@@ -719,7 +763,12 @@ export interface AppRuntimeConfig {
 export interface BeeSeedConfig {
   workerUrl: string
   tokenKey?: string
+  onSignOut?: (options?: SignOutOptions) => void
   onAuthError?: () => void
   useMockData?: boolean
   appConfig?: AppRuntimeConfig
+}
+
+export interface SignOutOptions {
+  scope?: 'local' | 'global'
 }

@@ -1,258 +1,217 @@
-import { useState, useEffect, useRef } from 'react'
-import { Camera, Copy, Check, Key, LogOut, Mail, User, Shield, X } from 'lucide-react'
-import { cn } from '../../lib/cn.js'
-import { useAuth } from '../../hooks/use-auth.js'
+import { useEffect, useMemo, useState } from 'react'
+import { ExternalLink, Loader2, X } from 'lucide-react'
+import { useBeeSeedContext } from '../../provider/BeeSeedProvider.js'
 import { Dialog } from '../ui/dialog.js'
-import { Avatar, AvatarImage, AvatarFallback } from '../ui/avatar.js'
+import { Button } from '../ui/button.js'
+import type { AppRuntimeConfig, HiveProfileSnapshot } from '../../core/types.js'
 
 interface Props {
   open: boolean
   onOpenChange: (open: boolean) => void
 }
 
-type Tab = 'account' | 'security'
+type HiveProfileMessage = {
+  type?: string
+  profile?: HiveProfileSnapshot
+  changed_fields?: string[]
+}
+
+const TOKEN_QUERY_KEYS = ['beeseed_launch_token', 'beeseed_token', 'token', 'auth_token', 'access_token']
+const SIGNED_OUT_KEYS = ['signed_out', 'logout', 'logged_out']
+const HIVE_PROFILE_CHANNEL = 'beeseed:hive-profile-sync'
 
 export function ProfileModal({ open, onOpenChange }: Props) {
-  const [tab, setTab] = useState<Tab>('account')
+  const { authStore, config } = useBeeSeedContext()
+  const [loading, setLoading] = useState(true)
+  const profileURL = useMemo(() => buildHiveProfileURL(config.appConfig), [config.appConfig])
+  const profileOrigin = useMemo(() => {
+    if (!profileURL) return null
+    try {
+      return new URL(profileURL).origin
+    } catch {
+      return null
+    }
+  }, [profileURL])
 
   useEffect(() => {
-    if (open) setTab('account')
-  }, [open])
+    if (open) setLoading(true)
+  }, [open, profileURL])
+
+  useEffect(() => {
+    if (typeof BroadcastChannel === 'undefined') return
+    const channel = new BroadcastChannel(HIVE_PROFILE_CHANNEL)
+    channel.onmessage = (event) => {
+      const data = normalizeHiveProfileMessage(event.data)
+      if (data?.type === 'beeseed:hive-profile-updated' && data.profile) {
+        authStore.getState().applyHiveProfile(data.profile)
+      }
+    }
+    return () => channel.close()
+  }, [authStore])
+
+  useEffect(() => {
+    if (!open || !profileOrigin) return
+
+    function handleMessage(event: MessageEvent) {
+      if (event.origin !== profileOrigin) return
+      const data = normalizeHiveProfileMessage(event.data)
+      if (!data?.type) return
+
+      if (data.type === 'beeseed:hive-profile-close') {
+        onOpenChange(false)
+        return
+      }
+      if (data.type === 'beeseed:hive-profile-updated') {
+        if (data.profile) {
+          authStore.getState().applyHiveProfile(data.profile)
+          broadcastHiveProfile(data)
+        } else {
+          void authStore.getState().init()
+        }
+      }
+    }
+
+    window.addEventListener('message', handleMessage)
+    return () => window.removeEventListener('message', handleMessage)
+  }, [authStore, onOpenChange, open, profileOrigin])
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <div className="relative w-full max-w-[560px] rounded-2xl bg-white shadow-xl ring-1 ring-black/5 overflow-hidden">
-        <button onClick={() => onOpenChange(false)} className="absolute top-3 right-3 z-10 p-1 rounded-md hover:bg-black/5 transition-colors">
-          <X className="w-4 h-4 text-[#999]" />
-        </button>
-        <div className="flex h-[480px]">
-          {/* Left tabs */}
-          <div className="w-[140px] shrink-0 border-r border-[#f0f0f0] p-2 flex flex-col gap-0.5">
-            <div className="px-3 py-2 text-sm font-semibold text-[#1a1a1a]">设置</div>
-            <button
-              onClick={() => setTab('account')}
-              className={cn(
-                'flex items-center gap-2 px-3 py-2 rounded-lg text-sm transition-colors',
-                tab === 'account' ? 'bg-[#f0f0f0] text-[#1a1a1a] font-medium' : 'text-[#555] hover:bg-[#f5f5f5]',
-              )}
-            >
-              <User className="w-4 h-4" />
-              账号
-            </button>
-            <button
-              onClick={() => setTab('security')}
-              className={cn(
-                'flex items-center gap-2 px-3 py-2 rounded-lg text-sm transition-colors',
-                tab === 'security' ? 'bg-[#f0f0f0] text-[#1a1a1a] font-medium' : 'text-[#555] hover:bg-[#f5f5f5]',
-              )}
-            >
-              <Key className="w-4 h-4" />
-              安全
-            </button>
+      <div className="flex h-[min(760px,calc(100dvh-2rem))] w-[min(880px,calc(100vw-2rem))] flex-col overflow-hidden rounded-lg border border-[#dddddd] bg-white shadow-xl">
+        <div className="flex h-14 shrink-0 items-center justify-between gap-3 border-b border-[#e5e5e5] px-4">
+          <div className="min-w-0">
+            <div className="truncate text-sm font-semibold text-[#181d26]">个人中心</div>
+            <div className="truncate text-xs text-[#69707a]">由 Hive 平台统一管理账户资料和安全设置</div>
           </div>
-
-          {/* Right content */}
-          <div className="flex-1 overflow-y-auto">
-            {tab === 'account' ? (
-              <AccountTab onClose={() => onOpenChange(false)} />
-            ) : (
-              <SecurityTab />
+          <div className="flex shrink-0 items-center gap-1">
+            {profileURL && (
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon-sm"
+                onClick={() => window.open(profileURL, '_blank', 'noopener,noreferrer')}
+                aria-label="在新窗口打开个人中心"
+                title="在新窗口打开"
+              >
+                <ExternalLink className="h-4 w-4" />
+              </Button>
             )}
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon-sm"
+              onClick={() => onOpenChange(false)}
+              aria-label="关闭个人中心"
+            >
+              <X className="h-4 w-4" />
+            </Button>
           </div>
+        </div>
+
+        <div className="relative min-h-0 flex-1 bg-white">
+          {profileURL ? (
+            <>
+              {loading && (
+                <div className="absolute inset-0 z-10 flex items-center justify-center bg-white text-sm text-[#69707a]">
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  正在加载个人中心...
+                </div>
+              )}
+              <iframe
+                title="Hive 个人中心"
+                src={profileURL}
+                className="h-full w-full border-0"
+                onLoad={() => setLoading(false)}
+                allow="clipboard-write"
+              />
+            </>
+          ) : (
+            <div className="flex h-full items-center justify-center px-8 text-center">
+              <div>
+                <div className="text-sm font-medium text-[#181d26]">无法打开 Hive 个人中心</div>
+                <div className="mt-2 max-w-sm text-sm leading-6 text-[#69707a]">
+                  当前应用缺少 Hive 平台入口配置。请检查应用运行配置中的 platform.external_url。
+                </div>
+              </div>
+            </div>
+          )}
         </div>
       </div>
     </Dialog>
   )
 }
 
-function AccountTab({ onClose }: { onClose: () => void }) {
-  const { user, signOut, updateAvatar, updateName } = useAuth()
-  const fileRef = useRef<HTMLInputElement>(null)
-  const [name, setName] = useState(user?.name ?? '')
-  const [saving, setSaving] = useState(false)
-  const [uploading, setUploading] = useState(false)
-  const [tokenCopied, setTokenCopied] = useState(false)
-  const isAdmin = user?.role === 'admin' || user?.role === 'super_admin'
+function buildHiveProfileURL(appConfig?: AppRuntimeConfig): string | null {
+  if (typeof window === 'undefined') return null
+  const platformURL = platformExternalURL(appConfig)
+  if (!platformURL) return null
 
-  useEffect(() => {
-    if (user) setName(user.name ?? '')
-  }, [user])
-
-  const handleAvatarChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0]
-    if (!file) return
-    setUploading(true)
-    await updateAvatar(file)
-    setUploading(false)
-    if (fileRef.current) fileRef.current.value = ''
-  }
-
-  const handleSave = async () => {
-    if (!name.trim()) return
-    setSaving(true)
-    await updateName(name.trim())
-    setSaving(false)
-  }
-
-  const handleCopyToken = () => {
-    const token = localStorage.getItem('beeseed_token')
-    if (token) {
-      void navigator.clipboard.writeText(token)
-      setTokenCopied(true)
-      setTimeout(() => setTokenCopied(false), 2000)
-    }
-  }
-
-  return (
-    <div className="p-6 space-y-5">
-      {/* Avatar + basic info */}
-      <div className="flex items-center gap-4">
-        <input ref={fileRef} type="file" accept="image/jpeg,image/png,image/webp" className="hidden" onChange={handleAvatarChange} />
-        <button onClick={() => fileRef.current?.click()} disabled={uploading} className="relative group cursor-pointer shrink-0">
-          <Avatar className="size-16 border-2 border-[#e5e5e5]">
-            {user?.avatar_url ? <AvatarImage src={user.avatar_url} /> : null}
-            <AvatarFallback className="text-xl bg-[#f0f0f0] text-[#555]">{user?.name?.charAt(0) ?? '?'}</AvatarFallback>
-          </Avatar>
-          <div className="absolute inset-0 flex items-center justify-center rounded-full bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity">
-            <Camera className="w-5 h-5 text-white" />
-          </div>
-          {uploading && (
-            <div className="absolute inset-0 flex items-center justify-center rounded-full bg-black/60">
-              <span className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" />
-            </div>
-          )}
-        </button>
-        <div>
-          <p className="text-sm font-medium text-[#1a1a1a]">{user?.name ?? '用户'}</p>
-          <p className="text-xs text-[#777]">{user?.email}</p>
-        </div>
-      </div>
-
-      {/* Display name */}
-      <div className="space-y-1.5">
-        <label className="text-xs font-medium uppercase text-[#777] tracking-wider">显示名称</label>
-        <input
-          value={name}
-          onChange={(e) => setName(e.target.value)}
-          className="w-full px-3 py-2 text-sm border border-[#e5e5e5] rounded-lg bg-[#f5f5f5] focus:outline-none focus:border-[#999] transition-colors"
-        />
-      </div>
-
-      {/* Email */}
-      <div className="flex items-center gap-2 text-sm text-[#777]">
-        <Mail className="w-4 h-4" />
-        <span>{user?.email ?? '--'}</span>
-      </div>
-
-      {/* Role */}
-      <div className="flex items-center gap-2 text-sm text-[#777]">
-        <Shield className="w-4 h-4" />
-        <span>{isAdmin ? '管理员' : '成员'}</span>
-      </div>
-
-      {/* Copy Token (admin) */}
-      {isAdmin && (
-        <button
-          onClick={handleCopyToken}
-          className="flex items-center gap-1.5 text-sm text-[#777] hover:text-[#1a1a1a] transition-colors"
-        >
-          {tokenCopied ? <Check className="w-4 h-4 text-green-600" /> : <Copy className="w-4 h-4" />}
-          {tokenCopied ? '已复制' : '复制 Token'}
-        </button>
-      )}
-
-      {/* Actions */}
-      <div className="flex items-center justify-between pt-2 border-t border-[#f0f0f0]">
-        <button
-          onClick={() => { onClose(); signOut() }}
-          className="flex items-center gap-1.5 text-sm text-red-500 hover:text-red-600 transition-colors"
-        >
-          <LogOut className="w-4 h-4" />
-          退出登录
-        </button>
-        <button
-          onClick={handleSave}
-          disabled={saving || name.trim() === (user?.name ?? '')}
-          className={cn(
-            'px-4 py-1.5 rounded-lg text-sm font-medium transition-colors',
-            name.trim() !== (user?.name ?? '')
-              ? 'bg-[#1a1a1a] text-white hover:bg-[#333]'
-              : 'bg-[#f0f0f0] text-[#999] cursor-not-allowed',
-          )}
-        >
-          {saving ? '保存中...' : '保存'}
-        </button>
-      </div>
-    </div>
-  )
+  const url = new URL('/profile', platformURL)
+  url.searchParams.set('embed', '1')
+  url.searchParams.set('return_to', appReturnTo())
+  url.searchParams.set('origin', window.location.origin)
+  return url.toString()
 }
 
-function SecurityTab() {
-  const { changePassword } = useAuth()
-  const [oldPassword, setOldPassword] = useState('')
-  const [newPassword, setNewPassword] = useState('')
-  const [confirmPassword, setConfirmPassword] = useState('')
-  const [error, setError] = useState<string | null>(null)
-  const [saving, setSaving] = useState(false)
-  const [success, setSuccess] = useState(false)
+function platformExternalURL(appConfig?: AppRuntimeConfig): string | null {
+  const configured = appConfig?.platform?.external_url?.trim()
+  if (configured) return configured.replace(/\/+$/, '')
+  if (typeof window === 'undefined') return null
 
-  const handleSubmit = async () => {
-    setError(null)
-    if (newPassword.length < 6) { setError('新密码至少 6 个字符'); return }
-    if (newPassword !== confirmPassword) { setError('两次输入的密码不一致'); return }
-    setSaving(true)
-    const result = await changePassword(oldPassword, newPassword)
-    setSaving(false)
-    if (result.error) {
-      setError(result.error)
-    } else {
-      setSuccess(true)
-      setOldPassword('')
-      setNewPassword('')
-      setConfirmPassword('')
-      setTimeout(() => setSuccess(false), 3000)
-    }
+  const { protocol, hostname } = window.location
+  if (hostname === 'localhost' || hostname === '127.0.0.1') return null
+
+  const parts = hostname.split('.').filter(Boolean)
+  if (parts.length < 2) return null
+  parts[0] = 'hive'
+  return `${protocol}//${parts.join('.')}`
+}
+
+function appReturnTo(): string {
+  const url = new URL(window.location.href)
+  removeParams(url.searchParams, TOKEN_QUERY_KEYS)
+  removeParams(url.searchParams, SIGNED_OUT_KEYS)
+
+  const hashText = url.hash.charAt(0) === '#' ? url.hash.slice(1) : url.hash
+  const hashParams = new URLSearchParams(hashText.charAt(0) === '?' ? hashText.slice(1) : hashText)
+  let changedHash = false
+  for (const key of [...TOKEN_QUERY_KEYS, ...SIGNED_OUT_KEYS]) {
+    if (hashParams.has(key)) changedHash = true
+    hashParams.delete(key)
+  }
+  if (changedHash) {
+    const nextHash = hashParams.toString()
+    url.hash = nextHash ? '#' + nextHash : ''
   }
 
-  const inputClass = 'w-full px-3 py-2 text-sm border border-[#e5e5e5] rounded-lg bg-[#f5f5f5] focus:outline-none focus:border-[#999] transition-colors'
+  return url.toString()
+}
 
-  return (
-    <div className="p-6 space-y-5">
-      <div>
-        <h3 className="text-sm font-medium text-[#1a1a1a]">修改密码</h3>
-        <p className="text-xs text-[#999] mt-1">修改后需要使用新密码重新登录</p>
-      </div>
+function removeParams(params: URLSearchParams, keys: string[]) {
+  for (const key of keys) params.delete(key)
+}
 
-      <div className="space-y-3">
-        <div className="space-y-1.5">
-          <label className="text-xs font-medium text-[#777]">当前密码</label>
-          <input type="password" value={oldPassword} onChange={(e) => setOldPassword(e.target.value)} className={inputClass} placeholder="输入当前密码" />
-        </div>
-        <div className="space-y-1.5">
-          <label className="text-xs font-medium text-[#777]">新密码</label>
-          <input type="password" value={newPassword} onChange={(e) => setNewPassword(e.target.value)} className={inputClass} placeholder="至少 6 个字符" />
-        </div>
-        <div className="space-y-1.5">
-          <label className="text-xs font-medium text-[#777]">确认新密码</label>
-          <input type="password" value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)} className={inputClass} placeholder="再次输入新密码" />
-        </div>
-      </div>
+function normalizeHiveProfileMessage(data: unknown): HiveProfileMessage | null {
+  if (typeof data !== 'object' || data === null) return null
+  const message = data as HiveProfileMessage
+  if (typeof message.type !== 'string') return null
+  if (message.profile && !isHiveProfileSnapshot(message.profile)) return null
+  return message
+}
 
-      {error && <p className="text-xs text-red-500">{error}</p>}
-      {success && <p className="text-xs text-green-600">密码已更新</p>}
+function isHiveProfileSnapshot(profile: unknown): profile is HiveProfileSnapshot {
+  if (typeof profile !== 'object' || profile === null) return false
+  const value = profile as HiveProfileSnapshot
+  return typeof value.id === 'string' && value.id.trim().length > 0
+}
 
-      <button
-        onClick={handleSubmit}
-        disabled={saving || !oldPassword || !newPassword || !confirmPassword}
-        className={cn(
-          'px-4 py-1.5 rounded-lg text-sm font-medium transition-colors',
-          oldPassword && newPassword && confirmPassword
-            ? 'bg-[#1a1a1a] text-white hover:bg-[#333]'
-            : 'bg-[#f0f0f0] text-[#999] cursor-not-allowed',
-        )}
-      >
-        {saving ? '更新中...' : '更新密码'}
-      </button>
-    </div>
-  )
+function broadcastHiveProfile(message: HiveProfileMessage) {
+  if (typeof BroadcastChannel === 'undefined' || !message.profile) return
+  const channel = new BroadcastChannel(HIVE_PROFILE_CHANNEL)
+  channel.postMessage({
+    type: 'beeseed:hive-profile-updated',
+    profile: message.profile,
+    changed_fields: message.changed_fields,
+  })
+  channel.close()
 }
