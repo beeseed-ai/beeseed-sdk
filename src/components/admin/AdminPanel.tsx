@@ -1,5 +1,6 @@
-import { useEffect, useState } from 'react'
-import { BookOpen, Bot, Users, MessageSquare, Settings } from 'lucide-react'
+import { useEffect, useMemo, useState } from 'react'
+import { BookOpen, Bot, Check, Copy, Download, ExternalLink, MessageSquare, QrCode, Settings, Users } from 'lucide-react'
+import * as QRCode from 'qrcode'
 import type { AppBrandingConfig, AppRuntimeConfig } from '../../core/types.js'
 import { applyDocumentBranding, resolveAppBranding } from '../../core/app-config.js'
 import { cn } from '../../lib/cn.js'
@@ -116,11 +117,147 @@ function AppSettingsPanel() {
             <h1 className="text-xl font-bold text-[#1a1a1a]">设置</h1>
             <p className="mt-1 text-sm text-muted-foreground">配置标准模板的品牌和频道策略。</p>
           </div>
+          <AppShareSettings />
           <BrandSettings />
           <ChannelPolicySettings />
         </div>
       </div>
     </div>
+  )
+}
+
+async function copyTextToClipboard(text: string): Promise<boolean> {
+  if (navigator.clipboard?.writeText) {
+    try {
+      await navigator.clipboard.writeText(text)
+      return true
+    } catch {
+      // Fall back to a temporary textarea below.
+    }
+  }
+
+  const textarea = document.createElement('textarea')
+  textarea.value = text
+  textarea.setAttribute('readonly', '')
+  textarea.style.position = 'fixed'
+  textarea.style.left = '-9999px'
+  textarea.style.top = '0'
+  document.body.appendChild(textarea)
+  textarea.select()
+  let copied = false
+  try {
+    copied = document.execCommand('copy')
+  } finally {
+    document.body.removeChild(textarea)
+  }
+  return copied
+}
+
+function AppShareSettings() {
+  const appUrl = useMemo(() => {
+    if (typeof window === 'undefined') return ''
+    return `${window.location.origin}/`
+  }, [])
+  const [qrCodeDataUrl, setQrCodeDataUrl] = useState('')
+  const [qrError, setQrError] = useState('')
+  const [copied, setCopied] = useState(false)
+
+  useEffect(() => {
+    if (!appUrl) return
+
+    let cancelled = false
+    setQrCodeDataUrl('')
+    setQrError('')
+    QRCode.toDataURL(appUrl, {
+      errorCorrectionLevel: 'M',
+      margin: 2,
+      width: 240,
+      color: {
+        dark: '#181d26',
+        light: '#ffffff',
+      },
+    }).then((dataUrl) => {
+      if (cancelled) return
+      setQrCodeDataUrl(dataUrl)
+    }).catch(() => {
+      if (cancelled) return
+      setQrError('二维码生成失败')
+    })
+
+    return () => {
+      cancelled = true
+    }
+  }, [appUrl])
+
+  async function copyLink() {
+    if (!appUrl) return
+    const ok = await copyTextToClipboard(appUrl)
+    if (!ok) return
+    setCopied(true)
+    window.setTimeout(() => setCopied(false), 1600)
+  }
+
+  function downloadQrCode() {
+    if (!qrCodeDataUrl) return
+    const link = document.createElement('a')
+    const hostname = window.location.hostname.replace(/[^a-z0-9-]+/gi, '-').replace(/^-+|-+$/g, '') || 'app'
+    link.href = qrCodeDataUrl
+    link.download = `${hostname}-qrcode.png`
+    document.body.appendChild(link)
+    link.click()
+    document.body.removeChild(link)
+  }
+
+  return (
+    <section className="space-y-4 rounded-xl border border-border bg-white p-5 shadow-sm">
+      <div className="flex items-start gap-3">
+        <div className="flex size-8 shrink-0 items-center justify-center rounded-lg border border-border bg-[#fafafa] text-[#555]">
+          <QrCode className="size-4" />
+        </div>
+        <div className="min-w-0">
+          <h3 className="text-sm font-semibold">分享</h3>
+          <p className="mt-1 text-xs text-[#777]">把当前 App 链接生成二维码，方便成员扫码访问。</p>
+        </div>
+      </div>
+
+      <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_220px]">
+        <div className="space-y-4">
+          <div className="space-y-2">
+            <label className="text-xs font-medium text-[#555]">App 链接</label>
+            <div className="flex min-w-0 flex-col gap-2 sm:flex-row">
+              <div className="min-w-0 flex-1 truncate rounded-lg border border-border bg-[#fafafa] px-3 py-2 text-sm text-[#181d26]" title={appUrl}>
+                {appUrl || '无法读取当前链接'}
+              </div>
+              <Button type="button" variant="outline" onClick={() => { void copyLink() }} disabled={!appUrl}>
+                {copied ? <Check className="size-4" /> : <Copy className="size-4" />}
+                {copied ? '已复制' : '复制链接'}
+              </Button>
+            </div>
+          </div>
+
+          <div className="flex flex-wrap gap-2">
+            <Button type="button" variant="outline" onClick={downloadQrCode} disabled={!qrCodeDataUrl}>
+              <Download className="size-4" />
+              下载二维码
+            </Button>
+            <Button type="button" variant="ghost" onClick={() => window.open(appUrl, '_blank', 'noopener,noreferrer')} disabled={!appUrl}>
+              <ExternalLink className="size-4" />
+              打开链接
+            </Button>
+          </div>
+        </div>
+
+        <div className="flex items-center justify-center rounded-lg border border-border bg-[#fafafa] p-3">
+          <div className="flex size-[172px] items-center justify-center rounded-md border border-border bg-white p-2">
+            {qrCodeDataUrl ? (
+              <img src={qrCodeDataUrl} alt="App 分享二维码" className="size-full object-contain" />
+            ) : (
+              <span className="px-3 text-center text-xs text-[#999]">{qrError || '正在生成二维码...'}</span>
+            )}
+          </div>
+        </div>
+      </div>
+    </section>
   )
 }
 

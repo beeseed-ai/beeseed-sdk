@@ -69,6 +69,12 @@ export interface ChannelWithMeta extends Channel {
   owner_email?: string
 }
 
+export interface ChannelRuntimeSettings {
+  welcome_title?: string
+  welcome_message?: string
+  quick_questions?: string[]
+}
+
 // ── Channel Member ──
 
 export interface ChannelMember {
@@ -703,6 +709,11 @@ export interface AppRuntimeConfig {
   features?: Record<string, unknown>
   layout?: Record<string, unknown>
   customCSS?: string
+  platform?: {
+    external_url?: string
+    app_domain?: string
+    subdomain?: string
+  }
 }
 
 export interface BeeSeedConfig {

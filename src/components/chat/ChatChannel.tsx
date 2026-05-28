@@ -1,8 +1,9 @@
-import { useState, useCallback } from 'react'
-import type { ChatMessage } from '../../core/types.js'
+import { useMemo, useState, useCallback } from 'react'
+import type { ChannelRuntimeSettings, ChatMessage } from '../../core/types.js'
 import { cn } from '../../lib/cn.js'
 import { useAuth } from '../../hooks/use-auth.js'
 import { useAppConfig } from '../../hooks/use-app-config.js'
+import { useChannels } from '../../hooks/use-channels.js'
 import { useChat } from '../../hooks/use-chat.js'
 import { useDetailPanel } from '../../hooks/use-detail-panel.js'
 import { MessageList } from './MessageList.js'
@@ -20,9 +21,17 @@ interface Props {
 export function ChatChannel({ channelId, className, header }: Props) {
   const { user } = useAuth()
   const { branding } = useAppConfig()
+  const { channels } = useChannels()
   const { messages, streams, agentLoops, members, typings, send, sendWithQuote, submitAnswer, stopAgent, loading } = useChat(channelId)
   const { composerInsertText, consumeComposerInsert } = useDetailPanel()
   const [quotedMessage, setQuotedMessage] = useState<ChatMessage | null>(null)
+  const channelSettings = useMemo(
+    () => parseChannelRuntimeSettings(channels.find((channel) => channel.id === channelId)?.settings),
+    [channels, channelId],
+  )
+  const welcomeTitle = channelSettings.welcome_title
+  const welcomeMessage = channelSettings.welcome_message || branding.welcomeMessage
+  const quickQuestions = channelSettings.quick_questions ?? []
 
   const handleSend = useCallback((content: string, metadata?: Record<string, unknown>) => {
     if (quotedMessage) {
@@ -62,7 +71,11 @@ export function ChatChannel({ channelId, className, header }: Props) {
               currentUserId={user?.id}
               onSubmitAnswer={submitAnswer}
               onStopAgent={stopAgent}
-              welcomeMessage={branding.welcomeMessage}
+              welcomeTitle={welcomeTitle}
+              welcomeFallbackTitle={branding.title}
+              welcomeMessage={welcomeMessage}
+              quickQuestions={quickQuestions}
+              onQuickQuestion={(question) => handleSend(question, { source: 'quick_question' })}
             />
           )}
 
@@ -83,4 +96,20 @@ export function ChatChannel({ channelId, className, header }: Props) {
       </div>
     </div>
   )
+}
+
+function parseChannelRuntimeSettings(settings: string | undefined): ChannelRuntimeSettings {
+  if (!settings) return {}
+  try {
+    const parsed = JSON.parse(settings) as ChannelRuntimeSettings
+    return {
+      welcome_title: typeof parsed.welcome_title === 'string' ? parsed.welcome_title.trim() : undefined,
+      welcome_message: typeof parsed.welcome_message === 'string' ? parsed.welcome_message.trim() : undefined,
+      quick_questions: Array.isArray(parsed.quick_questions)
+        ? parsed.quick_questions.map((item) => typeof item === 'string' ? item.trim() : '').filter(Boolean)
+        : undefined,
+    }
+  } catch {
+    return {}
+  }
 }
