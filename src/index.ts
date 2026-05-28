@@ -8,7 +8,7 @@ export type {
   ModelTierName, ModelTierConfig, ModelTierSettings,
   SkillShortcutAgent, SkillShortcutOption, SelectedSkillIntent,
   WSEvent, WSCommand, AuthResponse, BeeSeedConfig, StreamState, HiveProfileSnapshot,
-  AppBrandingConfig, AppRuntimeConfig,
+  AppBrandingConfig, AppRuntimeConfig, PublicHomeConfig, PublicHomeMetric, PublicHomeTemplateID, PublicHomeTextBlock,
   // Ask-User
   AskUserQuestion, AskUserData,
   // Agent Loop

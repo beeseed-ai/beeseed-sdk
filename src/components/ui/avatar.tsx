@@ -19,13 +19,23 @@ function Avatar({
   )
 }
 
-function AvatarImage({ className, src, alt, ...props }: React.ComponentProps<'img'>) {
-  if (!src) return null
+function AvatarImage({ className, src, alt, onError, ...props }: React.ComponentProps<'img'>) {
+  const [failed, setFailed] = React.useState(false)
+
+  React.useEffect(() => {
+    setFailed(false)
+  }, [src])
+
+  if (!src || failed) return null
   return (
     <img
       src={src}
       alt={alt}
       className={cn('absolute inset-0 size-full rounded-full object-cover', className)}
+      onError={(event) => {
+        setFailed(true)
+        onError?.(event)
+      }}
       {...props}
     />
   )

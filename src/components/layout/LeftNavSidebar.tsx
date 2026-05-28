@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState, type ReactNode } from 'react'
 import { MessageSquareText, BookOpen, ListChecks, Plus, LogOut, Bell, Hash, Shield, User, Trash2 } from 'lucide-react'
-import type { FeatureView, ChannelWithMeta } from '../../core/types.js'
+import type { AppRuntimeConfig, FeatureView, ChannelWithMeta } from '../../core/types.js'
 import { cn } from '../../lib/cn.js'
 import { useAuth } from '../../hooks/use-auth.js'
 import { useAppConfig } from '../../hooks/use-app-config.js'
@@ -46,7 +46,7 @@ interface Props {
 
 export function LeftNavSidebar({ activeFeature, onFeatureChange, channels, currentChannelId, onChannelSelect, footerMeta, className }: Props) {
   const { user, signOut } = useAuth()
-  const { branding } = useAppConfig()
+  const { appConfig, branding } = useAppConfig()
   const { deleteChannel } = useChannels()
   const { unreadCount } = useNotifications()
   const [createDialogOpen, setCreateDialogOpen] = useState(false)
@@ -58,6 +58,7 @@ export function LeftNavSidebar({ activeFeature, onFeatureChange, channels, curre
   const navItems = isAdmin ? [...BASE_NAV_ITEMS, { id: 'admin' as const, label: '管理后台', icon: Shield }] : BASE_NAV_ITEMS
   const brandInitial = Array.from(branding.title)[0] || 'B'
   const hasLogo = Boolean(branding.logo && !logoFailed)
+  const userAvatarURL = useMemo(() => resolveProfileAvatarURL(user?.avatar_url, appConfig), [appConfig, user?.avatar_url])
   const channelSections = useMemo(() => {
     const owned: ChannelWithMeta[] = []
     const joined: ChannelWithMeta[] = []
@@ -227,7 +228,7 @@ export function LeftNavSidebar({ activeFeature, onFeatureChange, channels, curre
             className="flex items-center gap-2 flex-1 min-w-0 rounded-md p-1 -m-1 hover:bg-black/5 transition-colors"
           >
             <Avatar className="size-7 shrink-0">
-              {user?.avatar_url ? <AvatarImage src={user.avatar_url} /> : null}
+              {userAvatarURL ? <AvatarImage src={userAvatarURL} /> : null}
               <AvatarFallback className="text-xs bg-primary/10 text-primary">{user?.name?.[0] || '?'}</AvatarFallback>
             </Avatar>
             <div className="flex-1 min-w-0 text-left">
@@ -297,4 +298,33 @@ export function LeftNavSidebar({ activeFeature, onFeatureChange, channels, curre
       </div>
     </div>
   )
+}
+
+function resolveProfileAvatarURL(src: string | undefined, appConfig: AppRuntimeConfig): string {
+  const value = src?.trim()
+  if (!value) return ''
+  if (/^(?:https?:|data:|blob:)/i.test(value)) return value
+  if (!value.startsWith('/api/profile/avatar/')) return value
+
+  const platformURL = platformExternalURL(appConfig)
+  if (!platformURL) return value
+  try {
+    return new URL(value, platformURL).toString()
+  } catch {
+    return value
+  }
+}
+
+function platformExternalURL(appConfig: AppRuntimeConfig): string | null {
+  const configured = appConfig.platform?.external_url?.trim()
+  if (configured) return configured.replace(/\/+$/, '')
+  if (typeof window === 'undefined') return null
+
+  const { protocol, hostname } = window.location
+  if (hostname === 'localhost' || hostname === '127.0.0.1') return null
+
+  const parts = hostname.split('.').filter(Boolean)
+  if (parts.length < 2) return null
+  parts[0] = 'hive'
+  return `${protocol}//${parts.join('.')}`
 }

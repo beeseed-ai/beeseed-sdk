@@ -747,8 +747,39 @@ export interface AppBrandingConfig {
   inputPlaceholder?: string
 }
 
+export type PublicHomeTemplateID = 'ai_workspace' | 'education' | 'consulting' | 'community' | 'creative'
+
+export interface PublicHomeTextBlock {
+  title: string
+  description?: string
+}
+
+export interface PublicHomeMetric {
+  value: string
+  label: string
+}
+
+export interface PublicHomeConfig {
+  enabled?: boolean
+  template?: PublicHomeTemplateID
+  eyebrow?: string
+  title?: string
+  subtitle?: string
+  cover_image_url?: string
+  primary_cta?: string
+  secondary_cta?: string
+  features?: string[]
+  audiences?: string[]
+  capabilities?: PublicHomeTextBlock[]
+  workflow?: PublicHomeTextBlock[]
+  metrics?: PublicHomeMetric[]
+  closing_title?: string
+  closing_subtitle?: string
+}
+
 export interface AppRuntimeConfig {
   branding?: AppBrandingConfig
+  public_home?: PublicHomeConfig
   theme?: Record<string, unknown>
   features?: Record<string, unknown>
   layout?: Record<string, unknown>
