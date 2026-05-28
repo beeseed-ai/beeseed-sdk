@@ -3,7 +3,7 @@ import { ExternalLink, Loader2, X } from 'lucide-react'
 import { useBeeSeedContext } from '../../provider/BeeSeedProvider.js'
 import { Dialog } from '../ui/dialog.js'
 import { Button } from '../ui/button.js'
-import type { AppRuntimeConfig } from '../../core/types.js'
+import type { AppRuntimeConfig, HiveProfileSnapshot } from '../../core/types.js'
 
 interface Props {
   open: boolean
@@ -12,10 +12,13 @@ interface Props {
 
 type HiveProfileMessage = {
   type?: string
+  profile?: HiveProfileSnapshot
+  changed_fields?: string[]
 }
 
 const TOKEN_QUERY_KEYS = ['beeseed_launch_token', 'beeseed_token', 'token', 'auth_token', 'access_token']
 const SIGNED_OUT_KEYS = ['signed_out', 'logout', 'logged_out']
+const HIVE_PROFILE_CHANNEL = 'beeseed:hive-profile-sync'
 
 export function ProfileModal({ open, onOpenChange }: Props) {
   const { authStore, config } = useBeeSeedContext()
@@ -35,13 +38,23 @@ export function ProfileModal({ open, onOpenChange }: Props) {
   }, [open, profileURL])
 
   useEffect(() => {
+    if (typeof BroadcastChannel === 'undefined') return
+    const channel = new BroadcastChannel(HIVE_PROFILE_CHANNEL)
+    channel.onmessage = (event) => {
+      const data = normalizeHiveProfileMessage(event.data)
+      if (data?.type === 'beeseed:hive-profile-updated' && data.profile) {
+        authStore.getState().applyHiveProfile(data.profile)
+      }
+    }
+    return () => channel.close()
+  }, [authStore])
+
+  useEffect(() => {
     if (!open || !profileOrigin) return
 
     function handleMessage(event: MessageEvent) {
       if (event.origin !== profileOrigin) return
-      const data = typeof event.data === 'object' && event.data !== null
-        ? event.data as HiveProfileMessage
-        : null
+      const data = normalizeHiveProfileMessage(event.data)
       if (!data?.type) return
 
       if (data.type === 'beeseed:hive-profile-close') {
@@ -49,7 +62,12 @@ export function ProfileModal({ open, onOpenChange }: Props) {
         return
       }
       if (data.type === 'beeseed:hive-profile-updated') {
-        void authStore.getState().init()
+        if (data.profile) {
+          authStore.getState().applyHiveProfile(data.profile)
+          broadcastHiveProfile(data)
+        } else {
+          void authStore.getState().init()
+        }
       }
     }
 
@@ -171,4 +189,29 @@ function appReturnTo(): string {
 
 function removeParams(params: URLSearchParams, keys: string[]) {
   for (const key of keys) params.delete(key)
+}
+
+function normalizeHiveProfileMessage(data: unknown): HiveProfileMessage | null {
+  if (typeof data !== 'object' || data === null) return null
+  const message = data as HiveProfileMessage
+  if (typeof message.type !== 'string') return null
+  if (message.profile && !isHiveProfileSnapshot(message.profile)) return null
+  return message
+}
+
+function isHiveProfileSnapshot(profile: unknown): profile is HiveProfileSnapshot {
+  if (typeof profile !== 'object' || profile === null) return false
+  const value = profile as HiveProfileSnapshot
+  return typeof value.id === 'string' && value.id.trim().length > 0
+}
+
+function broadcastHiveProfile(message: HiveProfileMessage) {
+  if (typeof BroadcastChannel === 'undefined' || !message.profile) return
+  const channel = new BroadcastChannel(HIVE_PROFILE_CHANNEL)
+  channel.postMessage({
+    type: 'beeseed:hive-profile-updated',
+    profile: message.profile,
+    changed_fields: message.changed_fields,
+  })
+  channel.close()
 }

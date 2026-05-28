@@ -15,6 +15,18 @@ export interface User {
   updated_at: string
 }
 
+export interface HiveProfileSnapshot {
+  id: string
+  name?: string
+  avatar_url?: string | null
+  email?: string | null
+  email_verified_at?: string | null
+  phone?: string | null
+  phone_verified_at?: string | null
+  updated_at?: string
+  profile_version?: number
+}
+
 // ── App User Management ──
 
 export type AppRole = 'owner' | 'admin' | 'member'

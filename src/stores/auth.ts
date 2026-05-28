@@ -1,6 +1,6 @@
 import { createStore } from 'zustand/vanilla'
 import type { KyInstance } from 'ky'
-import type { User, AuthResponse, SignOutOptions } from '../core/types.js'
+import type { User, AuthResponse, HiveProfileSnapshot, SignOutOptions } from '../core/types.js'
 
 const DEFAULT_TOKEN_KEY = 'beeseed_token'
 
@@ -17,6 +17,7 @@ export interface AuthState {
   signUpWithSMS: (phone: string, code: string, name: string, email?: string, inviteCode?: string) => Promise<{ error: string | null }>
   signOut: (options?: SignOutOptions) => void
   setToken: (token: string | null) => void
+  applyHiveProfile: (profile: HiveProfileSnapshot) => void
   updateAvatar: (file: File) => Promise<{ error: string | null }>
   updateName: (name: string) => Promise<{ error: string | null }>
   changePassword: (oldPassword: string, newPassword: string) => Promise<{ error: string | null }>
@@ -142,6 +143,13 @@ export function createAuthStore(config: AuthStoreConfig) {
       set({ token })
     },
 
+    applyHiveProfile: (profile) => {
+      set((state) => {
+        if (!state.user || !isSameHiveUser(state.user, profile)) return state
+        return { user: mergeHiveProfile(state.user, profile) }
+      })
+    },
+
     updateAvatar: async (file) => {
       try {
         const form = new FormData()
@@ -177,3 +185,22 @@ export function createAuthStore(config: AuthStoreConfig) {
 }
 
 export type AuthStore = ReturnType<typeof createAuthStore>
+
+function isSameHiveUser(user: User, profile: HiveProfileSnapshot) {
+  if (!profile.id) return true
+  if (user.id === profile.id || user.app_user_id === profile.id) return true
+  if (profile.email && user.email && profile.email.trim().toLowerCase() === user.email.trim().toLowerCase()) return true
+  if (profile.phone && user.phone && profile.phone.trim() === user.phone.trim()) return true
+  return false
+}
+
+function mergeHiveProfile(user: User, profile: HiveProfileSnapshot): User {
+  const next: User = { ...user }
+  if (typeof profile.name === 'string' && profile.name.trim()) next.name = profile.name.trim()
+  if ('avatar_url' in profile) next.avatar_url = profile.avatar_url || undefined
+  if (typeof profile.email === 'string' && profile.email.trim()) next.email = profile.email.trim()
+  if ('phone' in profile) next.phone = profile.phone || undefined
+  if ('phone_verified_at' in profile) next.phone_verified_at = profile.phone_verified_at || undefined
+  if (profile.updated_at) next.updated_at = profile.updated_at
+  return next
+}
