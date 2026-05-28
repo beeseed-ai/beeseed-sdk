@@ -15,7 +15,7 @@ import { Input } from '../ui/input.js'
 
 const tabs = [
   { id: 'agents', label: 'Agent 管理', icon: Bot },
-  { id: 'users', label: '用户管理', icon: Users },
+  { id: 'users', label: '成员管理', icon: Users },
   { id: 'channels', label: '频道管理', icon: MessageSquare },
   { id: 'knowledge', label: '知识库', icon: BookOpen },
   { id: 'settings', label: '设置', icon: Settings },

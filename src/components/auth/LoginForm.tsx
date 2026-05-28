@@ -155,7 +155,7 @@ export function LoginForm({ onSwitchToRegister, className }: Props) {
               className="text-muted-foreground hover:text-foreground underline-offset-4 hover:underline"
               onClick={onSwitchToRegister}
             >
-              没有账号？注册
+              没有 Hive 账号？创建
             </button>
           </div>
         )}

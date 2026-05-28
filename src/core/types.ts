@@ -9,6 +9,8 @@ export interface User {
   avatar_url?: string
   role: string
   status: string
+  app_user_id?: string
+  app_membership_status?: AppMembershipStatus
   created_at: string
   updated_at: string
 }
@@ -17,6 +19,18 @@ export interface User {
 
 export type AppRole = 'owner' | 'admin' | 'member'
 export type RegistrationPolicy = 'open' | 'invite' | 'closed'
+export type AppMembershipStatus = 'active' | 'disabled' | 'pending' | 'left'
+export type ApplicationEntryMode = 'public' | 'org_only' | 'invite_only' | 'closed'
+export type ApplicationJoinMode = 'auto' | 'invite' | 'approval' | 'closed'
+
+export interface ApplicationAccessPolicy {
+  app_id?: string
+  entry_mode: ApplicationEntryMode
+  join_mode: ApplicationJoinMode
+  allow_new_hive_users: boolean
+  profile_scope?: Record<string, boolean>
+  updated_at?: string
+}
 
 export interface AppUser {
   id: string
@@ -25,6 +39,8 @@ export interface AppUser {
   avatar_url?: string
   role: AppRole
   is_disabled: boolean
+  app_user_id?: string
+  app_membership_status?: AppMembershipStatus
   created_at: string
   updated_at: string
 }
