@@ -97,7 +97,7 @@ function createBeeSeedContext(config: BeeSeedConfig, updateAppConfig: (appConfig
       wsRef?.connect()
       void channelsStore.getState().fetchChannels()
     },
-    onSignOut: () => {
+    onSignOut: (options) => {
       wsRef?.disconnect()
       channelsStore.getState().reset()
       messagesStore.getState().reset()
@@ -108,14 +108,18 @@ function createBeeSeedContext(config: BeeSeedConfig, updateAppConfig: (appConfig
       notificationsStore.getState().reset()
       cronStore.getState().reset()
       agentsStore.getState().reset()
-      config.onAuthError?.()
+      if (options?.scope === 'global') {
+        config.onSignOut?.(options)
+      } else {
+        config.onAuthError?.()
+      }
     },
   })
 
   const handleEvent = (event: WSEvent) => {
     console.log('[Provider] handleEvent', event.type)
     if (event.type === 'kicked') {
-      authStore.getState().signOut()
+      authStore.getState().signOut({ scope: 'local' })
       return
     }
     if (event.type === 'auth_ok') {

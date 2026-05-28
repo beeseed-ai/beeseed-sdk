@@ -164,7 +164,7 @@ function AccountTab({ onClose }: { onClose: () => void }) {
       {/* Actions */}
       <div className="flex items-center justify-between pt-2 border-t border-[#f0f0f0]">
         <button
-          onClick={() => { onClose(); signOut() }}
+          onClick={() => { onClose(); signOut({ scope: 'global' }) }}
           className="flex items-center gap-1.5 text-sm text-red-500 hover:text-red-600 transition-colors"
         >
           <LogOut className="w-4 h-4" />

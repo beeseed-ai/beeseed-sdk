@@ -751,7 +751,12 @@ export interface AppRuntimeConfig {
 export interface BeeSeedConfig {
   workerUrl: string
   tokenKey?: string
+  onSignOut?: (options?: SignOutOptions) => void
   onAuthError?: () => void
   useMockData?: boolean
   appConfig?: AppRuntimeConfig
+}
+
+export interface SignOutOptions {
+  scope?: 'local' | 'global'
 }

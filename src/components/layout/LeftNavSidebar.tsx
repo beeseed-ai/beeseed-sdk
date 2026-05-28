@@ -285,7 +285,7 @@ export function LeftNavSidebar({ activeFeature, onFeatureChange, channels, curre
               )}
               <div className="my-1 border-t border-border" />
               <button
-                onClick={() => { setMenuOpen(false); signOut() }}
+                onClick={() => { setMenuOpen(false); signOut({ scope: 'global' }) }}
                 className="flex w-full items-center gap-2.5 px-3 py-2 text-sm text-red-500 hover:bg-red-50 transition-colors"
               >
                 <LogOut className="w-4 h-4" />

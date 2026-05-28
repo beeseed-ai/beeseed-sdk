@@ -1,6 +1,6 @@
 import { createStore } from 'zustand/vanilla'
 import type { KyInstance } from 'ky'
-import type { User, AuthResponse } from '../core/types.js'
+import type { User, AuthResponse, SignOutOptions } from '../core/types.js'
 
 const DEFAULT_TOKEN_KEY = 'beeseed_token'
 
@@ -15,7 +15,7 @@ export interface AuthState {
   signInWithSMS: (phone: string, code: string) => Promise<{ error: string | null }>
   signUp: (email: string, password: string, name: string, inviteCode?: string) => Promise<{ error: string | null }>
   signUpWithSMS: (phone: string, code: string, name: string, email?: string, inviteCode?: string) => Promise<{ error: string | null }>
-  signOut: () => void
+  signOut: (options?: SignOutOptions) => void
   setToken: (token: string | null) => void
   updateAvatar: (file: File) => Promise<{ error: string | null }>
   updateName: (name: string) => Promise<{ error: string | null }>
@@ -26,7 +26,7 @@ export interface AuthStoreConfig {
   api: KyInstance
   tokenKey?: string
   onSignIn?: (token: string, user: User) => void
-  onSignOut?: () => void
+  onSignOut?: (options?: SignOutOptions) => void
 }
 
 export function createAuthStore(config: AuthStoreConfig) {
@@ -131,10 +131,10 @@ export function createAuthStore(config: AuthStoreConfig) {
       }
     },
 
-    signOut: () => {
+    signOut: (options) => {
       storeToken(null)
       set({ user: null, token: null })
-      config.onSignOut?.()
+      config.onSignOut?.(options)
     },
 
     setToken: (token) => {

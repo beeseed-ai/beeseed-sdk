@@ -43,7 +43,7 @@ export function ChatLayout({ className }: Props) {
   const sidebarFooter = (
     <div className="flex items-center justify-between border-t px-4 py-2">
       <span className="text-xs text-muted-foreground truncate">{user?.name}</span>
-      <Button variant="ghost" size="icon-sm" onClick={signOut}>
+      <Button variant="ghost" size="icon-sm" onClick={() => signOut({ scope: 'global' })}>
         <LogOut className="size-3.5" />
       </Button>
     </div>
