@@ -145,7 +145,7 @@ export function createAuthStore(config: AuthStoreConfig) {
 
     applyHiveProfile: (profile) => {
       set((state) => {
-        if (!state.user || !isSameHiveUser(state.user, profile)) return state
+        if (!state.user) return state
         return { user: mergeHiveProfile(state.user, profile) }
       })
     },
@@ -185,14 +185,6 @@ export function createAuthStore(config: AuthStoreConfig) {
 }
 
 export type AuthStore = ReturnType<typeof createAuthStore>
-
-function isSameHiveUser(user: User, profile: HiveProfileSnapshot) {
-  if (!profile.id) return true
-  if (user.id === profile.id || user.app_user_id === profile.id) return true
-  if (profile.email && user.email && profile.email.trim().toLowerCase() === user.email.trim().toLowerCase()) return true
-  if (profile.phone && user.phone && profile.phone.trim() === user.phone.trim()) return true
-  return false
-}
 
 function mergeHiveProfile(user: User, profile: HiveProfileSnapshot): User {
   const next: User = { ...user }
