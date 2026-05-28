@@ -1,5 +1,5 @@
-import { useMemo, useState } from 'react'
-import { Check, Copy, Info, LockKeyhole, Plus, ShieldCheck, UserCheck, UserX, X } from 'lucide-react'
+import { useEffect, useMemo, useState } from 'react'
+import { Ban, Check, ChevronLeft, ChevronRight, Copy, Info, LockKeyhole, Plus, ShieldCheck, Trash2, UserCheck, UserX, X } from 'lucide-react'
 import { cn } from '../../lib/cn.js'
 import { useAuth } from '../../hooks/use-auth.js'
 import { useAppUsers } from '../../hooks/use-app-users.js'
@@ -188,10 +188,31 @@ function UserListSection({
   currentUserId?: string
   currentAppUserId?: string
 }) {
-  const { users, loading, toggleDisabled } = useAppUsers()
+  const {
+    users,
+    blockedUsers,
+    blockedTotal,
+    loading,
+    blockedLoading,
+    error,
+    fetchBlockedUsers,
+    toggleDisabled,
+    removeUser,
+    blockUser,
+    unblockUser,
+  } = useAppUsers()
+  const [view, setView] = useState<'members' | 'blocked'>('members')
+  const [blockedPage, setBlockedPage] = useState(0)
+  const pageSize = 10
+
+  useEffect(() => {
+    if (view === 'blocked') {
+      void fetchBlockedUsers({ limit: pageSize, offset: blockedPage * pageSize })
+    }
+  }, [blockedPage, fetchBlockedUsers, view])
 
   const sortedUsers = useMemo(() => {
-    return [...users].sort((a, b) => {
+    return users.filter(isVisibleMember).sort((a, b) => {
       const roleWeight: Record<AppRole, number> = { owner: 0, admin: 1, member: 2 }
       if (roleWeight[a.role] !== roleWeight[b.role]) {
         return roleWeight[a.role] - roleWeight[b.role]
@@ -207,21 +228,64 @@ function UserListSection({
     return false
   }
 
+  const handleRemove = async (user: AppUser) => {
+    if (!window.confirm(`从当前 App 移除「${user.name}」？对方之后仍可按加入策略重新加入。`)) return
+    await removeUser(user.id)
+  }
+
+  const handleBlock = async (user: AppUser) => {
+    if (!window.confirm(`拉黑「${user.name}」？对方会从成员列表移除，并且解除拉黑前不能再次加入此 App。`)) return
+    await blockUser(user.id)
+  }
+
+  const handleUnblock = async (appUserId: string, name: string) => {
+    if (!window.confirm(`解除「${name}」的拉黑？解除后不会自动恢复为成员，需要按当前加入方式重新进入。`)) return
+    await unblockUser(appUserId)
+    await fetchBlockedUsers({ limit: pageSize, offset: blockedPage * pageSize })
+  }
+
+  const blockedPageCount = Math.max(1, Math.ceil(blockedTotal / pageSize))
+  const canManageAny = currentRole === 'owner' || currentRole === 'admin'
+
   return (
     <div className="flex flex-col overflow-hidden rounded-xl border border-border bg-white shadow-sm">
       <div className="border-b border-border px-5 py-4">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
-            <h3 className="text-sm font-semibold text-[#1a1a1a]">App 成员 ({users.length})</h3>
-            <p className="mt-1 text-xs leading-5 text-muted-foreground">这里的“禁止使用”只影响当前 App，不会禁用 Hive 账号或其他 App。</p>
+            <h3 className="text-sm font-semibold text-[#1a1a1a]">App 成员</h3>
+            <p className="mt-1 text-xs leading-5 text-muted-foreground">禁止使用是可恢复的 App 状态；移除会解除成员关系；拉黑会阻止再次加入。</p>
           </div>
-          <Badge variant="outline" className="gap-1 text-xs font-normal">
-            <ShieldCheck className="h-3.5 w-3.5" />
-            管理员委派在 Hive 平台
-          </Badge>
+          <div className="flex flex-wrap items-center gap-2">
+            <div className="inline-flex rounded-lg border border-border bg-[#f8fafc] p-0.5">
+              <button
+                type="button"
+                onClick={() => setView('members')}
+                className={cn('h-7 rounded-md px-3 text-xs font-medium transition-colors', view === 'members' ? 'bg-white text-[#181d26] shadow-sm' : 'text-muted-foreground hover:text-[#181d26]')}
+              >
+                成员 {sortedUsers.length}
+              </button>
+              <button
+                type="button"
+                onClick={() => setView('blocked')}
+                className={cn('h-7 rounded-md px-3 text-xs font-medium transition-colors', view === 'blocked' ? 'bg-white text-[#181d26] shadow-sm' : 'text-muted-foreground hover:text-[#181d26]')}
+              >
+                拉黑名单 {blockedTotal}
+              </button>
+            </div>
+            <Badge variant="outline" className="gap-1 text-xs font-normal">
+              <ShieldCheck className="h-3.5 w-3.5" />
+              管理员委派在 Hive 平台
+            </Badge>
+          </div>
         </div>
+        {error && (
+          <div className="mt-3 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700">
+            {error}
+          </div>
+        )}
       </div>
 
+      {view === 'members' ? (
       <div className="overflow-x-auto">
         <table className="w-full text-left text-sm">
           <thead className="bg-[#fafafa] text-xs font-medium text-muted-foreground">
@@ -278,22 +342,22 @@ function UserListSection({
                       {new Date(user.created_at).toLocaleDateString()}
                     </td>
                     <td className="px-5 py-3 text-right">
-                      {disabled ? (
-                        canRestore ? (
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            onClick={() => toggleDisabled(user.id, false)}
-                            className="h-7 px-2 text-xs text-green-700 hover:bg-green-50"
-                          >
-                            <UserCheck className="h-3.5 w-3.5" />
-                            恢复使用
-                          </Button>
-                        ) : !isSelf && (
-                          <Button variant="ghost" size="sm" disabled className="h-7 px-2 text-xs opacity-50" title="权限不足">恢复使用</Button>
-                        )
-                      ) : (
-                        isManageable ? (
+                      <div className="flex flex-wrap justify-end gap-1.5">
+                        {disabled ? (
+                          canRestore ? (
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => toggleDisabled(user.id, false)}
+                              className="h-7 px-2 text-xs text-green-700 hover:bg-green-50"
+                            >
+                              <UserCheck className="h-3.5 w-3.5" />
+                              恢复使用
+                            </Button>
+                          ) : !isSelf && (
+                            <Button variant="ghost" size="sm" disabled className="h-7 px-2 text-xs opacity-50" title="权限不足">恢复使用</Button>
+                          )
+                        ) : isManageable ? (
                           <Button
                             variant="ghost"
                             size="sm"
@@ -305,8 +369,30 @@ function UserListSection({
                           </Button>
                         ) : !isSelf && user.role !== 'owner' && (
                           <Button variant="ghost" size="sm" disabled className="h-7 px-2 text-xs opacity-50" title="权限不足">禁止使用</Button>
-                        )
-                      )}
+                        )}
+                        {isManageable && (
+                          <>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => handleRemove(user)}
+                              className="h-7 px-2 text-xs text-muted-foreground hover:text-[#181d26]"
+                            >
+                              <Trash2 className="h-3.5 w-3.5" />
+                              移除
+                            </Button>
+                            <Button
+                              variant="destructive"
+                              size="sm"
+                              onClick={() => handleBlock(user)}
+                              className="h-7 px-2 text-xs"
+                            >
+                              <Ban className="h-3.5 w-3.5" />
+                              拉黑
+                            </Button>
+                          </>
+                        )}
+                      </div>
                     </td>
                   </tr>
                 )
@@ -315,6 +401,94 @@ function UserListSection({
           </tbody>
         </table>
       </div>
+      ) : (
+        <div className="overflow-x-auto">
+          <table className="w-full text-left text-sm">
+            <thead className="bg-[#fafafa] text-xs font-medium text-muted-foreground">
+              <tr>
+                <th className="px-5 py-3 font-medium">用户</th>
+                <th className="px-5 py-3 font-medium">原因</th>
+                <th className="px-5 py-3 font-medium">拉黑时间</th>
+                <th className="px-5 py-3 text-right font-medium">操作</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-border">
+              {blockedLoading ? (
+                <tr><td colSpan={4} className="p-8 text-center text-muted-foreground">加载中...</td></tr>
+              ) : blockedUsers.length === 0 ? (
+                <tr><td colSpan={4} className="p-8 text-center text-muted-foreground">暂无拉黑用户。</td></tr>
+              ) : (
+                blockedUsers.map((item) => {
+                  const name = item.user_name || item.user_email || '未知用户'
+                  return (
+                    <tr key={item.id} className="transition-colors hover:bg-[#fafafa]/50">
+                      <td className="px-5 py-3">
+                        <div className="flex items-center gap-3">
+                          {item.user_avatar ? (
+                            <img src={item.user_avatar} alt="" className="h-8 w-8 rounded-full border border-border object-cover" />
+                          ) : (
+                            <div className="flex h-8 w-8 items-center justify-center rounded-full bg-[#f1f3f5] font-medium text-muted-foreground">
+                              {name.charAt(0).toUpperCase()}
+                            </div>
+                          )}
+                          <div className="flex min-w-0 flex-col">
+                            <span className="truncate font-medium text-[#1a1a1a]">{name}</span>
+                            <span className="truncate text-xs text-muted-foreground">{item.user_email}</span>
+                          </div>
+                        </div>
+                      </td>
+                      <td className="max-w-[280px] px-5 py-3 text-muted-foreground">
+                        <span className="line-clamp-2">{item.reason || '未填写'}</span>
+                      </td>
+                      <td className="whitespace-nowrap px-5 py-3 text-muted-foreground">
+                        {new Date(item.blocked_at).toLocaleDateString()}
+                      </td>
+                      <td className="px-5 py-3 text-right">
+                        {canManageAny && item.app_user_id ? (
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => handleUnblock(item.app_user_id!, name)}
+                            className="h-7 px-2 text-xs"
+                          >
+                            <UserCheck className="h-3.5 w-3.5" />
+                            解除拉黑
+                          </Button>
+                        ) : (
+                          <Button variant="ghost" size="sm" disabled className="h-7 px-2 text-xs opacity-50" title="权限不足">解除拉黑</Button>
+                        )}
+                      </td>
+                    </tr>
+                  )
+                })
+              )}
+            </tbody>
+          </table>
+          <div className="flex items-center justify-between border-t border-border px-5 py-3 text-xs text-muted-foreground">
+            <span>第 {blockedPage + 1} / {blockedPageCount} 页</span>
+            <div className="flex items-center gap-2">
+              <Button
+                variant="outline"
+                size="icon-sm"
+                disabled={blockedPage <= 0 || blockedLoading}
+                onClick={() => setBlockedPage(page => Math.max(0, page - 1))}
+                title="上一页"
+              >
+                <ChevronLeft className="h-3.5 w-3.5" />
+              </Button>
+              <Button
+                variant="outline"
+                size="icon-sm"
+                disabled={blockedPage + 1 >= blockedPageCount || blockedLoading}
+                onClick={() => setBlockedPage(page => Math.min(blockedPageCount - 1, page + 1))}
+                title="下一页"
+              >
+                <ChevronRight className="h-3.5 w-3.5" />
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
@@ -330,6 +504,10 @@ function entryModeLabel(mode: string) {
     default:
       return '公开入口'
   }
+}
+
+function isVisibleMember(user: AppUser) {
+  return user.app_membership_status !== 'left'
 }
 
 function roleLabel(role: AppRole) {

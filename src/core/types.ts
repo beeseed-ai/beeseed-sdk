@@ -45,6 +45,21 @@ export interface AppUser {
   updated_at: string
 }
 
+export interface AppMemberBlock {
+  id: string
+  app_id: string
+  user_id: string
+  app_user_id?: string
+  reason?: string
+  blocked_by?: string | null
+  blocked_at: string
+  revoked_by?: string | null
+  revoked_at?: string | null
+  user_name?: string
+  user_email?: string
+  user_avatar?: string | null
+}
+
 export interface Invite {
   id: string
   token_prefix: string

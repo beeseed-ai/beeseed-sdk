@@ -10,8 +10,16 @@ export function useAppUsers() {
 
   return {
     users: state.users,
+    blockedUsers: state.blockedUsers,
+    blockedTotal: state.blockedTotal,
     loading: state.loading,
+    blockedLoading: state.blockedLoading,
+    error: state.error,
+    fetchBlockedUsers: state.fetchBlockedUsers,
     changeRole: state.changeRole,
-    toggleDisabled: state.toggleDisabled
+    toggleDisabled: state.toggleDisabled,
+    removeUser: state.removeUser,
+    blockUser: state.blockUser,
+    unblockUser: state.unblockUser
   }
 }
