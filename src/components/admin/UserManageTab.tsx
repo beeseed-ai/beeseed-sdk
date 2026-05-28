@@ -109,9 +109,9 @@ function InviteCodesSection({ currentRole }: { currentRole: AppRole }) {
   const canManage = currentRole === 'owner' || currentRole === 'admin'
   const inviteMode = joinMode === 'invite'
 
-  const handleCopy = (code: string | undefined, id: string) => {
-    if (!code) return
-    navigator.clipboard.writeText(code)
+  const handleCopy = (value: string | undefined, id: string) => {
+    if (!value) return
+    navigator.clipboard.writeText(value)
     setCopiedId(id)
     setTimeout(() => setCopiedId(null), 2000)
   }
@@ -147,7 +147,8 @@ function InviteCodesSection({ currentRole }: { currentRole: AppRole }) {
             const isRevoked = !!invite.revoked_at
             const isUsed = !!invite.used_at
             const inactive = isRevoked || isUsed
-            const display = invite.code ?? `${invite.token_prefix}••••`
+            const copyValue = invite.invite_url || invite.code
+            const display = invite.invite_url || invite.code || `${invite.token_prefix}••••`
             return (
               <div key={invite.id} className="flex items-center justify-between rounded-lg border border-border p-3 text-sm">
                 <div className="flex min-w-0 flex-col">
@@ -159,8 +160,8 @@ function InviteCodesSection({ currentRole }: { currentRole: AppRole }) {
                   </span>
                 </div>
                 <div className="flex items-center gap-2">
-                  {!inactive && invite.code && (
-                    <Button variant="ghost" size="icon-sm" onClick={() => handleCopy(invite.code, invite.id)} title="复制加入邀请">
+                  {!inactive && copyValue && (
+                    <Button variant="ghost" size="icon-sm" onClick={() => handleCopy(copyValue, invite.id)} title="复制邀请链接">
                       {copiedId === invite.id ? <Check className="h-3.5 w-3.5 text-green-600" /> : <Copy className="h-3.5 w-3.5 text-muted-foreground" />}
                     </Button>
                   )}

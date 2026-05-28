@@ -64,8 +64,9 @@ export interface Invite {
   id: string
   token_prefix: string
   code?: string
+  invite_url?: string
   note?: string | null
-  created_by: string
+  created_by?: string | null
   created_at: string
   expires_at?: string | null
   used_at?: string | null
