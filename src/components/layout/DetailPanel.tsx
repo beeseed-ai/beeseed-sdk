@@ -1,5 +1,5 @@
-import { AlertTriangle, ArrowUpRight, CalendarClock, CheckCircle2, ChevronDown, ChevronRight, Circle, Clock, FileText, FolderOpen, ListChecks, Maximize2, MessageSquareQuote, PauseCircle, Plus, Repeat2, Save, Search, Trash2, Upload, Users, UserPlus } from 'lucide-react'
-import { useMemo, useState } from 'react'
+import { AlertTriangle, ArrowUpRight, CalendarClock, CheckCircle2, ChevronDown, ChevronRight, Circle, Clock, FileText, FolderOpen, ListChecks, Maximize2, MessageSquareQuote, Monitor, PauseCircle, Plus, Repeat2, Save, Search, Trash2, Upload, Users, UserPlus } from 'lucide-react'
+import { useEffect, useMemo, useState } from 'react'
 import type { CalendarEvent, ChannelMemberInfo, ModelTierName, Task, StorageObject } from '../../core/types.js'
 import type { CreateScheduledTaskInput } from '../../stores/tasks.js'
 import { cn } from '../../lib/cn.js'
@@ -71,6 +71,39 @@ interface AgentTemplateSummary {
   avatar_preset?: string
 }
 
+interface LocalAgentDevice {
+  device_id?: string
+  id?: string
+  status?: string
+  last_seen_at?: string
+  connected_at?: string
+  revoked_at?: string | null
+}
+
+interface LocalAgentGrant {
+  grant_id?: string
+  permissions?: string[]
+  revoked_at?: string | null
+}
+
+interface LocalAgentSummary {
+  loading: boolean
+  totalDevices: number
+  onlineDevices: number
+  grants: number
+  writableGrants: number
+  error: string
+}
+
+interface LocalAgentDevicesResponse {
+  devices?: LocalAgentDevice[]
+}
+
+interface LocalAgentGrantsResponse {
+  grants?: LocalAgentGrant[]
+}
+
+const LOCAL_AGENT_ID = 'local-agent'
 const MODEL_TIER_OPTIONS: { value: ModelTierName; label: string }[] = [
   { value: 'fast', label: '快速' },
   { value: 'thinking', label: '思考' },
@@ -108,6 +141,71 @@ function parseInviteEmails(value: string) {
       .map((email) => email.trim().toLowerCase())
       .filter(Boolean),
   ))
+}
+
+function objectValue(value: unknown): Record<string, unknown> {
+  if (!value) return {}
+  if (typeof value === 'string') {
+    try {
+      const parsed = JSON.parse(value)
+      return objectValue(parsed)
+    } catch {
+      return {}
+    }
+  }
+  if (typeof value === 'object' && !Array.isArray(value)) {
+    return value as Record<string, unknown>
+  }
+  return {}
+}
+
+function isLocalAgentMember(member: ChannelMemberInfo) {
+  const extInfo = objectValue(member.ext_info)
+  return member.member_type === 'agent' && (
+    member.agent_id === LOCAL_AGENT_ID ||
+    extInfo.agent_kind === 'local_agent' ||
+    extInfo.runtime === 'local_agent'
+  )
+}
+
+function localAgentDateValue(value: string | null | undefined) {
+  if (!value) return 0
+  const parsed = Date.parse(value)
+  return Number.isFinite(parsed) ? parsed : 0
+}
+
+function localAgentDeviceOnline(device: LocalAgentDevice) {
+  if (device.revoked_at) return false
+  const status = (device.status || '').toLowerCase()
+  if (status === 'offline' || status === 'revoked' || status === 'stopped') return false
+  if (status === 'ok' || status === 'ready' || status === 'degraded' || status === 'running') return true
+  const lastSeen = localAgentDateValue(device.last_seen_at || device.connected_at)
+  return lastSeen > 0 && Date.now() - lastSeen < 2 * 60 * 1000
+}
+
+function localAgentGrantCanWrite(grant: LocalAgentGrant) {
+  const permissions = grant.permissions ?? []
+  return permissions.includes('write') || permissions.includes('read_write')
+}
+
+const emptyLocalAgentSummary: LocalAgentSummary = {
+  loading: false,
+  totalDevices: 0,
+  onlineDevices: 0,
+  grants: 0,
+  writableGrants: 0,
+  error: '',
+}
+
+function localAgentStatusText(summary: LocalAgentSummary) {
+  if (summary.loading) return '正在同步状态'
+  if (summary.error) return '状态暂不可用'
+  if (summary.totalDevices === 0) return '暂无已绑定设备'
+  if (summary.onlineDevices > 0) {
+    return `${summary.onlineDevices} 台在线 · ${summary.writableGrants} 个可写授权`
+  }
+  if (summary.grants > 0) return `设备离线 · ${summary.grants} 个目录授权`
+  return '设备离线'
 }
 
 export function DetailPanel({ channelId, members = [], tasks = [], files = [], onCreateTask, onMembersChanged, className }: Props) {
@@ -155,7 +253,9 @@ export function DetailPanel({ channelId, members = [], tasks = [], files = [], o
   const [agentSettingsLoading, setAgentSettingsLoading] = useState(false)
   const [agentSettingsSaving, setAgentSettingsSaving] = useState(false)
 
-  const agents = members.filter((m) => m.member_type === 'agent')
+  const agentMembers = members.filter((m) => m.member_type === 'agent')
+  const localAgents = agentMembers.filter(isLocalAgentMember)
+  const cloudAgents = agentMembers.filter((m) => !isLocalAgentMember(m))
   const users = members.filter((m) => m.member_type === 'user')
   const channelTasks = storeTasks.length > 0 ? storeTasks : tasks
   const channelFiles = storageObjects.length > 0 || storageDirectories.length > 0 ? storageObjects : files
@@ -164,8 +264,9 @@ export function DetailPanel({ channelId, members = [], tasks = [], files = [], o
   const canManageAgentMembers = currentMember?.role === 'owner'
   const canInviteUsers = currentMember?.role === 'owner' || currentMember?.role === 'admin'
   const canConfigureAgentTier = Boolean(currentMember)
-  const agentNames = new Map(agents.map((agent) => [agent.agent_id, agent.display_name || agent.agent_id || 'Agent']))
-  const channelAgentIDs = useMemo(() => new Set(agents.map((agent) => agent.agent_id).filter(Boolean) as string[]), [agents])
+  const agentNames = new Map(agentMembers.map((agent) => [agent.agent_id, agent.display_name || agent.agent_id || 'Agent']))
+  const channelAgentIDs = useMemo(() => new Set(agentMembers.map((agent) => agent.agent_id).filter(Boolean) as string[]), [agentMembers])
+  const [localAgentSummary, setLocalAgentSummary] = useState<LocalAgentSummary>(emptyLocalAgentSummary)
   const filteredAvailableAgents = useMemo(() => availableAgents
     .filter((agent) => !channelAgentIDs.has(agent.id))
     .filter((agent) => {
@@ -191,6 +292,45 @@ export function DetailPanel({ channelId, members = [], tasks = [], files = [], o
   const runningCount = channelTasks.filter((task) => task.status === 'in_progress').length
   const blockedCount = channelTasks.filter((task) => task.status === 'blocked' || task.scheduler_state === 'pending_deps').length
   const doneCount = channelTasks.filter((task) => task.status === 'done').length
+
+  useEffect(() => {
+    if (!channelId || localAgents.length === 0) {
+      setLocalAgentSummary(emptyLocalAgentSummary)
+      return
+    }
+
+    let cancelled = false
+    setLocalAgentSummary((current) => ({ ...current, loading: true, error: '' }))
+
+    void Promise.all([
+      api.get('local-agent/devices').json<LocalAgentDevicesResponse>(),
+      api.get('local-agent/grants', { searchParams: { channel_id: channelId } }).json<LocalAgentGrantsResponse>(),
+    ])
+      .then(([deviceData, grantData]) => {
+        if (cancelled) return
+        const devices = (deviceData.devices ?? []).filter((device) => !device.revoked_at)
+        const grants = (grantData.grants ?? []).filter((grant) => !grant.revoked_at)
+        setLocalAgentSummary({
+          loading: false,
+          totalDevices: devices.length,
+          onlineDevices: devices.filter(localAgentDeviceOnline).length,
+          grants: grants.length,
+          writableGrants: grants.filter(localAgentGrantCanWrite).length,
+          error: '',
+        })
+      })
+      .catch(() => {
+        if (cancelled) return
+        setLocalAgentSummary({
+          ...emptyLocalAgentSummary,
+          error: 'LOCAL_AGENT_STATUS_UNAVAILABLE',
+        })
+      })
+
+    return () => {
+      cancelled = true
+    }
+  }, [api, channelId, localAgents.length])
 
   if (!panelVisible || !channelId) return null
 
@@ -409,8 +549,8 @@ export function DetailPanel({ channelId, members = [], tasks = [], files = [], o
               )}
               {tasksOpen ? <ChevronDown className="w-3.5 h-3.5 text-muted-foreground" /> : <ChevronRight className="w-3.5 h-3.5 text-muted-foreground" />}
             </button>
-            <CreateScheduledTaskDialog agents={agents} onSubmit={handleCreateScheduledTask} />
-            <CreateTaskDialog agents={agents} onSubmit={handleCreateTask} />
+            <CreateScheduledTaskDialog agents={cloudAgents} onSubmit={handleCreateScheduledTask} />
+            <CreateTaskDialog agents={cloudAgents} onSubmit={handleCreateTask} />
             <button
               title="打开任务中心"
               className="rounded p-1 text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
@@ -638,11 +778,11 @@ export function DetailPanel({ channelId, members = [], tasks = [], files = [], o
                   {agentActionError}
                 </div>
               )}
-              {agents.length > 0 && (
+              {cloudAgents.length > 0 && (
                 <>
-                  <div className="text-[10px] text-muted-foreground/60 uppercase tracking-wider mb-1.5">AGENT — {agents.length}</div>
+                  <div className="text-[10px] text-muted-foreground/60 uppercase tracking-wider mb-1.5">云端 Agent — {cloudAgents.length}</div>
                   <div className="space-y-2 mb-3">
-                    {agents.map((m) => (
+                    {cloudAgents.map((m) => (
                       <div key={m.id} className="flex items-center gap-2.5">
                         <button
                           type="button"
@@ -661,6 +801,31 @@ export function DetailPanel({ channelId, members = [], tasks = [], files = [], o
                           {m.chinese_name && m.chinese_name !== m.display_name && (
                             <div className="text-[10px] text-muted-foreground">{m.chinese_name}</div>
                           )}
+                        </div>
+                        <span className="text-[10px] text-muted-foreground/60">{m.role}</span>
+                      </div>
+                    ))}
+                  </div>
+                </>
+              )}
+              {localAgents.length > 0 && (
+                <>
+                  <div className="text-[10px] text-muted-foreground/60 uppercase tracking-wider mb-1.5">本地 Agent — {localAgents.length}</div>
+                  <div className="space-y-2 mb-3">
+                    {localAgents.map((m) => (
+                      <div key={m.id} className="flex items-center gap-2.5">
+                        <Avatar className="size-7 shrink-0">
+                          {m.avatar_url ? <AvatarImage src={m.avatar_url} /> : null}
+                          <AvatarFallback className="bg-[#f8fafc] text-[#41454d]">
+                            <Monitor className="h-3.5 w-3.5" />
+                          </AvatarFallback>
+                        </Avatar>
+                        <div className="min-w-0 flex-1">
+                          <div className="flex min-w-0 items-center gap-1.5">
+                            <div className="truncate text-xs font-medium">{m.display_name || '本地 Agent'}</div>
+                            <Badge variant="outline" className="h-4 shrink-0 rounded px-1 py-0 text-[10px] font-normal">本地</Badge>
+                          </div>
+                          <div className="truncate text-[10px] text-muted-foreground">{localAgentStatusText(localAgentSummary)}</div>
                         </div>
                         <span className="text-[10px] text-muted-foreground/60">{m.role}</span>
                       </div>

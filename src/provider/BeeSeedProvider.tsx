@@ -141,6 +141,7 @@ function createBeeSeedContext(config: BeeSeedConfig, updateAppConfig: (appConfig
       const currentChannelId = channelsStore.getState().currentChannelId
       void channelsStore.getState().fetchChannels().finally(() => {
         if (event.channel_id && event.channel_id === currentChannelId) {
+          void messagesStore.getState().fetchMembers(event.channel_id)
           channelsStore.getState().markRead(event.channel_id)
         }
       })
