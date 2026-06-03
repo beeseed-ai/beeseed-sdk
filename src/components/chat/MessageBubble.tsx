@@ -1,5 +1,5 @@
 import { useState, useCallback, useMemo } from 'react'
-import { Copy, Check, CornerDownLeft, Zap } from 'lucide-react'
+import { Copy, Check, CornerDownLeft, GitBranch, Zap } from 'lucide-react'
 import type { ChatMessage } from '../../core/types.js'
 import { cn } from '../../lib/cn.js'
 import { storageRefsFromText, stripStorageReferenceBlock } from '../../lib/storage-ref.js'
@@ -18,6 +18,7 @@ interface Props {
   onMentionClick?: (name: string) => void
   onScrollToMessage?: (msgId: number) => void
   onSubmitAnswer?: (askId: string, answers: Record<string, unknown>) => void
+  onOpenWorkflowRun?: (runId: string) => void
   className?: string
 }
 
@@ -30,6 +31,7 @@ function avatarColor(name: string): string {
 
 const SYSTEM_COLORS: Record<string, string> = {
   task_scheduler: 'text-[#41454d] bg-[#f8fafc] border border-[#dddddd]',
+  workflow: 'text-[#254fad] bg-[#f1f6ff] border border-[#458fff]/60',
   task_plan_created: 'text-[#6d28d9] bg-[#ede9fe]',
   agent_offline: 'text-[#b45309] bg-[#fef3c7]',
   agent_timeout: 'text-[#b45309] bg-[#fef3c7]',
@@ -63,7 +65,7 @@ function compactTaskSchedulerMessage(content: string): string {
 }
 
 export function MessageBubble({
-  message, channelId, currentUserId, onQuote, onMentionClick, onScrollToMessage, onSubmitAnswer, className,
+  message, channelId, currentUserId, onQuote, onMentionClick, onScrollToMessage, onSubmitAnswer, onOpenWorkflowRun, className,
 }: Props) {
   const [copied, setCopied] = useState(false)
   const [previewImage, setPreviewImage] = useState<string | null>(null)
@@ -127,11 +129,22 @@ export function MessageBubble({
       : message.systemSource === 'task_scheduler'
         ? compactTaskSchedulerMessage(message.content)
         : message.content
+    const workflowRunId = message.workflowTarget?.runId
     return (
       <div className={cn('flex justify-center py-1.5', className)} id={message.msgId ? `msg-${message.msgId}` : undefined}>
-        <span className={cn('px-3 py-1 text-xs rounded-full text-center break-words max-w-full', colorClass)}>
-          {content}
-        </span>
+        <div className={cn('inline-flex max-w-full items-center gap-1.5 rounded-full px-3 py-1 text-xs', colorClass)}>
+          <span className="min-w-0 break-words text-center">{content}</span>
+          {workflowRunId && onOpenWorkflowRun && (
+            <button
+              type="button"
+              onClick={() => onOpenWorkflowRun(workflowRunId)}
+              className="inline-flex shrink-0 items-center gap-1 rounded-md border border-current/20 bg-white/70 px-1.5 py-0.5 text-[11px] font-medium hover:bg-white"
+            >
+              <GitBranch className="h-3 w-3" />
+              查看
+            </button>
+          )}
+        </div>
       </div>
     )
   }

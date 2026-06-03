@@ -12,6 +12,8 @@ export interface DetailPanelState {
   sections: AccordionSections
   activeFeature: FeatureView
   composerInsertText: string | null
+  pendingWorkflowRunId: string | null
+  pendingWorkflowCreateChannelId: string | null
 
   togglePanel: () => void
   setPanel: (visible: boolean) => void
@@ -19,6 +21,10 @@ export interface DetailPanelState {
   setActiveFeature: (feature: FeatureView) => void
   insertIntoComposer: (text: string) => void
   consumeComposerInsert: () => void
+  openWorkflowRun: (runId: string) => void
+  consumeWorkflowRunTarget: () => string | null
+  openWorkflowCreate: (channelId?: string | null) => void
+  consumeWorkflowCreateTarget: () => string | null
   reset: () => void
 }
 
@@ -32,7 +38,7 @@ function initialFeature(): FeatureView {
     sessionStorage.setItem('beeseed-feature', 'admin')
     return 'admin'
   }
-  if (saved === 'tasks' || saved === 'knowledge' || saved === 'cron' || saved === 'settings' || saved === 'admin') {
+  if (saved === 'tasks' || saved === 'workflows' || saved === 'knowledge' || saved === 'cron' || saved === 'settings' || saved === 'admin') {
     return saved
   }
   return 'chat'
@@ -44,6 +50,8 @@ export function createDetailPanelStore() {
     sections: { ...DEFAULT_SECTIONS },
     activeFeature: initialFeature(),
     composerInsertText: null,
+    pendingWorkflowRunId: null,
+    pendingWorkflowCreateChannelId: null,
 
     togglePanel: () => set({ panelVisible: !get().panelVisible }),
     setPanel: (visible) => set({ panelVisible: visible }),
@@ -64,8 +72,36 @@ export function createDetailPanelStore() {
 
     insertIntoComposer: (text) => set({ composerInsertText: text }),
     consumeComposerInsert: () => set({ composerInsertText: null }),
+    openWorkflowRun: (runId) => {
+      const target = runId.trim()
+      if (!target) return
+      if (typeof sessionStorage !== 'undefined') sessionStorage.setItem('beeseed-feature', 'workflows')
+      set({ activeFeature: 'workflows', panelVisible: false, pendingWorkflowRunId: target })
+    },
+    consumeWorkflowRunTarget: () => {
+      const target = get().pendingWorkflowRunId
+      if (target) set({ pendingWorkflowRunId: null })
+      return target
+    },
+    openWorkflowCreate: (channelId) => {
+      const target = channelId?.trim() || null
+      if (typeof sessionStorage !== 'undefined') sessionStorage.setItem('beeseed-feature', 'workflows')
+      set({ activeFeature: 'workflows', panelVisible: false, pendingWorkflowCreateChannelId: target })
+    },
+    consumeWorkflowCreateTarget: () => {
+      const target = get().pendingWorkflowCreateChannelId
+      set({ pendingWorkflowCreateChannelId: null })
+      return target
+    },
 
-    reset: () => set({ panelVisible: DEFAULT_PANEL_VISIBLE, sections: { ...DEFAULT_SECTIONS }, activeFeature: 'chat', composerInsertText: null }),
+    reset: () => set({
+      panelVisible: DEFAULT_PANEL_VISIBLE,
+      sections: { ...DEFAULT_SECTIONS },
+      activeFeature: 'chat',
+      composerInsertText: null,
+      pendingWorkflowRunId: null,
+      pendingWorkflowCreateChannelId: null,
+    }),
   }))
 }
 

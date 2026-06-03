@@ -39,9 +39,24 @@ function parseSkillEnableRequest(meta: Record<string, unknown>): AskUserData['sk
 }
 
 function metadataRunId(meta: Record<string, unknown>): string | undefined {
-  return typeof meta.run_id === 'string' && meta.run_id.trim() !== ''
-    ? meta.run_id
-    : undefined
+	return typeof meta.run_id === 'string' && meta.run_id.trim() !== ''
+		? meta.run_id
+		: undefined
+}
+
+function workflowTargetFromMetadata(meta: Record<string, unknown>): ChatMessage['workflowTarget'] | undefined {
+	if (meta.source !== 'workflow') return undefined
+	const runId = typeof meta.workflow_run_id === 'string' ? meta.workflow_run_id.trim() : ''
+	if (!runId) return undefined
+	const workflowId = typeof meta.workflow_id === 'string' ? meta.workflow_id.trim() : ''
+	const nodeRunId = typeof meta.workflow_node_run_id === 'string' ? meta.workflow_node_run_id.trim() : ''
+	const event = typeof meta.event === 'string' ? meta.event.trim() : ''
+	return {
+		runId,
+		workflowId: workflowId || undefined,
+		nodeRunId: nodeRunId || undefined,
+		event: event || undefined,
+	}
 }
 
 function parseSelectedSkills(meta: Record<string, unknown>): SelectedSkillIntent[] | undefined {
@@ -286,15 +301,16 @@ export function parseMessage(m: Message, myUserId?: string): ChatMessage | null 
     }
   }
 
-  if (m.msg_type === 'system' || m.sender_type === 'system') {
-    return {
-      role: 'system',
-      content: m.content,
-      timestamp: new Date(m.created_at).getTime(),
-      msgId: m.id,
-      systemSource: (meta.source as string) || undefined,
-    }
-  }
+	if (m.msg_type === 'system' || m.sender_type === 'system') {
+		return {
+			role: 'system',
+			content: m.content,
+			timestamp: new Date(m.created_at).getTime(),
+			msgId: m.id,
+			systemSource: (meta.source as string) || undefined,
+			workflowTarget: workflowTargetFromMetadata(meta),
+		}
+	}
 
   if (meta.source === 'ask_user_answer') {
     const routing = meta.routing_info as Record<string, unknown> | undefined

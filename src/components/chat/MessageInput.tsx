@@ -1,9 +1,13 @@
 import { useRef, useCallback, useEffect, useLayoutEffect, useMemo, useState, type KeyboardEvent, type ChangeEvent } from 'react'
-import { X, Plus, AtSign, Zap, ListChecks, Workflow, ArrowUp } from 'lucide-react'
-import type { ChatMessage, ChannelMemberInfo, SelectedSkillIntent, SkillShortcutAgent, SkillShortcutOption } from '../../core/types.js'
+import { useStore } from 'zustand'
+import { X, Plus, AtSign, Zap, ListChecks, Workflow, ArrowUp, Play, RefreshCw } from 'lucide-react'
+import type { ChatMessage, ChannelMemberInfo, SelectedSkillIntent, SkillShortcutAgent, SkillShortcutOption, Workflow as WorkflowDefinition } from '../../core/types.js'
 import { cn } from '../../lib/cn.js'
 import { fileNameFromStorageRef, storageRefFromKey } from '../../lib/storage-ref.js'
+import { useAuth } from '../../hooks/use-auth.js'
+import { useDetailPanel } from '../../hooks/use-detail-panel.js'
 import { useStorage } from '../../hooks/use-storage.js'
+import { useBeeSeedContext } from '../../provider/BeeSeedProvider.js'
 import { MentionMenu, getFilteredCount, getFilteredMember } from './MentionMenu.js'
 import { StorageFileIcon, storageFileLabelForRef } from './StorageAttachmentPreview.js'
 import { SkillIcon } from '../skills/SkillIcon.js'
@@ -46,6 +50,44 @@ function selectedSkillKey(skill: Pick<SelectedSkillIntent, 'skill_id' | 'agent_i
   return `${skill.skill_id}:${skill.agent_id}`
 }
 
+function workflowStatusLabel(status: WorkflowDefinition['status']) {
+  switch (status) {
+    case 'enabled': return '已发布'
+    case 'disabled': return '已停用'
+    case 'archived': return '已归档'
+    default: return '草稿'
+  }
+}
+
+function workflowSettingsObject(settings: WorkflowDefinition['settings']): Record<string, unknown> {
+  if (!settings) return {}
+  if (typeof settings === 'string') {
+    try {
+      const parsed = JSON.parse(settings)
+      return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed as Record<string, unknown> : {}
+    } catch {
+      return {}
+    }
+  }
+  return settings
+}
+
+function workflowManualBlockReason(workflow: WorkflowDefinition, canManage: boolean): string | null {
+  if (!canManage) return '只有频道 owner/admin 可以手动启动工作流'
+  if (workflow.status === 'draft') return '还是草稿，先发布后才能手动启动'
+  if (workflow.status === 'disabled') return '工作流已停用，启用后才能手动启动'
+  if (workflow.status === 'archived') return '工作流已归档，不能手动启动'
+  if (!workflow.active_version_id) return '没有可运行版本，先发布后才能启动'
+  const settings = workflowSettingsObject(workflow.settings)
+  if (settings.manual_start_enabled === false) {
+    const reason = settings.manual_start_disabled_reason
+    return typeof reason === 'string' && reason.trim()
+      ? reason.trim()
+      : '该工作流关闭了手动启动，只能由触发器自动运行'
+  }
+  return null
+}
+
 export function MessageInput({
   channelId,
   onSend,
@@ -64,8 +106,21 @@ export function MessageInput({
   const skillMenuRef = useRef<HTMLDivElement>(null)
   const skillScrollRef = useRef<HTMLDivElement>(null)
   const skillTriggerRef = useRef<HTMLButtonElement>(null)
+  const workflowMenuRef = useRef<HTMLDivElement>(null)
+  const workflowTriggerRef = useRef<HTMLButtonElement>(null)
   const activeSkillItemRef = useRef<HTMLButtonElement>(null)
+  const { user } = useAuth()
+  const { openWorkflowRun, openWorkflowCreate } = useDetailPanel()
+  const { workflowsStore } = useBeeSeedContext()
+  const workflowState = useStore(workflowsStore)
   const { uploadFile, uploading, uploadProgress } = useStorage(channelId)
+  const workflows = workflowState.workflows
+  const workflowsLoading = workflowState.loading
+
+  useEffect(() => {
+    if (!channelId) return
+    void workflowState.fetchWorkflows(channelId)
+  }, [channelId])
 
   // Mention state
   const [mentionOpen, setMentionOpen] = useState(false)
@@ -82,8 +137,34 @@ export function MessageInput({
   const [pendingSkill, setPendingSkill] = useState<SkillShortcutOption | null>(null)
   const [replaceSkillKey, setReplaceSkillKey] = useState<string | null>(null)
   const [skillError, setSkillError] = useState<string | null>(null)
+  const [workflowMenuOpen, setWorkflowMenuOpen] = useState(false)
+  const [workflowQuery, setWorkflowQuery] = useState('')
+  const [workflowError, setWorkflowError] = useState<string | null>(null)
+  const [runningWorkflowId, setRunningWorkflowId] = useState<string | null>(null)
 
   const agentChoices = useMemo(() => agentChoicesFromMembers(members), [members])
+  const currentMember = useMemo(
+    () => members.find((member) => member.member_type === 'user' && member.user_id === user?.id),
+    [members, user?.id],
+  )
+  const canManageWorkflows = user?.role === 'owner'
+    || user?.role === 'admin'
+    || user?.role === 'super_admin'
+    || currentMember?.role === 'owner'
+    || currentMember?.role === 'admin'
+  const channelWorkflows = useMemo(
+    () => workflows.filter((workflow) => workflow.channel_id === channelId),
+    [channelId, workflows],
+  )
+  const filteredWorkflows = useMemo(() => {
+    const query = workflowQuery.trim().toLowerCase()
+    if (!query) return channelWorkflows
+    return channelWorkflows.filter((workflow) => (
+      workflow.name.toLowerCase().includes(query)
+      || workflow.description?.toLowerCase().includes(query)
+      || workflowStatusLabel(workflow.status).includes(query)
+    ))
+  }, [channelWorkflows, workflowQuery])
   const filteredSkills = useMemo(() => {
     const query = skillQuery.trim().toLowerCase()
     return skillOptions
@@ -163,6 +244,11 @@ export function MessageInput({
     setReplaceSkillKey(null)
   }, [])
 
+  const closeWorkflowMenu = useCallback(() => {
+    setWorkflowMenuOpen(false)
+    setWorkflowQuery('')
+  }, [])
+
   useLayoutEffect(() => {
     if (!skillMenuOpen) return
     const activeItem = activeSkillItemRef.current
@@ -193,6 +279,19 @@ export function MessageInput({
     document.addEventListener('pointerdown', handlePointerDown)
     return () => document.removeEventListener('pointerdown', handlePointerDown)
   }, [closeSkillMenu, skillMenuOpen])
+
+  useEffect(() => {
+    if (!workflowMenuOpen) return
+    const handlePointerDown = (event: PointerEvent) => {
+      const target = event.target
+      if (!(target instanceof Node)) return
+      if (workflowMenuRef.current?.contains(target)) return
+      if (workflowTriggerRef.current?.contains(target)) return
+      closeWorkflowMenu()
+    }
+    document.addEventListener('pointerdown', handlePointerDown)
+    return () => document.removeEventListener('pointerdown', handlePointerDown)
+  }, [closeWorkflowMenu, workflowMenuOpen])
 
   const removeSlashToken = useCallback(() => {
     const el = ref.current
@@ -294,9 +393,10 @@ export function MessageInput({
     setSkillError(null)
     setMentionOpen(false)
     closeSkillMenu()
+    closeWorkflowMenu()
     autoResize()
     el.focus()
-  }, [onSend, autoResize, storageRefs, selectedSkills, pendingSkill, closeSkillMenu])
+  }, [onSend, autoResize, storageRefs, selectedSkills, pendingSkill, closeSkillMenu, closeWorkflowMenu])
 
   const handleAttachFile = useCallback(async (file: File | undefined) => {
     if (!file || disabled) return
@@ -315,6 +415,12 @@ export function MessageInput({
 
   const handleKeyDown = useCallback(
     (e: KeyboardEvent<HTMLTextAreaElement>) => {
+      if (workflowMenuOpen && e.key === 'Escape') {
+        e.preventDefault()
+        closeWorkflowMenu()
+        return
+      }
+
       if (skillMenuOpen) {
         const activeCount = pendingSkill ? pendingAgentChoices.length : filteredSkills.length
         if (e.key === 'ArrowDown') {
@@ -386,6 +492,7 @@ export function MessageInput({
     [
       skillMenuOpen, pendingSkill, pendingAgentChoices, filteredSkills, skillIndex, skillSlashStart,
       choosePendingAgent, chooseSkill, closeSkillMenu,
+      workflowMenuOpen, closeWorkflowMenu,
       mentionOpen, mentionQuery, mentionIndex, members, handleSend, insertMention, selectedSkills.length,
     ],
   )
@@ -403,6 +510,7 @@ export function MessageInput({
         const charBefore = pos > 1 ? text[pos - 2] : ' '
         if (charBefore === ' ' || charBefore === '\n' || pos === 1) {
           setMentionOpen(false)
+          closeWorkflowMenu()
           setSkillMenuOpen(true)
           setPendingSkill(null)
           setSkillQuery('')
@@ -435,6 +543,7 @@ export function MessageInput({
         const charBefore = pos > 1 ? text[pos - 2] : ' '
         if (charBefore === ' ' || charBefore === '\n' || pos === 1) {
           closeSkillMenu()
+          closeWorkflowMenu()
           setMentionOpen(true)
           setMentionQuery('')
           setMentionIndex(0)
@@ -453,7 +562,7 @@ export function MessageInput({
         }
       }
     },
-    [autoResize, members.length, mentionOpen, mentionStart, skillMenuOpen, skillSlashStart, closeSkillMenu],
+    [autoResize, members.length, mentionOpen, mentionStart, skillMenuOpen, skillSlashStart, closeSkillMenu, closeWorkflowMenu],
   )
 
   const triggerMention = () => {
@@ -464,6 +573,7 @@ export function MessageInput({
     el.setSelectionRange(pos + 1, pos + 1)
     el.focus()
     el.dispatchEvent(new Event('input', { bubbles: true }))
+    closeWorkflowMenu()
     setMentionOpen(true)
     setMentionQuery('')
     setMentionIndex(0)
@@ -482,12 +592,61 @@ export function MessageInput({
       return
     }
     setMentionOpen(false)
+    closeWorkflowMenu()
     setSkillMenuOpen(true)
     setPendingSkill(null)
     setSkillQuery('')
     setSkillIndex(0)
     setSkillSlashStart(-1)
     ref.current?.focus()
+  }
+
+  const triggerWorkflowMenu = () => {
+    if (workflowMenuOpen) {
+      closeWorkflowMenu()
+      setWorkflowError(null)
+      ref.current?.focus()
+      return
+    }
+    closeSkillMenu()
+    setMentionOpen(false)
+    setWorkflowMenuOpen(true)
+    setWorkflowQuery('')
+    setWorkflowError(null)
+    void workflowState.fetchWorkflows(channelId)
+    ref.current?.focus()
+  }
+
+  const handleCreateWorkflowShortcut = () => {
+    if (!canManageWorkflows) {
+      setWorkflowError('只有频道 owner/admin 可以新建工作流')
+      return
+    }
+    closeWorkflowMenu()
+    openWorkflowCreate(channelId)
+    ref.current?.focus()
+  }
+
+  const handleStartWorkflow = async (workflow: WorkflowDefinition) => {
+    const blockReason = workflowManualBlockReason(workflow, canManageWorkflows)
+    if (blockReason || runningWorkflowId) {
+      if (blockReason) setWorkflowError(blockReason)
+      return
+    }
+    setRunningWorkflowId(workflow.id)
+    setWorkflowError(null)
+    try {
+      const detail = await workflowState.runWorkflow(workflow.channel_id, workflow.id)
+      if (!detail) {
+        setWorkflowError('启动失败：请检查权限、发布状态或稍后重试')
+        return
+      }
+      closeWorkflowMenu()
+      openWorkflowRun(detail.run.id)
+    } finally {
+      setRunningWorkflowId(null)
+      ref.current?.focus()
+    }
   }
 
   return (
@@ -586,6 +745,110 @@ export function MessageInput({
           </div>
         )}
 
+        {workflowMenuOpen && (
+          <div
+            ref={workflowMenuRef}
+            className="absolute bottom-full left-0 right-0 mb-1 z-50 max-h-[min(24rem,70dvh)] w-full overflow-hidden rounded-lg border border-[#dddddd] bg-white shadow-lg"
+          >
+            <div className="flex items-center justify-between gap-3 border-b border-[#eeeeee] px-3 py-2">
+              <div className="min-w-0">
+                <div className="text-xs font-medium text-[#181d26]">当前频道工作流</div>
+                <div className="mt-0.5 truncate text-[11px] text-[#777169]">
+                  只显示与这个频道绑定的工作流
+                </div>
+              </div>
+              <div className="flex shrink-0 items-center gap-1">
+                <button
+                  type="button"
+                  className="inline-flex h-7 items-center gap-1 rounded-md border border-[#dddddd] bg-white px-2 text-xs font-medium text-[#41454d] hover:bg-[#f8fafc]"
+                  onMouseDown={(e) => { e.preventDefault(); void workflowState.fetchWorkflows(channelId) }}
+                  title="刷新工作流列表"
+                >
+                  <RefreshCw className="h-3.5 w-3.5" />
+                  刷新
+                </button>
+                <button
+                  type="button"
+                  disabled={!canManageWorkflows}
+                  className="inline-flex h-7 items-center gap-1 rounded-md bg-[#181d26] px-2 text-xs font-medium text-white hover:bg-[#2b3038] disabled:cursor-not-allowed disabled:bg-[#d1d5db]"
+                  onMouseDown={(e) => { e.preventDefault(); handleCreateWorkflowShortcut() }}
+                  title={canManageWorkflows ? '在当前频道新建工作流' : '只有频道 owner/admin 可以新建工作流'}
+                >
+                  <Plus className="h-3.5 w-3.5" />
+                  新建
+                </button>
+              </div>
+            </div>
+
+            {channelWorkflows.length > 4 && (
+              <div className="border-b border-[#eeeeee] px-3 py-2">
+                <input
+                  value={workflowQuery}
+                  onChange={(event) => setWorkflowQuery(event.target.value)}
+                  placeholder="搜索工作流"
+                  className="h-8 w-full rounded-md border border-[#dddddd] bg-white px-2 text-xs text-[#181d26] outline-none focus:border-[#181d26]"
+                />
+              </div>
+            )}
+
+            <div className="max-h-[min(18rem,55dvh)] overflow-y-auto py-1">
+              {workflowsLoading && channelWorkflows.length === 0 ? (
+                <div className="px-3 py-4 text-xs text-[#777169]">正在加载工作流...</div>
+              ) : filteredWorkflows.length === 0 ? (
+                <div className="px-3 py-4 text-xs leading-5 text-[#777169]">
+                  {channelWorkflows.length === 0 ? '当前频道还没有绑定工作流。' : '没有匹配的工作流。'}
+                  {canManageWorkflows ? ' 可以点击“新建”进入工作流编辑器。' : ' 只有频道 owner/admin 可以新建或启动。'}
+                </div>
+              ) : filteredWorkflows.map((workflow) => {
+                const blockReason = workflowManualBlockReason(workflow, canManageWorkflows)
+                const starting = runningWorkflowId === workflow.id
+                const startDisabled = !!blockReason || !!runningWorkflowId
+                return (
+                  <div
+                    key={workflow.id}
+                    className="flex items-start gap-3 px-3 py-2 hover:bg-[#f8fafc]"
+                  >
+                    <div className="min-w-0 flex-1">
+                      <div className="flex min-w-0 items-center gap-2">
+                        <span className="min-w-0 truncate text-sm font-medium text-[#181d26]">{workflow.name || '未命名工作流'}</span>
+                        <span
+                          className={cn(
+                            'shrink-0 rounded-full border px-1.5 py-0.5 text-[10px] font-medium',
+                            workflow.status === 'enabled'
+                              ? 'border-[#b7e4c7] bg-[#ecfdf3] text-[#15803d]'
+                              : 'border-[#dddddd] bg-[#f8fafc] text-[#777169]',
+                          )}
+                        >
+                          {workflowStatusLabel(workflow.status)}
+                        </span>
+                      </div>
+                      <div className={cn('mt-1 line-clamp-2 text-xs leading-5', blockReason ? 'text-[#9a3412]' : 'text-[#777169]')}>
+                        {blockReason || workflow.description || '点击启动会立即创建一次手动运行'}
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      disabled={startDisabled}
+                      className="mt-0.5 inline-flex h-7 shrink-0 items-center gap-1 rounded-md border border-[#d8dde6] bg-white px-2 text-xs font-medium text-[#181d26] hover:bg-[#f8fafc] disabled:cursor-not-allowed disabled:text-[#9aa1ad]"
+                      onMouseDown={(e) => { e.preventDefault(); void handleStartWorkflow(workflow) }}
+                      title={blockReason || '启动工作流'}
+                    >
+                      <Play className="h-3.5 w-3.5" />
+                      {blockReason ? '不可启动' : starting ? '启动中' : '启动'}
+                    </button>
+                  </div>
+                )
+              })}
+            </div>
+
+            {!canManageWorkflows && (
+              <div className="border-t border-[#eeeeee] px-3 py-2 text-[11px] leading-5 text-[#777169]">
+                你可以查看关联工作流，但只有频道 owner/admin 可以新建或手动启动。
+              </div>
+            )}
+          </div>
+        )}
+
         {/* Quoted message inside card */}
         {quotedMessage && (
           <div className="flex items-start gap-2 px-4 pt-3 pb-1">
@@ -654,10 +917,10 @@ export function MessageInput({
           </div>
         )}
 
-        {(attachmentError || skillError) && (
+        {(attachmentError || skillError || workflowError) && (
           <div className="flex items-center gap-2 px-4 pt-3 pb-1 text-xs text-red-600">
-            <span className="min-w-0 flex-1 truncate">{attachmentError || skillError}</span>
-            <button type="button" className="rounded p-0.5 hover:bg-red-50" onClick={() => { setAttachmentError(null); setSkillError(null) }} aria-label="关闭错误提示">
+            <span className="min-w-0 flex-1 truncate">{attachmentError || skillError || workflowError}</span>
+            <button type="button" className="rounded p-0.5 hover:bg-red-50" onClick={() => { setAttachmentError(null); setSkillError(null); setWorkflowError(null) }} aria-label="关闭错误提示">
               <X className="h-3 w-3" />
             </button>
           </div>
@@ -714,7 +977,15 @@ export function MessageInput({
               <ListChecks className="w-4 h-4" />
               <span>任务</span>
             </button>
-            <button className="flex items-center gap-1 h-8 px-2 rounded-lg text-[#888] hover:text-black hover:bg-black/5 transition-colors text-sm shrink-0">
+            <button
+              ref={workflowTriggerRef}
+              type="button"
+              onClick={triggerWorkflowMenu}
+              className={cn(
+                'flex items-center gap-1 h-8 px-2 rounded-lg text-[#888] hover:text-black hover:bg-black/5 transition-colors text-sm shrink-0',
+                workflowMenuOpen && 'bg-black/5 text-black',
+              )}
+            >
               <Workflow className="w-4 h-4" />
               <span>工作流</span>
             </button>

@@ -87,9 +87,18 @@ type SigmaData = {
 const ACTIVE_SOURCE_STATUSES = new Set(['pending', 'processing'])
 const SUPPORTED_KNOWLEDGE_UPLOAD_EXTENSIONS = new Set([
   '.txt', '.md', '.markdown', '.json', '.jsonl', '.csv', '.tsv', '.yaml', '.yml',
-  '.html', '.htm', '.xml', '.log', '.pdf', '.png', '.jpg', '.jpeg', '.webp', '.gif', '.bmp',
+  '.html', '.htm', '.xml', '.log', '.pdf', '.docx', '.docm', '.xlsx', '.xlsm',
+  '.png', '.jpg', '.jpeg', '.webp', '.gif', '.bmp',
 ])
 const SUPPORTED_KNOWLEDGE_UPLOAD_ACCEPT = Array.from(SUPPORTED_KNOWLEDGE_UPLOAD_EXTENSIONS).join(',')
+const SUPPORTED_OFFICE_UPLOAD_MIME_PARTS = [
+  'wordprocessingml.document',
+  'wordprocessingml.template',
+  'spreadsheetml.sheet',
+  'spreadsheetml.template',
+  'ms-word.document.macroenabled.12',
+  'ms-excel.sheet.macroenabled.12',
+]
 const SOURCE_COLORS: Record<string, string> = {
   file_upload: '#0891b2',
   knowledge_pack: '#059669',
@@ -154,6 +163,7 @@ function isSupportedKnowledgeUploadFile(file: File): boolean {
   const ext = dotIndex >= 0 ? name.slice(dotIndex) : ''
   if (SUPPORTED_KNOWLEDGE_UPLOAD_EXTENSIONS.has(ext)) return true
   const mimeType = file.type.toLowerCase()
+  if (SUPPORTED_OFFICE_UPLOAD_MIME_PARTS.some((part) => mimeType.includes(part))) return true
   if (mimeType.includes('openxmlformats-officedocument')) return false
   return mimeType.startsWith('text/') ||
     mimeType === 'application/pdf' ||

@@ -187,6 +187,12 @@ export interface ChatMessage {
   quotedMessage?: { msgId?: number; senderName?: string; content: string }
   // System
   systemSource?: string
+  workflowTarget?: {
+    workflowId?: string
+    runId: string
+    nodeRunId?: string
+    event?: string
+  }
   // Routing (multi-agent)
   routingInfo?: { targets: string[]; method: string }
   // Explicit skill intents selected by the user before sending.
@@ -653,6 +659,260 @@ export interface CronJob {
   created_at: string
 }
 
+// ── Workflows ──
+
+export type WorkflowStatus = 'draft' | 'enabled' | 'disabled' | 'archived'
+export type WorkflowRunStatus = 'queued' | 'running' | 'awaiting_user' | 'succeeded' | 'failed' | 'cancelled'
+export type WorkflowNodeRunStatus = 'pending' | 'ready' | 'running' | 'awaiting_user' | 'succeeded' | 'failed' | 'skipped' | 'cancelled'
+export type WorkflowNodeType = 'trigger' | 'task' | 'condition' | 'human_approval' | 'end'
+export type WorkflowExecutorType = 'agent' | 'user' | 'human' | 'system'
+
+export interface WorkflowPort {
+  key: string
+  label: string
+  schema?: Record<string, unknown>
+  required?: boolean
+}
+
+export interface WorkflowExecutor {
+  type: WorkflowExecutorType
+  ref?: string
+  prompt_template?: string
+  config?: Record<string, unknown>
+}
+
+export interface WorkflowGraphNode {
+  id: string
+  key: string
+  type: WorkflowNodeType
+  title: string
+  description?: string
+  condition_mode?: 'llm' | 'rule'
+  condition_model?: string
+  condition_prompt?: string
+  condition_selection?: 'single' | 'multiple'
+  condition_fallback?: 'default' | 'fail'
+  condition_confidence_threshold?: number
+  inputs?: WorkflowPort[]
+  outputs?: WorkflowPort[]
+  input_mapping?: Record<string, string>
+  output_mapping?: Record<string, string>
+  executor?: WorkflowExecutor
+  trigger_condition?: Record<string, unknown>
+  retry_policy?: Record<string, unknown>
+  timeout_seconds?: number
+  require_user_verification?: boolean
+  ui?: { position?: { x: number; y: number } }
+}
+
+export interface WorkflowGraphEdge {
+  id: string
+  source: string
+  target: string
+  source_handle?: string
+  target_handle?: string
+  condition?: Record<string, unknown>
+  branch_description?: string
+  data_mapping?: Record<string, string>
+  on_failure?: 'block' | 'skip' | 'continue'
+}
+
+export interface WorkflowGraph {
+  schema_version: number
+  nodes: WorkflowGraphNode[]
+  edges: WorkflowGraphEdge[]
+  variables?: Record<string, unknown>
+}
+
+export interface Workflow {
+  id: string
+  channel_id: string
+  name: string
+  description: string
+  status: WorkflowStatus
+  active_version_id?: string
+  source_template_id?: string
+  source_template_version_id?: string
+  settings: Record<string, unknown> | string
+  created_by?: string
+  updated_by?: string
+  created_at: string
+  updated_at: string
+}
+
+export interface WorkflowTemplate {
+  id: string
+  scope_type: 'platform' | 'organization' | 'app'
+  organization_id?: string
+  app_id?: string
+  template_key: string
+  display_name: string
+  description: string
+  category: string
+  visibility: 'public' | 'private'
+  status: 'draft' | 'published' | 'archived'
+  current_version_id?: string
+  created_by?: string
+  created_at: string
+  updated_at: string
+}
+
+export interface WorkflowTemplateVersion {
+  id: string
+  template_id: string
+  version: string
+  graph_json: WorkflowGraph
+  variable_schema: Record<string, unknown>
+  required_bindings: Record<string, unknown>
+  default_triggers: Array<Record<string, unknown>>
+  sample_inputs: Array<Record<string, unknown>>
+  content_hash: string
+  review_status: 'draft' | 'published' | 'archived'
+  created_by?: string
+  published_at?: string
+  created_at: string
+}
+
+export interface WorkflowTemplateImportPayload {
+  template: WorkflowTemplate
+  version: WorkflowTemplateVersion
+  workflow: {
+    name: string
+    description: string
+    graph_json: WorkflowGraph
+    settings: Record<string, unknown>
+  }
+}
+
+export interface WorkflowVersion {
+  id: string
+  workflow_id: string
+  version_no: number
+  graph_json: WorkflowGraph
+  input_schema: Record<string, unknown>
+  output_schema: Record<string, unknown>
+  validation_status: 'valid' | 'invalid'
+  validation_errors: WorkflowValidationError[]
+  content_hash: string
+  published_by?: string
+  published_at?: string
+  created_at: string
+}
+
+export interface WorkflowTrigger {
+  id: string
+  workflow_id: string
+  channel_id: string
+  type: 'manual' | 'message' | 'schedule' | 'task_event' | 'storage_event' | 'webhook'
+  enabled: boolean
+  condition_json: Record<string, unknown>
+  schedule_rule: string
+  timezone: string
+  concurrency_policy: 'skip' | 'queue' | 'parallel'
+  cooldown_seconds: number
+  webhook_secret?: string
+  webhook_secret_prefix?: string
+  last_triggered_at?: string
+  created_by?: string
+  created_at: string
+  updated_at: string
+}
+
+export interface WorkflowRun {
+  id: string
+  channel_id: string
+  workflow_id: string
+  workflow_version_id: string
+  trigger_id?: string
+  trigger_type: string
+  trigger_ref: string
+  idempotency_key: string
+  status: WorkflowRunStatus
+  input_payload: Record<string, unknown>
+  output_payload: Record<string, unknown>
+  failure_code: string
+  failure_detail: string
+  created_by?: string
+  started_at?: string
+  completed_at?: string
+  created_at: string
+  updated_at: string
+}
+
+export interface WorkflowNodeRun {
+  id: string
+  run_id: string
+  node_id: string
+  node_key: string
+  node_type: WorkflowNodeType
+  executor_type: WorkflowExecutorType
+  executor_ref: string
+  status: WorkflowNodeRunStatus
+  input_payload: Record<string, unknown>
+  output_payload: Record<string, unknown>
+  task_id?: string
+  attempts: number
+  failure_code: string
+  failure_detail: string
+  started_at?: string
+  completed_at?: string
+  created_at: string
+  updated_at: string
+}
+
+export interface WorkflowNodeRunEvent {
+  id: number
+  run_id: string
+  node_run_id?: string
+  event_type: string
+  message: string
+  payload: Record<string, unknown>
+  created_at: string
+}
+
+export interface WorkflowApproval {
+  id: string
+  channel_id: string
+  run_id: string
+  node_run_id: string
+  status: 'pending' | 'approved' | 'rejected' | 'cancelled' | 'expired'
+  approver_scope: Record<string, unknown>
+  requested_by?: string
+  acted_by?: string
+  prompt: string
+  decision_note: string
+  expires_at?: string
+  acted_at?: string
+  created_at: string
+  updated_at: string
+}
+
+export interface WorkflowValidationError {
+  code: string
+  message: string
+  node_id?: string
+  edge_id?: string
+  severity: string
+}
+
+export interface WorkflowMetrics {
+  active_runs: number
+  queued_runs: number
+  awaiting_user_runs: number
+  succeeded_24h: number
+  failed_24h: number
+  cancelled_24h: number
+  stuck_node_runs: number
+  avg_run_seconds?: number
+  avg_node_seconds?: number
+  failure_codes: Record<string, number>
+  by_run_status: Record<string, number>
+  by_node_status: Record<string, number>
+  lease_expired_count: number
+  message_triggers_suppressed: number
+  updated_at: string
+}
+
 // ── Channel Memory ──
 
 export interface ChannelMemory {
@@ -670,7 +930,7 @@ export interface ChannelMemory {
 
 // ── Detail Panel ──
 
-export type FeatureView = 'chat' | 'tasks' | 'knowledge' | 'storage' | 'cron' | 'settings' | 'admin'
+export type FeatureView = 'chat' | 'tasks' | 'workflows' | 'knowledge' | 'storage' | 'cron' | 'settings' | 'admin'
 
 // ── Streaming state per agent ──
 
@@ -717,6 +977,10 @@ export type WSEvent =
   | { type: 'kicked'; reason?: string }
   | { type: 'typing'; channel_id: string; agent_id?: string; run_id?: string }
   | { type: 'task_updated'; channel_id: string; task: Task }
+  | { type: 'workflow_updated'; channel_id: string; workflow_id: string }
+  | { type: 'workflow_run_updated'; channel_id: string; run: WorkflowRun }
+  | { type: 'workflow_node_run_updated'; channel_id: string; run_id: string; node_run: WorkflowNodeRun }
+  | { type: 'workflow_run_event'; channel_id: string; run_id: string; event: WorkflowNodeRunEvent }
 
 // ── WebSocket Commands — Client to Server ──
 

@@ -16,6 +16,9 @@ export type {
   AgentTodoStatus, AgentTodoItem,
   // Task System
   Project, Task, TaskComment, TaskSchedule, CalendarEvent,
+  // Workflows
+  Workflow, WorkflowGraph, WorkflowGraphNode, WorkflowGraphEdge, WorkflowRun, WorkflowNodeRun, WorkflowNodeRunEvent,
+  WorkflowVersion, WorkflowValidationError, WorkflowMetrics, WorkflowTemplate, WorkflowTemplateVersion, WorkflowTemplateImportPayload,
   // Knowledge Base
   KnowledgeSource, KnowledgeSearchResult, KnowledgeEntity, KnowledgeGraphNode, KnowledgeGraphEdge, KnowledgeGraphData,
   // Storage
@@ -39,6 +42,7 @@ export { useChannels } from './hooks/use-channels.js'
 export { useChat } from './hooks/use-chat.js'
 export { useDetailPanel } from './hooks/use-detail-panel.js'
 export { useTasks } from './hooks/use-tasks.js'
+export { useWorkflows } from './hooks/use-workflows.js'
 export { useKnowledge } from './hooks/use-knowledge.js'
 export { useStorage } from './hooks/use-storage.js'
 export { useNotifications } from './hooks/use-notifications.js'
@@ -95,6 +99,7 @@ export { CloudStoragePanel } from './components/storage/index.js'
 export { NotificationList } from './components/notifications/index.js'
 export { AgentManagePanel } from './components/agents/index.js'
 export { CronPanel } from './components/cron/index.js'
+export { WorkflowPanel } from './components/workflows/index.js'
 
 // Components — UI primitives
 export { Button, buttonVariants } from './components/ui/index.js'

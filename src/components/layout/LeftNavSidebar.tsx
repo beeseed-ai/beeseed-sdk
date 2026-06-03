@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState, type ReactNode } from 'react'
-import { MessageSquareText, BookOpen, ListChecks, Plus, LogOut, Bell, Hash, Shield, User, Trash2 } from 'lucide-react'
+import { MessageSquareText, BookOpen, GitBranch, ListChecks, Plus, LogOut, Bell, Hash, Shield, User, Trash2 } from 'lucide-react'
 import type { AppRuntimeConfig, FeatureView, ChannelWithMeta } from '../../core/types.js'
 import { cn } from '../../lib/cn.js'
 import { useAuth } from '../../hooks/use-auth.js'
@@ -16,6 +16,7 @@ interface NavItem { id: FeatureView; label: string; icon: React.ElementType }
 const BASE_NAV_ITEMS: NavItem[] = [
   { id: 'knowledge', label: '知识库', icon: BookOpen },
   { id: 'tasks', label: '任务', icon: ListChecks },
+  { id: 'workflows', label: '工作流', icon: GitBranch },
 ]
 
 function isTemplateManagedChannel(channel: ChannelWithMeta): boolean {

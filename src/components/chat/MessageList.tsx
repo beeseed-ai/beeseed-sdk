@@ -48,6 +48,7 @@ interface Props {
   currentUserId?: string
   onSubmitAnswer?: (askId: string, answers: Record<string, unknown>) => void
   onStopAgent?: (agentId: string, reason?: string, runId?: string) => void
+  onOpenWorkflowRun?: (runId: string) => void
   welcomeTitle?: string
   welcomeFallbackTitle?: string
   welcomeMessage?: string
@@ -351,6 +352,7 @@ export function MessageList({
   currentUserId,
   onSubmitAnswer,
   onStopAgent,
+  onOpenWorkflowRun,
   welcomeTitle,
   welcomeFallbackTitle,
   welcomeMessage,
@@ -489,6 +491,7 @@ export function MessageList({
                   onMentionClick={onMentionClick}
                   onScrollToMessage={handleScrollToMessage}
                   onSubmitAnswer={onSubmitAnswer}
+                  onOpenWorkflowRun={onOpenWorkflowRun}
                 />
               )
             })}

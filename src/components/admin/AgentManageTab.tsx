@@ -193,6 +193,11 @@ function normalizeModelTierSettings(value: Partial<ModelTierSettings> | null | u
   }
 }
 
+function defaultModelTierConfig(settings: ModelTierSettings) {
+  const defaultTier = normalizeModelTier(settings.default_tier) || 'fast'
+  return settings.tiers[defaultTier] ?? settings.tiers.fast
+}
+
 function avatarPresetUrl(preset: string | undefined) {
   return preset ? `/avatars/agents/${preset}.svg` : ''
 }
@@ -397,9 +402,15 @@ export function AgentManageTab() {
         personality: identity.personality.trim(),
         content: identity.content,
       }
+      const nextModelTiers = normalizeModelTierSettings(agentConfig.model_tiers, agentConfig.provider, agentConfig.model)
+      const defaultModel = defaultModelTierConfig(nextModelTiers)
       const configPayload = {
         ...agentConfig,
+        provider: defaultModel.provider,
+        model: defaultModel.model,
+        thinking: defaultModel.thinking,
         model_tier: '',
+        model_tiers: nextModelTiers,
         role: selectedId,
         identity: {
           ...((agentConfig.identity as Record<string, unknown> | undefined) ?? {}),

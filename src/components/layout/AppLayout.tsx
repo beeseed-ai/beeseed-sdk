@@ -12,6 +12,7 @@ import { LeftNavSidebar } from './LeftNavSidebar.js'
 import { DetailPanel } from './DetailPanel.js'
 
 const TaskPanel = lazy(() => import('../tasks/TaskPanel.js').then((m) => ({ default: m.TaskPanel })))
+const WorkflowPanel = lazy(() => import('../workflows/WorkflowPanel.js').then((m) => ({ default: m.WorkflowPanel })))
 const KnowledgePanel = lazy(() => import('../knowledge/KnowledgePanel.js').then((m) => ({ default: m.KnowledgePanel })))
 const CronPanel = lazy(() => import('../cron/CronPanel.js').then((m) => ({ default: m.CronPanel })))
 const AdminPanel = lazy(() => import('../admin/AdminPanel.js').then((m) => ({ default: m.AdminPanel })))
@@ -156,11 +157,20 @@ export function AppLayout({ className, sidebarFooterMeta }: Props) {
                 <Menu className="h-4 w-4" />
               </button>
               <span className="ml-2 min-w-0 truncate text-sm font-semibold">
-                {activeFeature === 'tasks' ? '任务' : activeFeature === 'knowledge' ? '知识库' : activeFeature === 'admin' ? '管理后台' : '自动任务'}
+                {activeFeature === 'tasks' ? '任务' : activeFeature === 'workflows' ? '工作流' : activeFeature === 'knowledge' ? '知识库' : activeFeature === 'admin' ? '管理后台' : '自动任务'}
               </span>
             </div>
             <Suspense fallback={<FeatureLoading />}>
               {activeFeature === 'tasks' && <TaskPanel channelId={currentChannelId} members={members} createTaskRequest={createTaskRequest} />}
+              {activeFeature === 'workflows' && (
+                <WorkflowPanel
+                  channelId={currentChannelId}
+                  channelName={currentChannel?.name}
+                  channels={channels}
+                  members={members}
+                  onChannelScopeChange={setCurrentChannel}
+                />
+              )}
               {activeFeature === 'knowledge' && <KnowledgePanel />}
               {activeFeature === 'cron' && <CronPanel channelId={currentChannelId} />}
               {activeFeature === 'admin' && isAdmin && <AdminPanel />}

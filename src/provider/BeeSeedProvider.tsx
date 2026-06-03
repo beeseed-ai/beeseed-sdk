@@ -13,6 +13,7 @@ import { createKnowledgeStore, type KnowledgeStore } from '../stores/knowledge.j
 import { createStorageStore, type StorageStore } from '../stores/storage.js'
 import { createNotificationsStore, type NotificationsStore } from '../stores/notifications.js'
 import { createCronStore, type CronStore } from '../stores/cron.js'
+import { createWorkflowsStore, type WorkflowsStore } from '../stores/workflows.js'
 import { createAgentsStore, type AgentsStore } from '../stores/agents.js'
 import { createAppUsersStore, type AppUsersStore } from '../stores/app-users.js'
 import { createInvitesStore, type InvitesStore } from '../stores/invites.js'
@@ -31,6 +32,7 @@ export interface BeeSeedContextValue {
   storageStore: StorageStore
   notificationsStore: NotificationsStore
   cronStore: CronStore
+  workflowsStore: WorkflowsStore
   agentsStore: AgentsStore
   appUsersStore: AppUsersStore
   invitesStore: InvitesStore
@@ -52,7 +54,11 @@ interface Props {
   children: ReactNode
 }
 
-function createBeeSeedContext(config: BeeSeedConfig, updateAppConfig: (appConfig: AppRuntimeConfig) => void): BeeSeedContextValue {
+function createBeeSeedContext(
+  config: BeeSeedConfig,
+  updateAppConfig: (appConfig: AppRuntimeConfig) => void,
+  getAppConfig: () => AppRuntimeConfig | undefined,
+): BeeSeedContextValue {
   const tokenKey = config.tokenKey ?? 'beeseed_token'
   const useMock = config.useMockData ?? false
   const getToken = () => {
@@ -82,6 +88,7 @@ function createBeeSeedContext(config: BeeSeedConfig, updateAppConfig: (appConfig
     onActionComplete: () => { void channelsStore.getState().fetchChannels() },
   })
   const cronStore = createCronStore({ api, useMock })
+  const workflowsStore = createWorkflowsStore({ api, useMock, getAppConfig })
   const agentsStore = createAgentsStore({ api, useMock })
   const appUsersStore = createAppUsersStore({ api, useMock })
   const invitesStore = createInvitesStore({ api, useMock })
@@ -107,6 +114,7 @@ function createBeeSeedContext(config: BeeSeedConfig, updateAppConfig: (appConfig
       storageStore.getState().reset()
       notificationsStore.getState().reset()
       cronStore.getState().reset()
+      workflowsStore.getState().reset()
       agentsStore.getState().reset()
       if (options?.scope === 'global') {
         config.onSignOut?.(options)
@@ -153,6 +161,19 @@ function createBeeSeedContext(config: BeeSeedConfig, updateAppConfig: (appConfig
       void tasksStore.getState().fetchTasks(event.channel_id)
       void tasksStore.getState().fetchMetrics(event.channel_id)
     }
+    if (event.type === 'workflow_updated') {
+      void workflowsStore.getState().fetchWorkflows(event.channel_id)
+      void workflowsStore.getState().fetchMetrics(event.channel_id)
+    }
+    if (event.type === 'workflow_run_updated' || event.type === 'workflow_node_run_updated' || event.type === 'workflow_run_event') {
+      void workflowsStore.getState().fetchRuns(event.channel_id)
+      void workflowsStore.getState().fetchMetrics(event.channel_id)
+      const selectedRunId = workflowsStore.getState().selectedRun?.run.id
+      const runId = event.type === 'workflow_run_updated' ? event.run.id : event.run_id
+      if (selectedRunId && selectedRunId === runId) {
+        void workflowsStore.getState().getRun(event.channel_id, selectedRunId)
+      }
+    }
   }
 
   const ws = new WSClient({
@@ -167,16 +188,22 @@ function createBeeSeedContext(config: BeeSeedConfig, updateAppConfig: (appConfig
   return {
     api, ws, authStore, connectionStore, channelsStore, messagesStore,
     detailPanelStore, tasksStore, knowledgeStore, storageStore,
-    notificationsStore, cronStore, agentsStore, appUsersStore, invitesStore, appSettingsStore, config, updateAppConfig,
+    notificationsStore, cronStore, workflowsStore, agentsStore, appUsersStore, invitesStore, appSettingsStore, config, updateAppConfig,
   }
 }
 
 export function BeeSeedProvider({ config, children }: Props) {
+  const appConfigRef = useRef<AppRuntimeConfig | undefined>(config.appConfig)
   const updateRef = useRef<(appConfig: AppRuntimeConfig) => void>(() => {})
-  const [ctx, setCtx] = useState<BeeSeedContextValue>(() => createBeeSeedContext(config, (appConfig) => updateRef.current(appConfig)))
+  const [ctx, setCtx] = useState<BeeSeedContextValue>(() => createBeeSeedContext(
+    config,
+    (appConfig) => updateRef.current(appConfig),
+    () => appConfigRef.current,
+  ))
   const ctxRef = useRef(ctx)
   ctxRef.current = ctx
   updateRef.current = (appConfig) => {
+    appConfigRef.current = appConfig
     setCtx((current) => ({
       ...current,
       config: { ...current.config, appConfig },
@@ -191,6 +218,7 @@ export function BeeSeedProvider({ config, children }: Props) {
 
   useEffect(() => {
     if (!config.appConfig) return
+    appConfigRef.current = config.appConfig
     setCtx((current) => ({
       ...current,
       config: { ...current.config, appConfig: config.appConfig },

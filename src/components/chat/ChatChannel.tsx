@@ -23,7 +23,7 @@ export function ChatChannel({ channelId, className, header }: Props) {
   const { branding } = useAppConfig()
   const { channels } = useChannels()
   const { messages, streams, agentLoops, members, typings, send, sendWithQuote, submitAnswer, stopAgent, loading } = useChat(channelId)
-  const { composerInsertText, consumeComposerInsert } = useDetailPanel()
+  const { composerInsertText, consumeComposerInsert, openWorkflowRun } = useDetailPanel()
   const [quotedMessage, setQuotedMessage] = useState<ChatMessage | null>(null)
   const channelSettings = useMemo(
     () => parseChannelRuntimeSettings(channels.find((channel) => channel.id === channelId)?.settings),
@@ -71,6 +71,7 @@ export function ChatChannel({ channelId, className, header }: Props) {
               currentUserId={user?.id}
               onSubmitAnswer={submitAnswer}
               onStopAgent={stopAgent}
+              onOpenWorkflowRun={openWorkflowRun}
               welcomeTitle={welcomeTitle}
               welcomeFallbackTitle={branding.title}
               welcomeMessage={welcomeMessage}
