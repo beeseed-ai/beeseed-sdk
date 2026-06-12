@@ -1,6 +1,7 @@
 import { createStore } from 'zustand/vanilla'
 import type { KyInstance } from 'ky'
 import type { User, AuthResponse, HiveProfileSnapshot, SignOutOptions } from '../core/types.js'
+import { ApiError } from '../core/errors.js'
 
 const DEFAULT_TOKEN_KEY = 'beeseed_token'
 
@@ -30,6 +31,22 @@ export interface AuthStoreConfig {
   onSignOut?: (options?: SignOutOptions) => void
 }
 
+export type AuthMeResponse = User & { token?: string; user?: User }
+
+export function authUserFromMeResponse(data: AuthMeResponse): User {
+  return data.user && typeof data.user === 'object' ? data.user : data
+}
+
+export function authTokenFromMeResponse(data: AuthMeResponse): string | null {
+  const token = typeof data.token === 'string' ? data.token.trim() : ''
+  return token || null
+}
+
+export function shouldClearStoredAuthOnInitError(error: unknown): boolean {
+  if (!(error instanceof ApiError)) return false
+  return error.status === 401 || error.status === 403
+}
+
 export function createAuthStore(config: AuthStoreConfig) {
   const tokenKey = config.tokenKey ?? DEFAULT_TOKEN_KEY
 
@@ -56,12 +73,19 @@ export function createAuthStore(config: AuthStoreConfig) {
         return
       }
       try {
-        const user = await config.api.get('auth/me').json<User>()
-        set({ user, loading: false })
-        config.onSignIn?.(token, user)
-      } catch {
-        storeToken(null)
-        set({ user: null, token: null, loading: false })
+        const data = await config.api.get('auth/me').json<AuthMeResponse>()
+        const user = authUserFromMeResponse(data)
+        const nextToken = authTokenFromMeResponse(data) ?? token
+        if (nextToken !== token) storeToken(nextToken)
+        set({ user, token: nextToken, loading: false })
+        config.onSignIn?.(nextToken, user)
+      } catch (e) {
+        if (shouldClearStoredAuthOnInitError(e)) {
+          storeToken(null)
+          set({ user: null, token: null, loading: false })
+          return
+        }
+        set({ loading: false })
       }
     },
 

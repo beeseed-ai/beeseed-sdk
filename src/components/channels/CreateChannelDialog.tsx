@@ -5,27 +5,18 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '
 import { Button } from '../ui/button.js'
 import { Input } from '../ui/input.js'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '../ui/tabs.js'
+import {
+  channelAgentPanelState,
+  channelCreationBlockedMessage,
+  channelPolicyLoadErrorMessage,
+  type AgentOption,
+  type ChannelCreationPolicyResponse,
+  type ChannelPolicyLoadStatus,
+} from './channelPolicyState.js'
 
 interface Props {
   open: boolean
   onOpenChange: (open: boolean) => void
-}
-
-interface AgentOption {
-  id: string
-  name?: string
-  role?: string
-  version?: string
-}
-
-interface ChannelCreationPolicyResponse {
-  can_create: boolean
-  reason?: string
-  policy?: {
-    require_purpose?: boolean
-    default_agent_ids?: string[]
-  }
-  available_agents?: AgentOption[]
 }
 
 export function CreateChannelDialog({ open, onOpenChange }: Props) {
@@ -39,13 +30,36 @@ export function CreateChannelDialog({ open, onOpenChange }: Props) {
   const [joinError, setJoinError] = useState('')
   const [joinSubmitted, setJoinSubmitted] = useState(false)
   const [policy, setPolicy] = useState<ChannelCreationPolicyResponse | null>(null)
+  const [policyStatus, setPolicyStatus] = useState<ChannelPolicyLoadStatus>('idle')
+  const [policyLoadError, setPolicyLoadError] = useState('')
   const [selectedAgentIDs, setSelectedAgentIDs] = useState<string[]>([])
-  const [loading, setLoading] = useState(false)
+  const [creating, setCreating] = useState(false)
   const [error, setError] = useState('')
   const agentOptions = useMemo<AgentOption[]>(() => {
     if (policy?.available_agents?.length) return policy.available_agents
     return (policy?.policy?.default_agent_ids ?? []).map((id): AgentOption => ({ id, role: id }))
   }, [policy])
+  const agentPanelState = channelAgentPanelState({
+    status: policyStatus,
+    policy,
+    agentCount: agentOptions.length,
+  })
+
+  function loadPolicy() {
+    setPolicy(null)
+    setPolicyStatus('loading')
+    setPolicyLoadError('')
+    setSelectedAgentIDs([])
+    api.get('channel-creation-policy').json<ChannelCreationPolicyResponse>().then((data) => {
+      setPolicy(data)
+      setPolicyStatus('loaded')
+      setSelectedAgentIDs(data.policy?.default_agent_ids ?? data.available_agents?.map((agent) => agent.id) ?? [])
+    }).catch((err: unknown) => {
+      setPolicy(null)
+      setPolicyStatus('failed')
+      setPolicyLoadError(channelPolicyLoadErrorMessage(err))
+    })
+  }
 
   useEffect(() => {
     if (!open) return
@@ -53,15 +67,7 @@ export function CreateChannelDialog({ open, onOpenChange }: Props) {
     setError('')
     setJoinError('')
     setJoinSubmitted(false)
-    setPolicy(null)
-    setSelectedAgentIDs([])
-    api.get('channel-creation-policy').json<ChannelCreationPolicyResponse>().then((data) => {
-      setPolicy(data)
-      setSelectedAgentIDs(data.policy?.default_agent_ids ?? data.available_agents?.map((agent) => agent.id) ?? [])
-    }).catch(() => {
-      setPolicy(null)
-      setError('加载频道策略失败')
-    })
+    loadPolicy()
   }, [api, open])
 
   function toggleAgent(agentID: string) {
@@ -80,11 +86,11 @@ export function CreateChannelDialog({ open, onOpenChange }: Props) {
       setError('请填写频道用途')
       return
     }
-    setLoading(true)
+    setCreating(true)
     const available = new Set(agentOptions.map((agent) => agent.id))
     const agentIDs = selectedAgentIDs.filter((id) => available.has(id))
     const result = await createChannel({ name: name.trim(), purpose: purpose.trim() || undefined, agent_ids: agentIDs })
-    setLoading(false)
+    setCreating(false)
     if (result) {
       setName('')
       setPurpose('')
@@ -154,8 +160,17 @@ export function CreateChannelDialog({ open, onOpenChange }: Props) {
                     <span className="text-xs text-muted-foreground">已选 {selectedAgentIDs.length}/{agentOptions.length}</span>
                   )}
                 </div>
-                {policy ? (
-                  agentOptions.length === 0 ? (
+                {agentPanelState === 'loading' ? (
+                  <div className="rounded-lg bg-muted/40 px-3 py-3 text-sm text-muted-foreground">Agent 加载中...</div>
+                ) : agentPanelState === 'failed' ? (
+                  <div className="rounded-lg border border-destructive/20 bg-destructive/5 px-3 py-3 text-sm text-destructive">
+                    <div>{policyLoadError || '频道策略暂时不可用，请稍后重试或联系管理员。'}</div>
+                    <Button variant="outline" type="button" className="mt-3 h-8 border-destructive/30 text-destructive hover:text-destructive" onClick={loadPolicy}>
+                      重试
+                    </Button>
+                  </div>
+                ) : (
+                  agentPanelState === 'empty' ? (
                     <div className="rounded-lg border border-dashed border-border px-3 py-3 text-sm text-muted-foreground">当前 App 暂无可用 Agent</div>
                   ) : (
                     <div className="max-h-48 space-y-2 overflow-y-auto rounded-lg border border-border p-2">
@@ -183,8 +198,6 @@ export function CreateChannelDialog({ open, onOpenChange }: Props) {
                       })}
                     </div>
                   )
-                ) : (
-                  <div className="rounded-lg bg-muted/40 px-3 py-3 text-sm text-muted-foreground">Agent 加载中...</div>
                 )}
                 {policy && agentOptions.length > 0 && selectedAgentIDs.length === 0 && (
                   <div className="text-xs text-destructive">至少选择一个 Agent</div>
@@ -192,7 +205,7 @@ export function CreateChannelDialog({ open, onOpenChange }: Props) {
               </div>
               {policy && !policy.can_create && (
                 <div className="rounded-lg border border-destructive/20 bg-destructive/5 px-3 py-2 text-xs text-destructive">
-                  当前账号不能创建频道：{policy.reason || '频道创建已关闭'}
+                  {channelCreationBlockedMessage(policy.reason)}
                 </div>
               )}
               {error && <div className="text-xs text-destructive">{error}</div>}
@@ -201,8 +214,8 @@ export function CreateChannelDialog({ open, onOpenChange }: Props) {
                 <Button variant="outline" type="button" onClick={() => onOpenChange(false)}>
                   取消
                 </Button>
-                <Button disabled={loading || !policy || !name.trim() || policy.can_create === false || (agentOptions.length > 0 && selectedAgentIDs.length === 0)}>
-                  {loading ? '创建中...' : '创建'}
+                <Button disabled={creating || policyStatus === 'loading' || !policy || !name.trim() || policy.can_create === false || (agentOptions.length > 0 && selectedAgentIDs.length === 0)}>
+                  {creating ? '创建中...' : '创建'}
                 </Button>
               </DialogFooter>
             </form>

@@ -1,6 +1,7 @@
 import { createStore } from 'zustand/vanilla'
 import type { KyInstance } from 'ky'
 import type { StorageObject, StoragePolicy, StorageUsage } from '../core/types.js'
+import { storageAttachmentDownloadPayload } from '../lib/storage-presign.js'
 import { MOCK_OBJECTS, MOCK_DIRECTORIES } from '../mocks/storage.js'
 
 export interface StorageState {
@@ -121,7 +122,7 @@ export function createStorageStore(config: StorageStoreConfig) {
     downloadFile: async (channelId, key) => {
       if (config.useMock) return null
       const data = await config.api.post(`channels/${channelId}/storage/presign-download`, {
-        json: { key },
+        json: storageAttachmentDownloadPayload(key),
       }).json<{ url: string }>()
       return data.url
     },

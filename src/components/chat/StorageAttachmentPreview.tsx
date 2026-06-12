@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Archive, Code2, Download, ExternalLink, File, FileAudio, FileImage, FileSpreadsheet, FileText, FileVideo, Presentation, X } from 'lucide-react'
 import { cn } from '../../lib/cn.js'
+import { storageAttachmentDownloadPayload, storagePresignDownloadPayload, storagePreviewPresignPayload } from '../../lib/storage-presign.js'
 import { fileNameFromStorageRef, keyFromStorageRef } from '../../lib/storage-ref.js'
 import { useBeeSeedContext } from '../../provider/BeeSeedProvider.js'
 import { MarkdownRenderer } from './MarkdownRenderer.js'
@@ -82,7 +83,7 @@ export function useExistingStorageRefs(channelId: string, refs: string[]) {
 
       pending.push(
         api.post(`channels/${channelId}/storage/presign-download`, {
-          json: { key: keyFromStorageRef(refText) },
+          json: storagePresignDownloadPayload(keyFromStorageRef(refText)),
         }).json<{ url: string }>()
           .then(() => {
             storageRefExistenceCache.set(cacheKey, true)
@@ -165,6 +166,10 @@ export function storageFileCanPreview(kind: StorageFileKind) {
   return kind === 'image' || kind === 'pdf' || kind === 'html' || kind === 'text' || kind === 'code' || kind === 'presentation' || kind === 'audio' || kind === 'video'
 }
 
+export function storagePreviewUsesProxy(kind: StorageFileKind) {
+  return kind === 'pdf'
+}
+
 function officePresentationViewerUrl(url: string) {
   return `https://view.officeapps.live.com/op/embed.aspx?src=${encodeURIComponent(url)}`
 }
@@ -188,6 +193,7 @@ export function StoragePreviewDialog({ channelId, refText, onClose }: { channelI
   const [htmlPreviewUrl, setHtmlPreviewUrl] = useState<string | null>(null)
   const [text, setText] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
+  const [downloading, setDownloading] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
@@ -204,9 +210,15 @@ export function StoragePreviewDialog({ channelId, refText, onClose }: { channelI
       return
     }
 
-    void api.post(`channels/${channelId}/storage/presign-download`, {
-      json: { key: keyFromStorageRef(refText) },
-    }).json<{ url: string }>()
+    const previewURLRequest = storagePreviewUsesProxy(kind)
+      ? api.post(`channels/${channelId}/storage/pdf-preview`, {
+        json: { key: keyFromStorageRef(refText) },
+      }).json<{ url: string }>()
+      : api.post(`channels/${channelId}/storage/presign-download`, {
+        json: storagePreviewPresignPayload(refText),
+      }).json<{ url: string }>()
+
+    void previewURLRequest
       .then(async (data) => {
         if (cancelled) return
         setUrl(data.url)
@@ -232,8 +244,19 @@ export function StoragePreviewDialog({ channelId, refText, onClose }: { channelI
     return () => { cancelled = true }
   }, [api, config.useMockData, ext, kind, refText, channelId])
 
-  const download = () => {
-    if (url) window.open(url, '_blank', 'noopener,noreferrer')
+  const download = async () => {
+    if (config.useMockData || downloading) return
+    setDownloading(true)
+    try {
+      const data = await api.post(`channels/${channelId}/storage/presign-download`, {
+        json: storageAttachmentDownloadPayload(keyFromStorageRef(refText)),
+      }).json<{ url: string }>()
+      if (data.url) window.open(data.url, '_blank', 'noopener,noreferrer')
+    } catch (err) {
+      setError(err instanceof Error ? `下载链接创建失败：${err.message}` : '下载链接创建失败')
+    } finally {
+      setDownloading(false)
+    }
   }
   const presentationViewerUrl = kind === 'presentation' && url ? officePresentationViewerUrl(url) : null
 
@@ -254,8 +277,9 @@ export function StoragePreviewDialog({ channelId, refText, onClose }: { channelI
           {url && (
             <button
               type="button"
-              onClick={download}
-              className="flex h-8 w-8 items-center justify-center rounded-md text-[#666] hover:bg-black/5 hover:text-black"
+              onClick={() => void download()}
+              disabled={downloading}
+              className="flex h-8 w-8 items-center justify-center rounded-md text-[#666] hover:bg-black/5 hover:text-black disabled:cursor-not-allowed disabled:opacity-50"
               aria-label="下载文件"
             >
               <Download className="h-4 w-4" />
@@ -338,7 +362,7 @@ function StorageImageAttachment({ channelId, refText }: { channelId: string; ref
     setFailed(false)
     if (config.useMockData) return
     void api.post(`channels/${channelId}/storage/presign-download`, {
-      json: { key: keyFromStorageRef(refText) },
+      json: storagePreviewPresignPayload(refText),
     }).json<{ url: string }>()
       .then((data) => { if (!cancelled) setUrl(data.url) })
       .catch(() => { if (!cancelled) setFailed(true) })
