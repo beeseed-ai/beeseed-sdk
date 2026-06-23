@@ -349,58 +349,81 @@ export function AgentRunTranscript({
   const terminalError = displayError ?? loop.error
   const hasFinalAnswer = loop.status === 'completed' && finalAnswer.trim() !== ''
   const orderedEvents = events?.length ? events : loop.events?.length ? loop.events : undefined
+  const shouldCollapseProcess = !isRunning && hasFinalAnswer && showContent === 'all'
+  const [processOpen, setProcessOpen] = useState(false)
+  const hasProcess = orderedEvents ? orderedEvents.length > 0 : loop.turns.some((turn) => (
+    turn.thinking
+    || turn.content
+    || turn.progress
+    || (turn.skillUses ?? []).length > 0
+    || (turn.toolCalls ?? []).length > 0
+  ))
+
+  const processContent = orderedEvents ? orderedEvents.map((item) => renderEventItem(item, loop, finalAnswer)) : loop.turns.map((turn, index) => {
+    const visibleContent = showContent === 'none'
+      ? ''
+      : showContent === 'intermediate' && turn.turnNumber === finalTurnNumber
+        ? ''
+        : turn.content || ''
+    const shouldShowContent = visibleContent && !sameText(visibleContent, finalAnswer)
+    const shouldShowProgress = turn.progress
+      && !sameText(turn.progress, visibleContent)
+      && !sameText(turn.progress, finalAnswer)
+    const showTurnMarker = loop.turns.length > 1
+
+    return (
+      <div key={`${turn.turnNumber}-${index}`}>
+        {showTurnMarker && (
+          <TranscriptLine icon={<Circle className="size-3.5 text-muted-foreground/40" />} className="py-0.5">
+            <span className="text-[11px] font-medium text-[#777169]">
+              {turn.turnNumber === 1 ? '开始处理' : `继续处理 ${turn.turnNumber}`}
+            </span>
+          </TranscriptLine>
+        )}
+
+        {turn.thinking && (
+          <TranscriptLine icon={<Clock3 className="size-3.5 text-[#777169]" />}>
+            <div className="text-xs leading-5 text-[#555]">{turn.thinking}</div>
+          </TranscriptLine>
+        )}
+
+        {shouldShowContent && (
+          <AssistantText content={visibleContent} streaming={turn.status === 'active' && isRunning} />
+        )}
+
+        {(turn.skillUses ?? []).map((skill) => <SkillLine key={skill.id} skill={skill} />)}
+        {(turn.toolCalls ?? []).map((tool) => <ToolLine key={tool.id} tool={tool} />)}
+
+        {shouldShowProgress && (
+          <TranscriptLine icon={<Clock3 className="size-3.5 text-[#999]" />}>
+            <div className="text-xs leading-5 text-[#555]">{turn.progress}</div>
+          </TranscriptLine>
+        )}
+
+        {turn.status === 'active' && isRunning && !turn.content && (turn.toolCalls ?? []).length === 0 && (
+          <TranscriptLine icon={<span className="inline-flex size-2 animate-pulse rounded-full bg-[#181d26]/60" />}>
+            <span className="text-xs text-[#777169]">等待 LLM 响应...</span>
+          </TranscriptLine>
+        )}
+      </div>
+    )
+  })
 
   return (
     <div className={cn('space-y-0.5', className)}>
-      {orderedEvents ? orderedEvents.map((item) => renderEventItem(item, loop, finalAnswer)) : loop.turns.map((turn, index) => {
-        const visibleContent = showContent === 'none'
-          ? ''
-          : showContent === 'intermediate' && turn.turnNumber === finalTurnNumber
-            ? ''
-            : turn.content || ''
-        const shouldShowContent = visibleContent && !sameText(visibleContent, finalAnswer)
-        const shouldShowProgress = turn.progress
-          && !sameText(turn.progress, visibleContent)
-          && !sameText(turn.progress, finalAnswer)
-        const showTurnMarker = loop.turns.length > 1
-
-        return (
-          <div key={`${turn.turnNumber}-${index}`}>
-            {showTurnMarker && (
-              <TranscriptLine icon={<Circle className="size-3.5 text-muted-foreground/40" />} className="py-0.5">
-                <span className="text-[11px] font-medium text-[#777169]">
-                  {turn.turnNumber === 1 ? '开始处理' : `继续处理 ${turn.turnNumber}`}
-                </span>
-              </TranscriptLine>
-            )}
-
-            {turn.thinking && (
-              <TranscriptLine icon={<Clock3 className="size-3.5 text-[#777169]" />}>
-                <div className="text-xs leading-5 text-[#555]">{turn.thinking}</div>
-              </TranscriptLine>
-            )}
-
-            {shouldShowContent && (
-              <AssistantText content={visibleContent} streaming={turn.status === 'active' && isRunning} />
-            )}
-
-            {(turn.skillUses ?? []).map((skill) => <SkillLine key={skill.id} skill={skill} />)}
-            {(turn.toolCalls ?? []).map((tool) => <ToolLine key={tool.id} tool={tool} />)}
-
-            {shouldShowProgress && (
-              <TranscriptLine icon={<Clock3 className="size-3.5 text-[#999]" />}>
-                <div className="text-xs leading-5 text-[#555]">{turn.progress}</div>
-              </TranscriptLine>
-            )}
-
-            {turn.status === 'active' && isRunning && !turn.content && (turn.toolCalls ?? []).length === 0 && (
-              <TranscriptLine icon={<span className="inline-flex size-2 animate-pulse rounded-full bg-[#181d26]/60" />}>
-                <span className="text-xs text-[#777169]">等待 LLM 响应...</span>
-              </TranscriptLine>
-            )}
-          </div>
-        )
-      })}
+      {shouldCollapseProcess && hasProcess ? (
+        <>
+          <button
+            type="button"
+            onClick={() => setProcessOpen((open) => !open)}
+            className="mb-1 flex min-h-6 items-center gap-2 rounded-md px-1.5 text-left text-xs text-[#777169] hover:bg-black/[0.04]"
+          >
+            <ChevronRight className={cn('size-3 shrink-0 text-[#999] transition-transform', processOpen && 'rotate-90')} />
+            <span>{processOpen ? '收起处理过程' : '查看处理过程'}</span>
+          </button>
+          {processOpen && processContent}
+        </>
+      ) : processContent}
 
       {showTerminal && hasFinalAnswer ? (
         <AssistantText content={finalAnswer} final />

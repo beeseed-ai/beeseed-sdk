@@ -487,6 +487,9 @@ export function ChannelManageTab() {
                   </span>
                 )}
               </p>
+              <p className="mt-1 text-xs text-muted-foreground">
+                Earseek 欢迎页预设入口按频道模板顺序展示；调整顺序并保存后，同步到已有用户即可生效。
+              </p>
             </div>
             <button
               type="button"

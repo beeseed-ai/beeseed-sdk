@@ -167,7 +167,14 @@ export function storageFileCanPreview(kind: StorageFileKind) {
 }
 
 export function storagePreviewUsesProxy(kind: StorageFileKind) {
-  return kind === 'pdf'
+  return kind === 'pdf' || kind === 'html' || kind === 'text' || kind === 'code'
+}
+
+function storagePreviewEndpointForKind(kind: StorageFileKind) {
+  if (kind === 'pdf') return 'pdf-preview'
+  if (kind === 'html') return 'html-preview'
+  if (kind === 'text' || kind === 'code') return 'text-preview'
+  return null
 }
 
 function officePresentationViewerUrl(url: string) {
@@ -210,8 +217,9 @@ export function StoragePreviewDialog({ channelId, refText, onClose }: { channelI
       return
     }
 
-    const previewURLRequest = storagePreviewUsesProxy(kind)
-      ? api.post(`channels/${channelId}/storage/pdf-preview`, {
+    const proxyEndpoint = storagePreviewEndpointForKind(kind)
+    const previewURLRequest = proxyEndpoint
+      ? api.post(`channels/${channelId}/storage/${proxyEndpoint}`, {
         json: { key: keyFromStorageRef(refText) },
       }).json<{ url: string }>()
       : api.post(`channels/${channelId}/storage/presign-download`, {
@@ -228,10 +236,7 @@ export function StoragePreviewDialog({ channelId, refText, onClose }: { channelI
           const body = await resp.text()
           if (!cancelled) setText(body)
         } else if (kind === 'html') {
-          const preview = await api.post(`channels/${channelId}/storage/html-preview`, {
-            json: { key: keyFromStorageRef(refText) },
-          }).json<{ url: string }>()
-          if (!cancelled) setHtmlPreviewUrl(preview.url)
+          if (!cancelled) setHtmlPreviewUrl(data.url)
         }
       })
       .catch((err) => {

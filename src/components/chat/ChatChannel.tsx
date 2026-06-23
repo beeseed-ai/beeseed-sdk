@@ -1,5 +1,5 @@
 import { useMemo, useState, useCallback } from 'react'
-import type { ChannelRuntimeSettings, ChatMessage } from '../../core/types.js'
+import type { ChannelMemberInfo, ChannelRuntimeSettings, ChatMessage, SkillShortcutAgent, SkillShortcutOption } from '../../core/types.js'
 import { cn } from '../../lib/cn.js'
 import { useAuth } from '../../hooks/use-auth.js'
 import { useAppConfig } from '../../hooks/use-app-config.js'
@@ -32,6 +32,7 @@ export function ChatChannel({ channelId, className, header }: Props) {
   const welcomeTitle = channelSettings.welcome_title
   const welcomeMessage = channelSettings.welcome_message || branding.welcomeMessage
   const quickQuestions = channelSettings.quick_questions ?? []
+  const skillOptions = useMemo(() => buildSkillOptionsFromMembers(members), [members])
 
   const handleSend = useCallback((content: string, metadata?: Record<string, unknown>) => {
     if (quotedMessage) {
@@ -90,6 +91,7 @@ export function ChatChannel({ channelId, className, header }: Props) {
               onClearQuote={() => setQuotedMessage(null)}
               insertText={composerInsertText}
               onInsertTextConsumed={consumeComposerInsert}
+              skillOptions={skillOptions}
               placeholder={branding.inputPlaceholder}
             />
           </div>
@@ -97,6 +99,70 @@ export function ChatChannel({ channelId, className, header }: Props) {
       </div>
     </div>
   )
+}
+
+function objectValue(value: unknown): Record<string, unknown> {
+  if (!value) return {}
+  if (typeof value === 'string') {
+    try {
+      const parsed = JSON.parse(value)
+      return objectValue(parsed)
+    } catch {
+      return {}
+    }
+  }
+  if (typeof value === 'object' && !Array.isArray(value)) {
+    return value as Record<string, unknown>
+  }
+  return {}
+}
+
+function stringValue(value: unknown): string | undefined {
+  return typeof value === 'string' && value.trim() ? value.trim() : undefined
+}
+
+function agentShortcut(member: ChannelMemberInfo): SkillShortcutAgent | null {
+  if (member.member_type !== 'agent' || !member.agent_id) return null
+  return {
+    agent_id: member.agent_id,
+    agent_name: member.display_name || member.nickname || member.agent_id,
+  }
+}
+
+function buildSkillOptionsFromMembers(members: ChannelMemberInfo[]): SkillShortcutOption[] {
+  const byName = new Map<string, SkillShortcutOption>()
+
+  for (const member of members) {
+    const agent = agentShortcut(member)
+    if (!agent) continue
+
+    const extInfo = objectValue(member.ext_info)
+    const rawSkills = Array.isArray(extInfo.skills) ? extInfo.skills : []
+    for (const rawSkill of rawSkills) {
+      const skill = objectValue(rawSkill)
+      const name = stringValue(skill.name)
+      if (!name) continue
+
+      const existing = byName.get(name)
+      if (existing) {
+        if (!existing.agents?.some((item) => item.agent_id === agent.agent_id)) {
+          existing.agents = [...(existing.agents ?? []), agent]
+        }
+        continue
+      }
+
+      byName.set(name, {
+        name,
+        display_name: stringValue(skill.display_name),
+        description: stringValue(skill.description),
+        icon_url: stringValue(skill.icon_url) || stringValue(skill.icon),
+        agents: [agent],
+        source: 'agent',
+      })
+    }
+  }
+
+  return [...byName.values()]
 }
 
 function parseChannelRuntimeSettings(settings: string | undefined): ChannelRuntimeSettings {

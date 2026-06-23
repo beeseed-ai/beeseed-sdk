@@ -566,7 +566,7 @@ export function DetailPanel({ channelId, members = [], tasks = [], files = [], o
                 <TaskStat label="阻塞" value={blockedCount} tone={blockedCount > 0 ? 'warn' : 'muted'} />
                 <TaskStat label="完成" value={doneCount} tone="success" />
               </div>
-              <div className="grid grid-cols-3 gap-1 rounded-md bg-muted p-1">
+              <div className="grid grid-cols-3 gap-1 rounded-md bg-[#eef2f7] p-1">
                 <TaskViewButton active={taskView === 'focus'} label="焦点" count={focusTaskItems.length} tone="focus" onClick={() => setTaskView('focus')} />
                 <TaskViewButton active={taskView === 'calendar'} label="日程" count={upcomingEventItems.length} tone="calendar" onClick={() => setTaskView('calendar')} />
                 <TaskViewButton active={taskView === 'schedules'} label="重复" count={recurringScheduleItems.length} tone="repeat" onClick={() => setTaskView('schedules')} />
@@ -1015,7 +1015,7 @@ export function DetailPanel({ channelId, members = [], tasks = [], files = [], o
               </div>
             )}
           </div>
-          <DialogFooter className="sm:justify-between">
+          <div className="flex flex-col-reverse gap-2 rounded-b-xl border-t bg-muted/50 p-4 sm:flex-row sm:justify-between">
             <div className="flex flex-col-reverse gap-2 sm:flex-row">
               {canManageAgentMembers && selectedAgent?.agent_id && (
                 <Button
@@ -1035,7 +1035,7 @@ export function DetailPanel({ channelId, members = [], tasks = [], files = [], o
                 {agentSettingsSaving ? '保存中...' : '保存'}
               </Button>
             </div>
-          </DialogFooter>
+          </div>
         </DialogContent>
       </Dialog>
 
@@ -1175,8 +1175,8 @@ function TaskViewButton({
       type="button"
       onClick={onClick}
       className={cn(
-        'inline-flex items-center justify-center gap-1.5 rounded px-2 py-1 text-xs transition-colors',
-        active ? 'bg-background text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground',
+        'inline-flex items-center justify-center gap-1.5 rounded px-2 py-1 text-xs font-medium transition-colors',
+        active ? 'bg-white text-[#181d26] shadow-sm' : 'text-[#334155] hover:bg-white/60 hover:text-[#181d26]',
       )}
     >
       <span>{label}</span>

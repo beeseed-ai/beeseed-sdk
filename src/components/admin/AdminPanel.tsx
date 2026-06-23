@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { BookOpen, Bot, Check, Copy, Download, ExternalLink, Image, LayoutTemplate, MessageSquare, QrCode, Settings, Users } from 'lucide-react'
+import { BookOpen, Bot, Check, Code2, Copy, Database, Download, ExternalLink, Image, LayoutTemplate, MessageSquare, QrCode, Settings, Users } from 'lucide-react'
 import * as QRCode from 'qrcode'
 import type { AppBrandingConfig, AppRuntimeConfig, PublicHomeConfig, PublicHomeMetric, PublicHomeTemplateID, PublicHomeTextBlock } from '../../core/types.js'
 import { applyDocumentBranding, resolveAppBranding } from '../../core/app-config.js'
@@ -8,6 +8,8 @@ import { AgentManageTab } from './AgentManageTab.js'
 import { UserManageTab } from './UserManageTab.js'
 import { KnowledgeManageTab } from './KnowledgeManageTab.js'
 import { ChannelManageTab } from './ChannelManageTab.js'
+import { DatabaseManageTab } from './DatabaseManageTab.js'
+import { FunctionManageTab } from './FunctionManageTab.js'
 import { useBeeSeedContext } from '../../provider/BeeSeedProvider.js'
 import { useAppConfig } from '../../hooks/use-app-config.js'
 import { Button } from '../ui/button.js'
@@ -18,6 +20,8 @@ const tabs = [
   { id: 'users', label: '成员管理', icon: Users },
   { id: 'channels', label: '频道管理', icon: MessageSquare },
   { id: 'knowledge', label: '知识库', icon: BookOpen },
+  { id: 'database', label: '数据库', icon: Database },
+  { id: 'functions', label: '云函数', icon: Code2 },
   { id: 'homepage', label: '公开主页', icon: LayoutTemplate },
   { id: 'settings', label: '设置', icon: Settings },
 ] as const
@@ -54,7 +58,7 @@ export function AdminPanel() {
   }, [activeTab])
 
   return (
-    <div className="flex-1 flex flex-col overflow-hidden">
+    <div className="flex h-full min-h-0 flex-1 flex-col overflow-hidden">
       <div className="flex shrink-0 items-center gap-1 overflow-x-auto border-b border-border bg-white px-4 py-2">
         <h2 className="mr-4 shrink-0 text-sm font-semibold">管理面板</h2>
         {tabs.map((tab) => {
@@ -77,11 +81,13 @@ export function AdminPanel() {
         })}
       </div>
 
-      <div className="flex-1 overflow-hidden">
+      <div className="min-h-0 flex-1 overflow-hidden">
         {activeTab === 'agents' && <AgentManageTab />}
         {activeTab === 'users' && <UserManageTab />}
         {activeTab === 'channels' && <ChannelManageTab />}
         {activeTab === 'knowledge' && <KnowledgeManageTab />}
+        {activeTab === 'database' && <DatabaseManageTab />}
+        {activeTab === 'functions' && <FunctionManageTab />}
         {activeTab === 'homepage' && <PublicHomeSettings />}
         {activeTab === 'settings' && <AppSettingsPanel />}
       </div>

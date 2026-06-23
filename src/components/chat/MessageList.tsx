@@ -387,6 +387,7 @@ export function MessageList({
   const displayQuickQuestions = onQuickQuestion
     ? (quickQuestions && quickQuestions.length > 0 ? quickQuestions : DEFAULT_WELCOME_QUICK_QUESTIONS)
     : []
+  const showingEmptyWelcome = timelineGroups.length === 0 && visibleStreams.length === 0 && visibleTypings.length === 0
 
   const scrollToBottom = useCallback(() => {
     const el = containerRef.current
@@ -394,8 +395,14 @@ export function MessageList({
   }, [])
 
   useEffect(() => {
+    if (showingEmptyWelcome) {
+      const el = containerRef.current
+      if (el) el.scrollTop = 0
+      return
+    }
     if (shouldAutoScroll.current) { scrollToBottom(); requestAnimationFrame(scrollToBottom) }
   }, [
+    showingEmptyWelcome,
     timelineGroups.length,
     visibleLoops.map((loop) => `${agentLoopKey(loop)}:${agentLoopActivityAt(loop)}:${loop.events?.length ?? 0}`).join('|'),
     visibleStreams.map((s) => `${s.runId || s.agentId}:${s.content.length}:${s.agentLoop ? agentLoopActivityAt(s.agentLoop) : 0}`).join('|'),
@@ -425,7 +432,7 @@ export function MessageList({
       className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden bg-[#fafafa]"
     >
       <div className="mx-auto w-full" style={{ maxWidth: CHAT_MAX_WIDTH }}>
-        {timelineGroups.length === 0 && visibleStreams.length === 0 && visibleTypings.length === 0 && (
+        {showingEmptyWelcome && (
           <div className="flex min-h-[calc(100dvh-190px)] items-start justify-start px-6 py-12 text-left sm:px-10 sm:py-16">
             <div className="w-full max-w-[36rem]">
               <h2 className="text-[30px] font-medium leading-tight tracking-normal text-[#050505] sm:text-[36px]">
