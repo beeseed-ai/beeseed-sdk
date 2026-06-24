@@ -1,6 +1,6 @@
 import { useRef, useCallback, useEffect, useLayoutEffect, useMemo, useState, type KeyboardEvent, type ChangeEvent } from 'react'
 import { useStore } from 'zustand'
-import { X, Plus, AtSign, Zap, ListChecks, Workflow, ArrowUp, Play, RefreshCw } from 'lucide-react'
+import { X, Plus, AtSign, Zap, ListChecks, Workflow, ArrowUp, Play, RefreshCw, Sparkles } from 'lucide-react'
 import type { ChatMessage, ChannelMemberInfo, SelectedSkillIntent, SkillShortcutAgent, SkillShortcutOption, Workflow as WorkflowDefinition } from '../../core/types.js'
 import { cn } from '../../lib/cn.js'
 import { fileNameFromStorageRef, storageRefFromKey } from '../../lib/storage-ref.js'
@@ -27,6 +27,7 @@ interface Props {
   insertText?: string | null
   onInsertTextConsumed?: () => void
   skillOptions?: SkillShortcutOption[]
+  quickQuestions?: string[]
 }
 
 function skillDisplayName(skill: SkillShortcutOption) {
@@ -100,6 +101,7 @@ export function MessageInput({
   insertText,
   onInsertTextConsumed,
   skillOptions = [],
+  quickQuestions = [],
 }: Props) {
   const ref = useRef<HTMLTextAreaElement>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
@@ -108,6 +110,8 @@ export function MessageInput({
   const skillTriggerRef = useRef<HTMLButtonElement>(null)
   const workflowMenuRef = useRef<HTMLDivElement>(null)
   const workflowTriggerRef = useRef<HTMLButtonElement>(null)
+  const quickQuestionMenuRef = useRef<HTMLDivElement>(null)
+  const quickQuestionTriggerRef = useRef<HTMLButtonElement>(null)
   const activeSkillItemRef = useRef<HTMLButtonElement>(null)
   const { user } = useAuth()
   const { openWorkflowRun, openWorkflowCreate } = useDetailPanel()
@@ -141,6 +145,7 @@ export function MessageInput({
   const [workflowQuery, setWorkflowQuery] = useState('')
   const [workflowError, setWorkflowError] = useState<string | null>(null)
   const [runningWorkflowId, setRunningWorkflowId] = useState<string | null>(null)
+  const [quickQuestionMenuOpen, setQuickQuestionMenuOpen] = useState(false)
 
   const agentChoices = useMemo(() => agentChoicesFromMembers(members), [members])
   const currentMember = useMemo(
@@ -182,6 +187,12 @@ export function MessageInput({
       })
       .slice(0, 8)
   }, [skillOptions, skillQuery])
+  const normalizedQuickQuestions = useMemo(() => (
+    quickQuestions
+      .map((question) => question.trim())
+      .filter((question, index, list) => Boolean(question) && list.indexOf(question) === index)
+      .slice(0, 12)
+  ), [quickQuestions])
 
   const pendingAgentChoices = useMemo(() => {
     if (!pendingSkill) return []
@@ -249,6 +260,10 @@ export function MessageInput({
     setWorkflowQuery('')
   }, [])
 
+  const closeQuickQuestionMenu = useCallback(() => {
+    setQuickQuestionMenuOpen(false)
+  }, [])
+
   useLayoutEffect(() => {
     if (!skillMenuOpen) return
     const activeItem = activeSkillItemRef.current
@@ -292,6 +307,19 @@ export function MessageInput({
     document.addEventListener('pointerdown', handlePointerDown)
     return () => document.removeEventListener('pointerdown', handlePointerDown)
   }, [closeWorkflowMenu, workflowMenuOpen])
+
+  useEffect(() => {
+    if (!quickQuestionMenuOpen) return
+    const handlePointerDown = (event: PointerEvent) => {
+      const target = event.target
+      if (!(target instanceof Node)) return
+      if (quickQuestionMenuRef.current?.contains(target)) return
+      if (quickQuestionTriggerRef.current?.contains(target)) return
+      closeQuickQuestionMenu()
+    }
+    document.addEventListener('pointerdown', handlePointerDown)
+    return () => document.removeEventListener('pointerdown', handlePointerDown)
+  }, [closeQuickQuestionMenu, quickQuestionMenuOpen])
 
   const removeSlashToken = useCallback(() => {
     const el = ref.current
@@ -394,9 +422,10 @@ export function MessageInput({
     setMentionOpen(false)
     closeSkillMenu()
     closeWorkflowMenu()
+    closeQuickQuestionMenu()
     autoResize()
     el.focus()
-  }, [onSend, autoResize, storageRefs, selectedSkills, pendingSkill, closeSkillMenu, closeWorkflowMenu])
+  }, [onSend, autoResize, storageRefs, selectedSkills, pendingSkill, closeSkillMenu, closeWorkflowMenu, closeQuickQuestionMenu])
 
   const handleAttachFile = useCallback(async (file: File | undefined) => {
     if (!file || disabled) return
@@ -418,6 +447,12 @@ export function MessageInput({
       if (workflowMenuOpen && e.key === 'Escape') {
         e.preventDefault()
         closeWorkflowMenu()
+        return
+      }
+
+      if (quickQuestionMenuOpen && e.key === 'Escape') {
+        e.preventDefault()
+        closeQuickQuestionMenu()
         return
       }
 
@@ -493,6 +528,7 @@ export function MessageInput({
       skillMenuOpen, pendingSkill, pendingAgentChoices, filteredSkills, skillIndex, skillSlashStart,
       choosePendingAgent, chooseSkill, closeSkillMenu,
       workflowMenuOpen, closeWorkflowMenu,
+      quickQuestionMenuOpen, closeQuickQuestionMenu,
       mentionOpen, mentionQuery, mentionIndex, members, handleSend, insertMention, selectedSkills.length,
     ],
   )
@@ -511,6 +547,7 @@ export function MessageInput({
         if (charBefore === ' ' || charBefore === '\n' || pos === 1) {
           setMentionOpen(false)
           closeWorkflowMenu()
+          closeQuickQuestionMenu()
           setSkillMenuOpen(true)
           setPendingSkill(null)
           setSkillQuery('')
@@ -544,6 +581,7 @@ export function MessageInput({
         if (charBefore === ' ' || charBefore === '\n' || pos === 1) {
           closeSkillMenu()
           closeWorkflowMenu()
+          closeQuickQuestionMenu()
           setMentionOpen(true)
           setMentionQuery('')
           setMentionIndex(0)
@@ -562,7 +600,7 @@ export function MessageInput({
         }
       }
     },
-    [autoResize, members.length, mentionOpen, mentionStart, skillMenuOpen, skillSlashStart, closeSkillMenu, closeWorkflowMenu],
+    [autoResize, members.length, mentionOpen, mentionStart, skillMenuOpen, skillSlashStart, closeSkillMenu, closeWorkflowMenu, closeQuickQuestionMenu],
   )
 
   const triggerMention = () => {
@@ -574,6 +612,7 @@ export function MessageInput({
     el.focus()
     el.dispatchEvent(new Event('input', { bubbles: true }))
     closeWorkflowMenu()
+    closeQuickQuestionMenu()
     setMentionOpen(true)
     setMentionQuery('')
     setMentionIndex(0)
@@ -593,6 +632,7 @@ export function MessageInput({
     }
     setMentionOpen(false)
     closeWorkflowMenu()
+    closeQuickQuestionMenu()
     setSkillMenuOpen(true)
     setPendingSkill(null)
     setSkillQuery('')
@@ -610,11 +650,45 @@ export function MessageInput({
     }
     closeSkillMenu()
     setMentionOpen(false)
+    closeQuickQuestionMenu()
     setWorkflowMenuOpen(true)
     setWorkflowQuery('')
     setWorkflowError(null)
     void workflowState.fetchWorkflows(channelId)
     ref.current?.focus()
+  }
+
+  const triggerQuickQuestionMenu = () => {
+    if (quickQuestionMenuOpen) {
+      closeQuickQuestionMenu()
+      ref.current?.focus()
+      return
+    }
+    if (normalizedQuickQuestions.length === 0) return
+    closeSkillMenu()
+    closeWorkflowMenu()
+    setMentionOpen(false)
+    setQuickQuestionMenuOpen(true)
+    ref.current?.focus()
+  }
+
+  const insertQuickQuestion = (question: string) => {
+    const el = ref.current
+    const cleanQuestion = question.trim()
+    if (!el || !cleanQuestion) return
+    const start = el.selectionStart ?? el.value.length
+    const end = el.selectionEnd ?? el.value.length
+    const before = el.value.slice(0, start)
+    const after = el.value.slice(end)
+    const prefix = before.length > 0 && !/[\s\n]$/.test(before) ? '\n' : ''
+    const suffix = after.length > 0 && !/^[\s\n]/.test(after) ? '\n' : ''
+    const inserted = `${prefix}${cleanQuestion}${suffix}`
+    el.value = before + inserted + after
+    const cursor = before.length + inserted.length
+    el.setSelectionRange(cursor, cursor)
+    closeQuickQuestionMenu()
+    autoResize()
+    el.focus()
   }
 
   const handleCreateWorkflowShortcut = () => {
@@ -849,6 +923,31 @@ export function MessageInput({
           </div>
         )}
 
+        {quickQuestionMenuOpen && normalizedQuickQuestions.length > 0 && (
+          <div
+            ref={quickQuestionMenuRef}
+            className="absolute bottom-full left-0 right-0 z-50 mb-1 max-h-[min(20rem,62dvh)] w-full overflow-hidden rounded-lg border border-[#dddddd] bg-white shadow-lg"
+          >
+            <div className="border-b border-[#eeeeee] px-3 py-2">
+              <div className="text-xs font-medium text-[#181d26]">快捷提问</div>
+              <div className="mt-0.5 truncate text-[11px] text-[#777169]">选择后台为当前频道配置的问题，插入到输入框后可继续编辑。</div>
+            </div>
+            <div className="max-h-[min(16rem,52dvh)] overflow-y-auto py-1">
+              {normalizedQuickQuestions.map((question, index) => (
+                <button
+                  key={`${question}-${index}`}
+                  type="button"
+                  className="flex w-full items-start gap-2 px-3 py-2 text-left text-sm text-[#181d26] hover:bg-[#f8fafc] focus-visible:bg-[#f8fafc] focus-visible:outline-none"
+                  onMouseDown={(event) => { event.preventDefault(); insertQuickQuestion(question) }}
+                >
+                  <Sparkles className="mt-0.5 h-3.5 w-3.5 shrink-0 text-[#0f766e]" />
+                  <span className="min-w-0 flex-1 leading-5">{question}</span>
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+
         {/* Quoted message inside card */}
         {quotedMessage && (
           <div className="flex items-start gap-2 px-4 pt-3 pb-1">
@@ -960,6 +1059,21 @@ export function MessageInput({
               }}
             />
             <div className="w-px h-4 bg-[#e5e5e5] mx-1 shrink-0" />
+            {normalizedQuickQuestions.length > 0 && (
+              <button
+                ref={quickQuestionTriggerRef}
+                type="button"
+                onClick={triggerQuickQuestionMenu}
+                className={cn(
+                  'flex items-center gap-1 h-8 px-2 rounded-lg text-[#888] hover:text-black hover:bg-black/5 transition-colors text-sm shrink-0',
+                  quickQuestionMenuOpen && 'bg-black/5 text-black',
+                )}
+                title="快捷提问"
+              >
+                <Sparkles className="w-4 h-4" />
+                <span>快捷</span>
+              </button>
+            )}
             <button onClick={triggerMention} className="flex items-center gap-1 h-8 px-2 rounded-lg text-[#888] hover:text-black hover:bg-black/5 transition-colors text-sm shrink-0">
               <AtSign className="w-4 h-4" />
               <span>提及</span>

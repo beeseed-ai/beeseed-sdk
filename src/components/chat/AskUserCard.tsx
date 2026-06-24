@@ -162,10 +162,10 @@ export function AskUserCard({ data, currentUserId, onSubmit, className }: Props)
               onClick={handleSubmit}
               disabled={!canSubmit}
               className={cn(
-                'w-full rounded-lg px-4 py-2 text-sm font-medium transition-all',
+                'w-full rounded-lg border px-4 py-2 text-sm font-medium transition-all',
                 canSubmit
-                  ? 'bg-primary text-primary-foreground hover:bg-primary/90'
-                  : 'bg-muted text-muted-foreground cursor-not-allowed',
+                  ? 'border-[#0f7082] bg-[#0f7082] text-white hover:bg-[#0b5c6c]'
+                  : 'border-[#dbe3eb] bg-[#eef2f7] text-[#667085] cursor-not-allowed',
               )}
             >
               提交

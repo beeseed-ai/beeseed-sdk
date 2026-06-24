@@ -22,7 +22,7 @@ export function ConfirmAction({ question, value, onChange, disabled }: Props) {
         className={cn(
           'flex-1 rounded-lg border px-4 py-2.5 text-sm font-medium transition-all',
           confirmPrimary
-            ? 'border-[#181d26] bg-[#181d26] text-white hover:bg-[#0d1218]'
+            ? 'border-[#0f7082] bg-[#0f7082] text-white shadow-sm hover:bg-[#0b5c6c]'
             : 'border-[#dddddd] bg-white text-[#181d26] hover:bg-[#f8fafc]',
           disabled && 'opacity-60 cursor-not-allowed',
         )}
@@ -35,7 +35,7 @@ export function ConfirmAction({ question, value, onChange, disabled }: Props) {
         className={cn(
           'flex-1 rounded-lg border px-4 py-2.5 text-sm font-medium transition-all',
           cancelPrimary
-            ? 'border-[#181d26] bg-[#181d26] text-white hover:bg-[#0d1218]'
+            ? 'border-[#0f7082] bg-[#0f7082] text-white shadow-sm hover:bg-[#0b5c6c]'
             : 'border-[#dddddd] bg-white text-[#181d26] hover:bg-[#f8fafc]',
           disabled && 'opacity-60 cursor-not-allowed',
         )}

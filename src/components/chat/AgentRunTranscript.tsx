@@ -349,7 +349,7 @@ export function AgentRunTranscript({
   const terminalError = displayError ?? loop.error
   const hasFinalAnswer = loop.status === 'completed' && finalAnswer.trim() !== ''
   const orderedEvents = events?.length ? events : loop.events?.length ? loop.events : undefined
-  const shouldCollapseProcess = !isRunning && hasFinalAnswer && showContent === 'all'
+  const shouldCollapseProcess = !isRunning && hasFinalAnswer
   const [processOpen, setProcessOpen] = useState(false)
   const hasProcess = orderedEvents ? orderedEvents.length > 0 : loop.turns.some((turn) => (
     turn.thinking

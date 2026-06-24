@@ -444,7 +444,7 @@ export function MessageList({
               <div className="mt-7 border-t border-dashed border-[#d7d7d7]" />
               {displayQuickQuestions.length > 0 && (
                 <div className="mt-7" aria-label="预设快速提问">
-                  <p className="text-[18px] leading-7 text-[#a4a4a4]">你可以这样问</p>
+                  <p className="text-[18px] leading-7 text-[#a4a4a4]">你可以这样对我说</p>
                   <div className="mt-4 flex flex-col items-start gap-3">
                     {displayQuickQuestions.map((question) => (
                       <button

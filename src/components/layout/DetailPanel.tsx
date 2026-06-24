@@ -1176,7 +1176,7 @@ function TaskViewButton({
       onClick={onClick}
       className={cn(
         'inline-flex items-center justify-center gap-1.5 rounded px-2 py-1 text-xs font-medium transition-colors',
-        active ? 'bg-white text-[#181d26] shadow-sm' : 'text-[#334155] hover:bg-white/60 hover:text-[#181d26]',
+        active ? 'bg-white text-[#181d26] shadow-sm' : 'text-[#334155] hover:bg-white/70 hover:text-[#181d26]',
       )}
     >
       <span>{label}</span>

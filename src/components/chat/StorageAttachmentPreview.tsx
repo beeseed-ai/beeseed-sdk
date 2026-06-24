@@ -177,10 +177,6 @@ function storagePreviewEndpointForKind(kind: StorageFileKind) {
   return null
 }
 
-function officePresentationViewerUrl(url: string) {
-  return `https://view.officeapps.live.com/op/embed.aspx?src=${encodeURIComponent(url)}`
-}
-
 export function StorageFileIcon({ refText, className }: { refText: string; className?: string }) {
   const Icon = storageFileIconForKind(storageFileKindForRef(refText))
   return <Icon className={className} />
@@ -263,7 +259,6 @@ export function StoragePreviewDialog({ channelId, refText, onClose }: { channelI
       setDownloading(false)
     }
   }
-  const presentationViewerUrl = kind === 'presentation' && url ? officePresentationViewerUrl(url) : null
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/35 px-4 py-6" onClick={onClose}>
@@ -320,14 +315,24 @@ export function StoragePreviewDialog({ channelId, refText, onClose }: { channelI
               sandbox="allow-scripts"
               className="h-[70vh] w-full rounded border border-[#e5e5e5] bg-white"
             />
-          ) : presentationViewerUrl ? (
-            <div className="flex min-h-[70vh] flex-col gap-2">
-              <iframe
-                src={presentationViewerUrl}
-                title={name}
-                className="min-h-0 flex-1 rounded border border-[#e5e5e5] bg-white"
-              />
-              <div className="text-center text-xs text-[#777169]">如果演示文稿未能加载，请使用右上角按钮打开原文件。</div>
+          ) : kind === 'presentation' && url ? (
+            <div className="flex min-h-[360px] flex-col items-center justify-center gap-4 rounded border border-[#e5e5e5] bg-white p-6 text-center">
+              <Icon className="h-12 w-12 text-[#254fad]" />
+              <div>
+                <div className="text-sm font-semibold text-[#333840]">演示文稿已生成</div>
+                <div className="mt-1 max-w-md text-xs leading-5 text-[#777169]">
+                  PPT/PPTX 文件目前不再通过第三方 iframe 内嵌预览，避免私有存储签名链接跨域失败。请打开或下载原文件查看。
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => void download()}
+                disabled={downloading}
+                className="inline-flex min-h-9 items-center gap-2 rounded-md bg-[#181d26] px-3 text-sm font-medium text-white hover:bg-[#2a303a] disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                <Download className="h-4 w-4" />
+                {downloading ? '正在创建链接...' : '打开/下载原文件'}
+              </button>
             </div>
           ) : kind === 'audio' && url ? (
             <div className="flex h-48 items-center justify-center">

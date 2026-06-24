@@ -1,4 +1,4 @@
-import { useMemo, useState, useCallback } from 'react'
+import { useEffect, useMemo, useState, useCallback } from 'react'
 import type { ChannelMemberInfo, ChannelRuntimeSettings, ChatMessage, SkillShortcutAgent, SkillShortcutOption } from '../../core/types.js'
 import { cn } from '../../lib/cn.js'
 import { useAuth } from '../../hooks/use-auth.js'
@@ -6,6 +6,7 @@ import { useAppConfig } from '../../hooks/use-app-config.js'
 import { useChannels } from '../../hooks/use-channels.js'
 import { useChat } from '../../hooks/use-chat.js'
 import { useDetailPanel } from '../../hooks/use-detail-panel.js'
+import { useBeeSeedContext } from '../../provider/BeeSeedProvider.js'
 import { MessageList } from './MessageList.js'
 import { MessageInput } from './MessageInput.js'
 import { AgentTodoRail } from './AgentTodoRail.js'
@@ -20,11 +21,13 @@ interface Props {
 
 export function ChatChannel({ channelId, className, header }: Props) {
   const { user } = useAuth()
+  const { api } = useBeeSeedContext()
   const { branding } = useAppConfig()
   const { channels } = useChannels()
   const { messages, streams, agentLoops, members, typings, send, sendWithQuote, submitAnswer, stopAgent, loading } = useChat(channelId)
   const { composerInsertText, consumeComposerInsert, openWorkflowRun } = useDetailPanel()
   const [quotedMessage, setQuotedMessage] = useState<ChatMessage | null>(null)
+  const [configSkillOptions, setConfigSkillOptions] = useState<SkillShortcutOption[]>([])
   const channelSettings = useMemo(
     () => parseChannelRuntimeSettings(channels.find((channel) => channel.id === channelId)?.settings),
     [channels, channelId],
@@ -32,7 +35,51 @@ export function ChatChannel({ channelId, className, header }: Props) {
   const welcomeTitle = channelSettings.welcome_title
   const welcomeMessage = channelSettings.welcome_message || branding.welcomeMessage
   const quickQuestions = channelSettings.quick_questions ?? []
-  const skillOptions = useMemo(() => buildSkillOptionsFromMembers(members), [members])
+  const memberSkillOptions = useMemo(() => buildSkillOptionsFromMembers(members), [members])
+
+  useEffect(() => {
+    let cancelled = false
+    setConfigSkillOptions([])
+    if (memberSkillOptions.length > 0) return
+    const agents = members.map(agentShortcut).filter((agent): agent is SkillShortcutAgent => Boolean(agent))
+    if (!channelId || agents.length === 0) return
+
+    const loadAgentConfigSkills = async () => {
+      const agentConfigs = await Promise.all(agents.map(async (agent) => {
+        const cfg = await api.get(`channels/${channelId}/agents/${encodeURIComponent(agent.agent_id)}/config`).json<Record<string, unknown>>().catch(() => null)
+        return { agent, cfg }
+      }))
+      if (cancelled) return
+
+      const byName = new Map<string, SkillShortcutOption>()
+      for (const { agent, cfg } of agentConfigs) {
+        if (!cfg) continue
+        for (const name of collectSkillNames(cfg)) {
+          const existing = byName.get(name)
+          if (existing) {
+            if (!existing.agents?.some((item) => item.agent_id === agent.agent_id)) {
+              existing.agents = [...(existing.agents ?? []), agent]
+            }
+            continue
+          }
+          byName.set(name, {
+            name,
+            display_name: name,
+            agents: [agent],
+            source: 'agent',
+          })
+        }
+      }
+      setConfigSkillOptions([...byName.values()])
+    }
+
+    void loadAgentConfigSkills()
+    return () => {
+      cancelled = true
+    }
+  }, [api, channelId, memberSkillOptions.length, members])
+
+  const skillOptions = memberSkillOptions.length > 0 ? memberSkillOptions : configSkillOptions
 
   const handleSend = useCallback((content: string, metadata?: Record<string, unknown>) => {
     if (quotedMessage) {
@@ -92,6 +139,7 @@ export function ChatChannel({ channelId, className, header }: Props) {
               insertText={composerInsertText}
               onInsertTextConsumed={consumeComposerInsert}
               skillOptions={skillOptions}
+              quickQuestions={quickQuestions}
               placeholder={branding.inputPlaceholder}
             />
           </div>
@@ -119,6 +167,37 @@ function objectValue(value: unknown): Record<string, unknown> {
 
 function stringValue(value: unknown): string | undefined {
   return typeof value === 'string' && value.trim() ? value.trim() : undefined
+}
+
+function stringArrayFrom(value: unknown): string[] {
+  if (!Array.isArray(value)) return []
+  return value.flatMap((item) => {
+    if (typeof item === 'string' && item.trim()) return [item.trim()]
+    const obj = objectValue(item)
+    return [
+      stringValue(obj.name),
+      stringValue(obj.skill),
+      stringValue(obj.skill_name),
+      stringValue(obj.id),
+    ].filter((name): name is string => Boolean(name))
+  })
+}
+
+function collectSkillNames(config: Record<string, unknown>): string[] {
+  const capabilities = objectValue(config.capabilities)
+  const skills = objectValue(config.skills)
+  const seen = new Set<string>()
+  const names = [
+    ...stringArrayFrom(config.skills),
+    ...stringArrayFrom(capabilities.skills),
+    ...stringArrayFrom(skills.required),
+    ...stringArrayFrom(skills.enabled),
+  ]
+  return names.filter((name) => {
+    if (seen.has(name)) return false
+    seen.add(name)
+    return true
+  })
 }
 
 function agentShortcut(member: ChannelMemberInfo): SkillShortcutAgent | null {
