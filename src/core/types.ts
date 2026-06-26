@@ -970,6 +970,9 @@ export type WSEvent =
   | ({ type: 'agent_done'; channel_id: string; agent_id: string; run_id?: string; turn: number; content: string } & AgentLoopWireFields)
   | ({ type: 'max_turns_reached'; channel_id: string; agent_id: string; run_id?: string; turn: number } & AgentLoopWireFields)
   | ({ type: 'agent_stopped'; channel_id: string; agent_id: string; run_id?: string; turn?: number; summary?: string } & AgentLoopWireFields)
+  // Local Agent / External Agent runtime events
+  | ({ type: 'local_agent.run.started' | 'local_agent.run.progress' | 'local_agent.run.question' | 'local_agent.run.artifacts.ready' | 'local_agent.run.artifacts.uploaded'; channel_id: string; agent_id?: string; device_id?: string; run_id: string; capability?: string; status?: string; output?: unknown; error?: unknown } & AgentLoopWireFields)
+  | ({ type: 'local_agent.run.succeeded' | 'local_agent.run.failed'; channel_id: string; agent_id?: string; device_id?: string; run_id: string; capability?: string; status?: string; output?: unknown; error?: unknown } & AgentLoopWireFields)
   // UI events
   | { type: 'routing_info'; channel_id: string; routing_info: { routing_method: string; target_agent_ids: string[]; reason: string } }
   | { type: 'channels_updated'; channel_id?: string }

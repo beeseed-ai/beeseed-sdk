@@ -134,6 +134,238 @@ function eventLoopKey(event: { channel_id: string; agent_id: string; run_id?: st
   return agentLoopStoreKey(event.channel_id, event.agent_id, eventRunId(event))
 }
 
+function findAgentLoopByRun(
+  loops: Map<string, AgentLoopState>,
+  channelId: string,
+  runId?: string,
+  agentId?: string,
+): { key: string; loop?: AgentLoopState; agentId: string } | undefined {
+  const normalizedRunId = typeof runId === 'string' && runId.trim() !== '' ? runId.trim() : undefined
+  const normalizedAgentId = typeof agentId === 'string' && agentId.trim() !== '' ? agentId.trim() : undefined
+  if (normalizedAgentId) {
+    const key = agentLoopStoreKey(channelId, normalizedAgentId, normalizedRunId)
+    return { key, loop: loops.get(key), agentId: normalizedAgentId }
+  }
+  if (normalizedRunId) {
+    for (const [key, loop] of loops) {
+      if (loop.channelId === channelId && loop.runId === normalizedRunId) {
+        return { key, loop, agentId: loop.agentId }
+      }
+    }
+  }
+  return undefined
+}
+
+function localAgentRunSummary(event: { type: 'local_agent.run.succeeded' | 'local_agent.run.failed'; output?: unknown; error?: unknown }): string {
+  if (event.type === 'local_agent.run.failed') {
+    const err = event.error
+    if (err && typeof err === 'object' && !Array.isArray(err)) {
+      const message = (err as Record<string, unknown>).message
+      if (typeof message === 'string' && message.trim() !== '') return message
+      const code = (err as Record<string, unknown>).code
+      if (typeof code === 'string' && code.trim() !== '') return `外部 Agent 运行失败：${code}`
+    }
+    return '外部 Agent 运行失败。'
+  }
+  const output = event.output
+  if (output && typeof output === 'object' && !Array.isArray(output)) {
+    const summary = (output as Record<string, unknown>).summary
+    if (typeof summary === 'string' && summary.trim() !== '') return summary
+  }
+  return '外部 Agent 任务已完成。'
+}
+
+function compactLocalAgentText(value: unknown, max = 180): string {
+  if (typeof value !== 'string') return ''
+  const text = value.replace(/\s+/g, ' ').trim()
+  if (text.length <= max) return text
+  return `${text.slice(0, max - 1)}…`
+}
+
+function compactLocalAgentCommand(value: unknown): string {
+  if (typeof value !== 'string') return ''
+  let command = value.trim()
+  command = command.replace(/^\/bin\/bash\s+-lc\s+['"]?/, '').replace(/['"]?$/, '')
+  return compactLocalAgentText(command, 140)
+}
+
+function localAgentProgressSummary(event: {
+  type: 'local_agent.run.started' | 'local_agent.run.progress' | 'local_agent.run.question' | 'local_agent.run.artifacts.ready' | 'local_agent.run.artifacts.uploaded'
+  output?: unknown
+}): string {
+  if (event.type === 'local_agent.run.started') return '外部 Agent 已开始运行。'
+  if (event.type === 'local_agent.run.question') return '外部 Agent 正在等待用户补充信息。'
+  if (event.type === 'local_agent.run.artifacts.ready') return '外部 Agent 已生成产物，正在准备上传。'
+  if (event.type === 'local_agent.run.artifacts.uploaded') return '外部 Agent 产物已上传。'
+
+  const output = event.output
+  if (!output || typeof output !== 'object' || Array.isArray(output)) return '外部 Agent 正在处理。'
+  const record = output as Record<string, unknown>
+  const eventType = typeof record.type === 'string' ? record.type : ''
+  const kind = typeof record.kind === 'string' ? record.kind : ''
+  if (eventType === 'external_agent.session.prepared') return '外部 Agent 工作区已准备完成。'
+  if (eventType === 'external_agent.session.started') return '外部 Agent CLI 已启动。'
+  if (eventType === 'external_agent.artifacts.ready') return '外部 Agent 已生成产物，正在准备上传。'
+  if (eventType === 'external_agent.session.completed') return '外部 Agent 已完成执行，正在收集产物。'
+
+  const text = compactLocalAgentText(record.text)
+  if (kind === 'message' && text) return text
+  if (kind === 'final' && text) return text
+  if (kind === 'warning' && text) return text
+  if (kind === 'command_started') {
+    const command = compactLocalAgentCommand(record.command)
+    return command ? `正在执行：${command}` : '外部 Agent 正在执行命令。'
+  }
+  if (kind === 'command_output') {
+    const command = compactLocalAgentCommand(record.command)
+    if (command) return `命令完成：${command}`
+    if (text) return text
+  }
+  if (text) return text
+  return '外部 Agent 正在处理。'
+}
+
+interface LocalAgentRunEventWire {
+  id?: number
+  run_id?: string
+  seq?: number
+  type?: string
+  status?: string
+  output?: unknown
+  error?: unknown
+  created_at?: string
+}
+
+interface LocalAgentRunWire {
+  run_id?: string
+  channel_id?: string
+  skill_id?: string
+  capability?: string
+  status?: string
+  output?: unknown
+  error?: unknown
+  created_at?: string
+  started_at?: string
+  completed_at?: string
+  events?: LocalAgentRunEventWire[]
+}
+
+function localAgentEventSummary(event: LocalAgentRunEventWire): string {
+  switch (event.type) {
+    case 'local_agent.run.created':
+      return '外部 Agent 任务已创建。'
+    case 'local_agent.run.dispatched':
+      return '已派发到外部 Agent Runtime。'
+    case 'local_agent.run.started':
+    case 'local_agent.run.progress':
+    case 'local_agent.run.question':
+    case 'local_agent.run.artifacts.ready':
+    case 'local_agent.run.artifacts.uploaded':
+      return localAgentProgressSummary({
+        type: event.type,
+        output: event.output,
+      })
+    case 'local_agent.run.succeeded':
+    case 'local_agent.run.failed':
+      return localAgentRunSummary({
+        type: event.type,
+        output: event.output,
+        error: event.error,
+      })
+    default:
+      return ''
+  }
+}
+
+function timestampFromWire(value: unknown, fallback = Date.now()): number {
+  if (typeof value !== 'string') return fallback
+  const timestamp = Date.parse(value)
+  return Number.isFinite(timestamp) ? timestamp : fallback
+}
+
+function applyLocalAgentRunsToLoops(
+  channelId: string,
+  loops: Map<string, AgentLoopState>,
+  runs: LocalAgentRunWire[],
+): Map<string, AgentLoopState> {
+  if (runs.length === 0) return loops
+  const next = new Map(loops)
+  for (const run of runs) {
+    const runId = typeof run.run_id === 'string' && run.run_id.trim() !== '' ? run.run_id.trim() : undefined
+    if (!runId) continue
+    const target = findAgentLoopByRun(next, channelId, runId)
+    if (!target) continue
+
+    let loop = ensureLoopTurn(
+      target.loop,
+      channelId,
+      target.agentId,
+      1,
+      runId,
+    )
+    const events = [...(run.events ?? [])].sort((a, b) => {
+      const aSeq = typeof a.seq === 'number' ? a.seq : Number.MAX_SAFE_INTEGER
+      const bSeq = typeof b.seq === 'number' ? b.seq : Number.MAX_SAFE_INTEGER
+      if (aSeq !== bSeq) return aSeq - bSeq
+      return timestampFromWire(a.created_at, 0) - timestampFromWire(b.created_at, 0)
+    })
+
+    for (const event of events) {
+      const summary = localAgentEventSummary(event)
+      if (!summary) continue
+      const timestamp = timestampFromWire(event.created_at, loop.startedAt)
+      const turnNumber = 1
+      loop = updateLoopTurn(loop, turnNumber, (turn) => ({
+        ...turn,
+        progress: summary,
+        completedAt: event.type === 'local_agent.run.succeeded' || event.type === 'local_agent.run.failed'
+          ? timestamp
+          : turn.completedAt,
+        status: event.type === 'local_agent.run.succeeded' || event.type === 'local_agent.run.failed'
+          ? 'completed'
+          : turn.status,
+      }))
+      loop = appendLoopEvent(loop, {
+        id: `${target.key}:local-agent-event-${event.id ?? event.seq ?? timestamp}`,
+        seq: eventSeq(event),
+        type: 'progress',
+        turnNumber,
+        timestamp,
+        summary,
+      })
+    }
+
+    const completedAt = timestampFromWire(run.completed_at, 0)
+    const startedAt = timestampFromWire(run.started_at ?? run.created_at, loop.startedAt)
+    const terminalSummary = run.status === 'failed'
+      ? localAgentRunSummary({ type: 'local_agent.run.failed', error: run.error })
+      : run.status === 'succeeded'
+        ? localAgentRunSummary({ type: 'local_agent.run.succeeded', output: run.output })
+        : ''
+    if (terminalSummary) {
+      loop = updateLoopTurn(loop, 1, (turn) => ({
+        ...turn,
+        status: 'completed',
+        progress: terminalSummary,
+        completedAt: completedAt || turn.completedAt,
+      }))
+    }
+    next.set(target.key, {
+      ...loop,
+      startedAt,
+      completedAt: completedAt || loop.completedAt,
+      status: run.status === 'succeeded'
+        ? 'completed'
+        : run.status === 'failed'
+          ? 'error'
+          : loop.status,
+      finalContent: run.status === 'succeeded' && terminalSummary ? terminalSummary : loop.finalContent,
+      error: run.status === 'failed' && terminalSummary ? terminalSummary : loop.error,
+    })
+  }
+  return next
+}
+
 function normalizeAgentTodos(raw: unknown): AgentTodoItem[] {
   if (!Array.isArray(raw)) return []
   return raw.flatMap((item, index) => {
@@ -507,7 +739,8 @@ function buildAgentLoopsFromMessages(channelId: string, messages: Message[]): Ma
       } else {
         turn = { ...turn, progress: message.content }
         if (
-          storedEvent !== 'agent_stopped'
+          storedEvent !== 'agent_done'
+          && storedEvent !== 'agent_stopped'
           && storedEvent !== 'agent_error'
           && storedEvent !== 'agent_interrupted'
           && storedEvent !== 'max_turns_reached'
@@ -629,6 +862,22 @@ function buildAgentLoopsFromMessages(channelId: string, messages: Message[]): Ma
         turns: nextLoop.turns.map((t) => t.turnNumber === turnNumber ? errorTurn : t),
         status: 'error',
         error: message.content,
+        completedAt: timestamp,
+      }
+    }
+    if (meta.event === 'agent_done') {
+      const doneTurn = {
+        ...turn,
+        status: 'completed' as const,
+        progress: message.content || turn.progress,
+        content: message.content || turn.content,
+        completedAt: timestamp,
+      }
+      nextLoop = {
+        ...nextLoop,
+        turns: nextLoop.turns.map((t) => t.turnNumber === turnNumber ? doneTurn : t),
+        status: 'completed',
+        finalContent: message.content || nextLoop.finalContent,
         completedAt: timestamp,
       }
     }
@@ -891,10 +1140,25 @@ export function createMessagesStore(config: MessagesStoreConfig) {
       set({ loadingChannel: channelId })
       try {
         const msgs = await config.api.get(`channels/${channelId}/messages`).json<Message[]>()
+        let localAgentRuns: LocalAgentRunWire[] = []
+        try {
+          const localAgentData = await config.api.get('local-agent/runs', {
+            searchParams: { channel_id: channelId },
+          }).json<{ runs?: LocalAgentRunWire[] }>()
+          localAgentRuns = Array.isArray(localAgentData.runs) ? localAgentData.runs : []
+        } catch {
+          localAgentRuns = []
+        }
         const userId = config.getCurrentUserId()
         const parsed = msgs
           .map((m) => parseMessage(m, userId))
           .filter((m): m is ChatMessage => m !== null)
+        const visibleRunIds = new Set(
+          msgs.flatMap((m) => {
+            const runId = metadataRunId((m.metadata ?? {}) as Record<string, unknown>)
+            return runId ? [runId] : []
+          }),
+        )
         const map = new Map(get().messages)
         map.set(channelId, parsed)
         const loops = new Map(get().agentLoops)
@@ -906,7 +1170,11 @@ export function createMessagesStore(config: MessagesStoreConfig) {
         for (const [key, loop] of buildAgentLoopsFromMessages(channelId, msgs)) {
           loops.set(key, loop)
         }
-        set({ messages: map, agentLoops: loops, loadingChannel: null })
+        const visibleLocalAgentRuns = localAgentRuns.filter((run) => (
+          typeof run.run_id === 'string' && visibleRunIds.has(run.run_id)
+        ))
+        const hydratedLoops = applyLocalAgentRunsToLoops(channelId, loops, visibleLocalAgentRuns)
+        set({ messages: map, agentLoops: hydratedLoops, loadingChannel: null })
       } catch {
         set({ loadingChannel: null })
       }
@@ -1608,6 +1876,88 @@ export function createMessagesStore(config: MessagesStoreConfig) {
 
           const typing = new Map(state.typingStatus)
           clearTypingForChannel(typing, event.channel_id, event.agent_id)
+          set({ typingStatus: typing })
+          break
+        }
+
+        case 'local_agent.run.started':
+        case 'local_agent.run.progress':
+        case 'local_agent.run.question':
+        case 'local_agent.run.artifacts.ready':
+        case 'local_agent.run.artifacts.uploaded': {
+          const loops = new Map(state.agentLoops)
+          const target = findAgentLoopByRun(loops, event.channel_id, event.run_id, event.agent_id)
+          if (!target) break
+
+          const summary = localAgentProgressSummary(event)
+          const turnNumber = eventTurnNumber({ turn: 1 }, target.loop)
+          let updated = ensureLoopTurn(target.loop, event.channel_id, target.agentId, turnNumber, eventRunId(event))
+          updated = updateLoopTurn(updated, turnNumber, (turn) => ({
+            ...turn,
+            progress: summary,
+          }))
+          updated = appendLoopEvent(updated, {
+            id: eventId(event, `${target.key}:${event.type}-${eventSeq(event) ?? Date.now()}`),
+            seq: eventSeq(event),
+            type: 'progress',
+            turnNumber,
+            timestamp: Date.now(),
+            summary,
+          })
+          loops.set(target.key, updated)
+          set({ agentLoops: loops })
+
+          const streams = new Map(state.streams)
+          const stream = streams.get(target.key)
+          if (stream) {
+            streams.set(target.key, { ...stream, agentLoop: updated })
+            set({ streams })
+          }
+
+          const typing = new Map(state.typingStatus)
+          typing.set(typingKey(event.channel_id, target.agentId), summary)
+          set({ typingStatus: typing })
+          break
+        }
+
+        case 'local_agent.run.succeeded':
+        case 'local_agent.run.failed': {
+          const loops = new Map(state.agentLoops)
+          const target = findAgentLoopByRun(loops, event.channel_id, event.run_id, event.agent_id)
+          if (!target) break
+
+          const summary = localAgentRunSummary(event)
+          const turnNumber = eventTurnNumber({ turn: 1 }, target.loop)
+          let updated = ensureLoopTurn(target.loop, event.channel_id, target.agentId, turnNumber, eventRunId(event))
+          updated = updateLoopTurn(updated, turnNumber, (turn) => ({
+            ...turn,
+            status: 'completed',
+            progress: summary,
+            completedAt: Date.now(),
+          }))
+          updated = appendLoopEvent(updated, {
+            id: eventId(event, `${target.key}:${event.type}-${eventSeq(event) ?? Date.now()}`),
+            seq: eventSeq(event),
+            type: 'progress',
+            turnNumber,
+            timestamp: Date.now(),
+            summary,
+          })
+          loops.set(target.key, {
+            ...updated,
+            status: event.type === 'local_agent.run.succeeded' ? 'completed' : 'error',
+            finalContent: event.type === 'local_agent.run.succeeded' ? summary : updated.finalContent,
+            error: event.type === 'local_agent.run.failed' ? summary : undefined,
+            completedAt: Date.now(),
+          })
+          set({ agentLoops: loops })
+
+          const streams = new Map(state.streams)
+          streams.delete(target.key)
+          set({ streams })
+
+          const typing = new Map(state.typingStatus)
+          clearTypingForChannel(typing, event.channel_id, target.agentId)
           set({ typingStatus: typing })
           break
         }
