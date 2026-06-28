@@ -185,7 +185,6 @@ export function MessageInput({
         if (aAssociated !== bAssociated) return aAssociated - bAssociated
         return skillDisplayName(a).localeCompare(skillDisplayName(b), 'zh-CN')
       })
-      .slice(0, 8)
   }, [skillOptions, skillQuery])
   const normalizedQuickQuestions = useMemo(() => (
     quickQuestions
