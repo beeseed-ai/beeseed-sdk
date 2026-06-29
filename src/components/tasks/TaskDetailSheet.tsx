@@ -87,6 +87,7 @@ export function TaskDetailSheet({ channelId, task, members, channelName, open, o
     const title = titleDraft.trim()
     if (!title || !task) return
     setSavingDetails(true)
+    let saved = false
     try {
       await updateTask(task.id, {
         title,
@@ -94,8 +95,12 @@ export function TaskDetailSheet({ channelId, task, members, channelName, open, o
         due_at: dueAtDraft ? new Date(dueAtDraft).toISOString() : null,
       })
       onTaskChanged?.()
+      saved = true
     } finally {
       setSavingDetails(false)
+    }
+    if (saved) {
+      onClose()
     }
   }
 

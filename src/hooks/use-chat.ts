@@ -85,6 +85,11 @@ export function useChat(channelId: string | null) {
     void messagesStore.getState().fetchMembers(channelId)
   }, [channelId, messagesStore])
 
+  const loadOlderMessages = useCallback(() => {
+    if (!channelId) return Promise.resolve()
+    return messagesStore.getState().loadOlderMessages(channelId)
+  }, [channelId, messagesStore])
+
   const streams = channelId ? state.getStreams(channelId) : []
   const agentLoops = channelId ? state.getAgentLoops(channelId) : []
   const typings = channelId ? state.getTypings(channelId) : []
@@ -105,12 +110,15 @@ export function useChat(channelId: string | null) {
     typing: channelId ? state.getTyping(channelId) : '',
     typings,
     loading: state.loadingChannel === channelId,
+    hasOlderMessages: channelId ? state.hasOlder(channelId) : false,
+    loadingOlderMessages: channelId ? state.isLoadingOlder(channelId) : false,
     send,
     sendWithQuote,
     submitAnswer,
     stopAgent,
     ack,
     refreshMembers,
+    loadOlderMessages,
   }
 }
 

@@ -49,7 +49,7 @@ export function LeftNavSidebar({ activeFeature, onFeatureChange, channels, curre
   const { user, signOut } = useAuth()
   const { appConfig, branding } = useAppConfig()
   const { deleteChannel } = useChannels()
-  const { unreadCount } = useNotifications()
+  const { unreadCount, refresh: refreshNotifications } = useNotifications()
   const [createDialogOpen, setCreateDialogOpen] = useState(false)
   const [menuOpen, setMenuOpen] = useState(false)
   const [profileOpen, setProfileOpen] = useState(false)
@@ -60,6 +60,10 @@ export function LeftNavSidebar({ activeFeature, onFeatureChange, channels, curre
   const brandInitial = Array.from(branding.title)[0] || 'B'
   const hasLogo = Boolean(branding.logo && !logoFailed)
   const userAvatarURL = useMemo(() => resolveProfileAvatarURL(user?.avatar_url, appConfig), [appConfig, user?.avatar_url])
+  useEffect(() => {
+    if (notificationsOpen) void refreshNotifications()
+  }, [notificationsOpen, refreshNotifications])
+
   const channelSections = useMemo(() => {
     const owned: ChannelWithMeta[] = []
     const joined: ChannelWithMeta[] = []

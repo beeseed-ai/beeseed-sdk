@@ -13,7 +13,7 @@ export interface ChannelsState {
   createChannel: (input: { name: string; purpose?: string; agent_ids?: string[] }) => Promise<{ channel: ChannelWithMeta; members: ChannelMember[] } | null>
   deleteChannel: (channelId: string) => Promise<{ error: string | null }>
   requestJoin: (channelId: string) => Promise<{ error: string | null }>
-  inviteUsers: (channelId: string, emails: string[]) => Promise<{ error: string | null }>
+  inviteUsers: (channelId: string, targets: string[]) => Promise<{ error: string | null }>
   updateUnread: (channelId: string, count: number) => void
   markRead: (channelId: string) => void
   reset: () => void
@@ -95,16 +95,17 @@ export function createChannelsStore(config: ChannelsStoreConfig) {
       }
     },
 
-    inviteUsers: async (channelId, emails) => {
-      const list = Array.from(new Set(emails.map((email) => email.trim().toLowerCase()).filter(Boolean)))
-      if (!channelId || list.length === 0) return { error: '请填写要邀请的用户邮箱' }
+    inviteUsers: async (channelId, targets) => {
+      const { emails, phones } = normalizeInviteTargets(targets)
+      if (!channelId || (emails.length === 0 && phones.length === 0)) return { error: '请填写要邀请的手机号或邮箱' }
       try {
         const data = await config.api
-          .post(`channels/${encodeURIComponent(channelId)}/invites`, { json: { emails: list } })
-          .json<{ created_count?: number; skipped_count?: number; skipped_emails?: string[] }>()
+          .post(`channels/${encodeURIComponent(channelId)}/invites`, { json: { emails, phones } })
+          .json<{ created_count?: number; skipped_count?: number; skipped_emails?: string[]; skipped_phones?: string[] }>()
         if ((data.created_count ?? 0) === 0) {
-          if (data.skipped_emails?.length) {
-            return { error: `未找到可邀请用户：${data.skipped_emails.join(', ')}` }
+          const skipped = [...(data.skipped_phones ?? []), ...(data.skipped_emails ?? [])]
+          if (skipped.length > 0) {
+            return { error: `未找到可邀请用户：${skipped.join(', ')}` }
           }
           return { error: '没有可邀请的用户，可能已经在频道中或邀请待处理' }
         }
@@ -134,3 +135,30 @@ export function createChannelsStore(config: ChannelsStoreConfig) {
 }
 
 export type ChannelsStore = ReturnType<typeof createChannelsStore>
+
+function normalizeInviteTargets(targets: string[]) {
+  const emails: string[] = []
+  const phones: string[] = []
+  const seenEmails = new Set<string>()
+  const seenPhones = new Set<string>()
+
+  for (const raw of targets) {
+    const target = raw.trim()
+    if (!target) continue
+    if (target.includes('@')) {
+      const email = target.toLowerCase()
+      if (!seenEmails.has(email)) {
+        seenEmails.add(email)
+        emails.push(email)
+      }
+      continue
+    }
+    const phone = target.replaceAll(' ', '').replaceAll('-', '')
+    if (phone && !seenPhones.has(phone)) {
+      seenPhones.add(phone)
+      phones.push(phone)
+    }
+  }
+
+  return { emails, phones }
+}

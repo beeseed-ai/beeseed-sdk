@@ -24,7 +24,21 @@ export function ChatChannel({ channelId, className, header }: Props) {
   const { api } = useBeeSeedContext()
   const { branding } = useAppConfig()
   const { channels } = useChannels()
-  const { messages, streams, agentLoops, members, typings, send, sendWithQuote, submitAnswer, stopAgent, loading } = useChat(channelId)
+  const {
+    messages,
+    streams,
+    agentLoops,
+    members,
+    typings,
+    send,
+    sendWithQuote,
+    submitAnswer,
+    stopAgent,
+    loading,
+    hasOlderMessages,
+    loadingOlderMessages,
+    loadOlderMessages,
+  } = useChat(channelId)
   const { composerInsertText, consumeComposerInsert, openWorkflowRun } = useDetailPanel()
   const [quotedMessage, setQuotedMessage] = useState<ChatMessage | null>(null)
   const [configSkillOptions, setConfigSkillOptions] = useState<SkillShortcutOption[]>([])
@@ -40,7 +54,6 @@ export function ChatChannel({ channelId, className, header }: Props) {
   useEffect(() => {
     let cancelled = false
     setConfigSkillOptions([])
-    if (memberSkillOptions.length > 0) return
     const agents = members.map(agentShortcut).filter((agent): agent is SkillShortcutAgent => Boolean(agent))
     if (!channelId || agents.length === 0) return
 
@@ -77,9 +90,12 @@ export function ChatChannel({ channelId, className, header }: Props) {
     return () => {
       cancelled = true
     }
-  }, [api, channelId, memberSkillOptions.length, members])
+  }, [api, channelId, members])
 
-  const skillOptions = memberSkillOptions.length > 0 ? memberSkillOptions : configSkillOptions
+  const skillOptions = useMemo(
+    () => mergeSkillOptions(memberSkillOptions, configSkillOptions),
+    [memberSkillOptions, configSkillOptions],
+  )
 
   const handleSend = useCallback((content: string, metadata?: Record<string, unknown>) => {
     if (quotedMessage) {
@@ -120,6 +136,9 @@ export function ChatChannel({ channelId, className, header }: Props) {
               onSubmitAnswer={submitAnswer}
               onStopAgent={stopAgent}
               onOpenWorkflowRun={openWorkflowRun}
+              hasOlder={hasOlderMessages}
+              loadingOlder={loadingOlderMessages}
+              onLoadOlder={loadOlderMessages}
               welcomeTitle={welcomeTitle}
               welcomeFallbackTitle={branding.title}
               welcomeMessage={welcomeMessage}
@@ -241,6 +260,32 @@ function buildSkillOptionsFromMembers(members: ChannelMemberInfo[]): SkillShortc
     }
   }
 
+  return [...byName.values()]
+}
+
+function mergeSkillOptions(memberOptions: SkillShortcutOption[], configOptions: SkillShortcutOption[]): SkillShortcutOption[] {
+  const byName = new Map<string, SkillShortcutOption>()
+  for (const option of [...memberOptions, ...configOptions]) {
+    const name = option.name?.trim()
+    if (!name) continue
+    const current = byName.get(name)
+    if (!current) {
+      byName.set(name, {
+        ...option,
+        name,
+        agents: [...(option.agents ?? [])],
+      })
+      continue
+    }
+    for (const agent of option.agents ?? []) {
+      if (!current.agents?.some((item) => item.agent_id === agent.agent_id)) {
+        current.agents = [...(current.agents ?? []), agent]
+      }
+    }
+    if (!current.display_name && option.display_name) current.display_name = option.display_name
+    if (!current.description && option.description) current.description = option.description
+    if (!current.icon_url && option.icon_url) current.icon_url = option.icon_url
+  }
   return [...byName.values()]
 }
 

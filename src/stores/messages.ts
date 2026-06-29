@@ -8,6 +8,7 @@ import type {
 
 const AGENT_LOOP_STALE_AFTER_MS = 30 * 60 * 1000
 const AGENT_LOOP_STALE_MESSAGE = '长时间没有收到 Agent 进度，任务可能已中断。'
+const MESSAGE_PAGE_SIZE = 30
 
 // ── Message parsing (wire Message → display ChatMessage) ──
 
@@ -78,7 +79,7 @@ function parseSelectedSkills(meta: Record<string, unknown>): SelectedSkillIntent
       skill_icon_url: typeof record.skill_icon_url === 'string' ? record.skill_icon_url : undefined,
       agent_id: agentID,
       agent_name: agentName || agentID,
-      source: record.source === 'slash' ? 'slash' as const : record.source === 'skill_button' ? 'skill_button' as const : undefined,
+      source: record.source === 'slash' ? 'slash' as const : record.source === 'skill_button' ? 'skill_button' as const : record.source === 'trigger' ? 'trigger' as const : undefined,
     }]
   })
   return skills.length > 0 ? skills : undefined
@@ -163,16 +164,16 @@ function localAgentRunSummary(event: { type: 'local_agent.run.succeeded' | 'loca
       const message = (err as Record<string, unknown>).message
       if (typeof message === 'string' && message.trim() !== '') return message
       const code = (err as Record<string, unknown>).code
-      if (typeof code === 'string' && code.trim() !== '') return `外部 Agent 运行失败：${code}`
+      if (typeof code === 'string' && code.trim() !== '') return `技能执行失败：${code}`
     }
-    return '外部 Agent 运行失败。'
+    return '技能执行失败。'
   }
   const output = event.output
   if (output && typeof output === 'object' && !Array.isArray(output)) {
     const summary = (output as Record<string, unknown>).summary
     if (typeof summary === 'string' && summary.trim() !== '') return summary
   }
-  return '外部 Agent 任务已完成。'
+  return '技能任务已完成。'
 }
 
 function compactLocalAgentText(value: unknown, max = 180): string {
@@ -193,20 +194,20 @@ function localAgentProgressSummary(event: {
   type: 'local_agent.run.started' | 'local_agent.run.progress' | 'local_agent.run.question' | 'local_agent.run.artifacts.ready' | 'local_agent.run.artifacts.uploaded'
   output?: unknown
 }): string {
-  if (event.type === 'local_agent.run.started') return '外部 Agent 已开始运行。'
-  if (event.type === 'local_agent.run.question') return '外部 Agent 正在等待用户补充信息。'
-  if (event.type === 'local_agent.run.artifacts.ready') return '外部 Agent 已生成产物，正在准备上传。'
-  if (event.type === 'local_agent.run.artifacts.uploaded') return '外部 Agent 产物已上传。'
+  if (event.type === 'local_agent.run.started') return '技能已开始处理。'
+  if (event.type === 'local_agent.run.question') return '正在等待你补充信息。'
+  if (event.type === 'local_agent.run.artifacts.ready') return '文件已生成，正在准备上传。'
+  if (event.type === 'local_agent.run.artifacts.uploaded') return '文件已上传。'
 
   const output = event.output
-  if (!output || typeof output !== 'object' || Array.isArray(output)) return '外部 Agent 正在处理。'
+  if (!output || typeof output !== 'object' || Array.isArray(output)) return '技能正在处理。'
   const record = output as Record<string, unknown>
   const eventType = typeof record.type === 'string' ? record.type : ''
   const kind = typeof record.kind === 'string' ? record.kind : ''
-  if (eventType === 'external_agent.session.prepared') return '外部 Agent 工作区已准备完成。'
-  if (eventType === 'external_agent.session.started') return '外部 Agent CLI 已启动。'
-  if (eventType === 'external_agent.artifacts.ready') return '外部 Agent 已生成产物，正在准备上传。'
-  if (eventType === 'external_agent.session.completed') return '外部 Agent 已完成执行，正在收集产物。'
+  if (eventType === 'external_agent.session.prepared') return '材料已准备好。'
+  if (eventType === 'external_agent.session.started') return '处理服务已启动。'
+  if (eventType === 'external_agent.artifacts.ready') return '文件已生成，正在准备上传。'
+  if (eventType === 'external_agent.session.completed') return '处理已完成，正在整理文件。'
 
   const text = compactLocalAgentText(record.text)
   if (kind === 'message' && text) return text
@@ -214,7 +215,7 @@ function localAgentProgressSummary(event: {
   if (kind === 'warning' && text) return text
   if (kind === 'command_started') {
     const command = compactLocalAgentCommand(record.command)
-    return command ? `正在执行：${command}` : '外部 Agent 正在执行命令。'
+    return command ? `正在处理：${command}` : '正在处理材料。'
   }
   if (kind === 'command_output') {
     const command = compactLocalAgentCommand(record.command)
@@ -222,7 +223,7 @@ function localAgentProgressSummary(event: {
     if (text) return text
   }
   if (text) return text
-  return '外部 Agent 正在处理。'
+  return '技能正在处理。'
 }
 
 interface LocalAgentRunEventWire {
@@ -253,9 +254,9 @@ interface LocalAgentRunWire {
 function localAgentEventSummary(event: LocalAgentRunEventWire): string {
   switch (event.type) {
     case 'local_agent.run.created':
-      return '外部 Agent 任务已创建。'
+      return '技能任务已创建。'
     case 'local_agent.run.dispatched':
-      return '已派发到外部 Agent Runtime。'
+      return '已交给平台技能处理。'
     case 'local_agent.run.started':
     case 'local_agent.run.progress':
     case 'local_agent.run.question':
@@ -746,6 +747,8 @@ function buildAgentLoopsFromMessages(channelId: string, messages: Message[]): Ma
           && storedEvent !== 'max_turns_reached'
           && storedEvent !== 'agent_waiting_user'
           && storedEvent !== 'agent_ask_user_expired'
+          && storedEvent !== 'local_agent.run.succeeded'
+          && storedEvent !== 'local_agent.run.failed'
         ) {
           loop = appendLoopEvent(loop, {
             id: storedEventId,
@@ -865,6 +868,36 @@ function buildAgentLoopsFromMessages(channelId: string, messages: Message[]): Ma
         completedAt: timestamp,
       }
     }
+    if (meta.event === 'local_agent.run.succeeded') {
+      const doneTurn = {
+        ...turn,
+        status: 'completed' as const,
+        progress: message.content || turn.progress,
+        completedAt: timestamp,
+      }
+      nextLoop = {
+        ...nextLoop,
+        turns: nextLoop.turns.map((t) => t.turnNumber === turnNumber ? doneTurn : t),
+        status: 'completed',
+        finalContent: message.content || nextLoop.finalContent,
+        completedAt: timestamp,
+      }
+    }
+    if (meta.event === 'local_agent.run.failed') {
+      const failedTurn = {
+        ...turn,
+        status: 'completed' as const,
+        progress: message.content || turn.progress,
+        completedAt: timestamp,
+      }
+      nextLoop = {
+        ...nextLoop,
+        turns: nextLoop.turns.map((t) => t.turnNumber === turnNumber ? failedTurn : t),
+        status: 'error',
+        error: message.content || '技能执行失败。',
+        completedAt: timestamp,
+      }
+    }
     if (meta.event === 'agent_done') {
       const doneTurn = {
         ...turn,
@@ -969,6 +1002,44 @@ function buildAgentLoopsFromMessages(channelId: string, messages: Message[]): Ma
   }
 
   return loops
+}
+
+function displayMessageCount(messages: Message[]): number {
+  return messages.reduce((count, message) => count + (isPersistedAgentLoopEvent(message) ? 0 : 1), 0)
+}
+
+function visibleRunIdsFromMessages(messages: Message[]): string[] {
+  const runIds = new Set<string>()
+  for (const message of messages) {
+    const runId = metadataRunId((message.metadata ?? {}) as Record<string, unknown>)
+    if (runId) runIds.add(runId)
+  }
+  return [...runIds]
+}
+
+function mergeMessages(existing: ChatMessage[], incoming: ChatMessage[]): ChatMessage[] {
+  const byID = new Map<number, ChatMessage>()
+  const withoutID: ChatMessage[] = []
+  for (const message of [...incoming, ...existing]) {
+    if (typeof message.msgId === 'number') {
+      byID.set(message.msgId, message)
+    } else {
+      withoutID.push(message)
+    }
+  }
+  return [...byID.values(), ...withoutID].sort((a, b) => {
+    if (a.timestamp !== b.timestamp) return a.timestamp - b.timestamp
+    return (a.msgId ?? Number.MAX_SAFE_INTEGER) - (b.msgId ?? Number.MAX_SAFE_INTEGER)
+  })
+}
+
+function oldestMessageID(messages: ChatMessage[]): number | undefined {
+  let oldest: number | undefined
+  for (const message of messages) {
+    if (typeof message.msgId !== 'number' || !Number.isFinite(message.msgId)) continue
+    oldest = oldest === undefined ? message.msgId : Math.min(oldest, message.msgId)
+  }
+  return oldest
 }
 
 function eventTurnNumber(event: { turn?: number }, loop?: AgentLoopState): number {
@@ -1077,9 +1148,12 @@ export interface MessagesState {
   agentLoops: Map<string, AgentLoopState>
   members: Map<string, ChannelMemberInfo[]>
   typingStatus: Map<string, string>
+  loadingOlderChannels: Set<string>
+  hasOlderMessages: Map<string, boolean>
   loadingChannel: string | null
 
   fetchMessages: (channelId: string) => Promise<void>
+  loadOlderMessages: (channelId: string) => Promise<void>
   fetchMembers: (channelId: string) => Promise<void>
   handleEvent: (event: WSEvent) => void
   addOptimisticMessage: (channelId: string, content: string, metadata?: Record<string, unknown>) => void
@@ -1092,6 +1166,8 @@ export interface MessagesState {
   getMembers: (channelId: string) => ChannelMemberInfo[]
   getTyping: (channelId: string) => string
   getTypings: (channelId: string) => string[]
+  hasOlder: (channelId: string) => boolean
+  isLoadingOlder: (channelId: string) => boolean
   reset: () => void
 }
 
@@ -1134,31 +1210,20 @@ export function createMessagesStore(config: MessagesStoreConfig) {
     agentLoops: new Map(),
     members: new Map(),
     typingStatus: new Map(),
+    loadingOlderChannels: new Set(),
+    hasOlderMessages: new Map(),
     loadingChannel: null,
 
     fetchMessages: async (channelId) => {
       set({ loadingChannel: channelId })
       try {
-        const msgs = await config.api.get(`channels/${channelId}/messages`).json<Message[]>()
-        let localAgentRuns: LocalAgentRunWire[] = []
-        try {
-          const localAgentData = await config.api.get('local-agent/runs', {
-            searchParams: { channel_id: channelId },
-          }).json<{ runs?: LocalAgentRunWire[] }>()
-          localAgentRuns = Array.isArray(localAgentData.runs) ? localAgentData.runs : []
-        } catch {
-          localAgentRuns = []
-        }
+        const msgs = await config.api.get(`channels/${channelId}/messages`, {
+          searchParams: { limit: String(MESSAGE_PAGE_SIZE) },
+        }).json<Message[]>()
         const userId = config.getCurrentUserId()
         const parsed = msgs
           .map((m) => parseMessage(m, userId))
           .filter((m): m is ChatMessage => m !== null)
-        const visibleRunIds = new Set(
-          msgs.flatMap((m) => {
-            const runId = metadataRunId((m.metadata ?? {}) as Record<string, unknown>)
-            return runId ? [runId] : []
-          }),
-        )
         const map = new Map(get().messages)
         map.set(channelId, parsed)
         const loops = new Map(get().agentLoops)
@@ -1170,13 +1235,81 @@ export function createMessagesStore(config: MessagesStoreConfig) {
         for (const [key, loop] of buildAgentLoopsFromMessages(channelId, msgs)) {
           loops.set(key, loop)
         }
-        const visibleLocalAgentRuns = localAgentRuns.filter((run) => (
-          typeof run.run_id === 'string' && visibleRunIds.has(run.run_id)
-        ))
-        const hydratedLoops = applyLocalAgentRunsToLoops(channelId, loops, visibleLocalAgentRuns)
-        set({ messages: map, agentLoops: hydratedLoops, loadingChannel: null })
+        const olderMap = new Map(get().hasOlderMessages)
+        olderMap.set(channelId, displayMessageCount(msgs) >= MESSAGE_PAGE_SIZE)
+        set({ messages: map, agentLoops: loops, hasOlderMessages: olderMap, loadingChannel: null })
+
+        const runIds = visibleRunIdsFromMessages(msgs)
+        if (runIds.length === 0) return
+        try {
+          const localAgentData = await config.api.get('local-agent/runs', {
+            searchParams: { channel_id: channelId, run_ids: runIds.join(',') },
+          }).json<{ runs?: LocalAgentRunWire[] }>()
+          const localAgentRuns = Array.isArray(localAgentData.runs) ? localAgentData.runs : []
+          if (localAgentRuns.length === 0) return
+          const hydratedLoops = applyLocalAgentRunsToLoops(channelId, get().agentLoops, localAgentRuns)
+          set({ agentLoops: hydratedLoops })
+        } catch {
+          // local agent history is supplementary; keep message history visible.
+        }
       } catch {
         set({ loadingChannel: null })
+      }
+    },
+
+    loadOlderMessages: async (channelId) => {
+      const state = get()
+      if (state.loadingOlderChannels.has(channelId) || state.hasOlderMessages.get(channelId) === false) {
+        return
+      }
+      const before = oldestMessageID(state.messages.get(channelId) ?? [])
+      if (!before) {
+        const olderMap = new Map(state.hasOlderMessages)
+        olderMap.set(channelId, false)
+        set({ hasOlderMessages: olderMap })
+        return
+      }
+      const loadingOlder = new Set(state.loadingOlderChannels)
+      loadingOlder.add(channelId)
+      set({ loadingOlderChannels: loadingOlder })
+      try {
+        const msgs = await config.api.get(`channels/${channelId}/messages`, {
+          searchParams: { limit: String(MESSAGE_PAGE_SIZE), before: String(before) },
+        }).json<Message[]>()
+        const userId = config.getCurrentUserId()
+        const parsed = msgs
+          .map((m) => parseMessage(m, userId))
+          .filter((m): m is ChatMessage => m !== null)
+        const map = new Map(get().messages)
+        map.set(channelId, mergeMessages(map.get(channelId) ?? [], parsed))
+        const loops = new Map(get().agentLoops)
+        for (const [key, loop] of buildAgentLoopsFromMessages(channelId, msgs)) {
+          if (!loops.has(key)) {
+            loops.set(key, loop)
+          }
+        }
+        const olderMap = new Map(get().hasOlderMessages)
+        olderMap.set(channelId, displayMessageCount(msgs) >= MESSAGE_PAGE_SIZE)
+        set({ messages: map, agentLoops: loops, hasOlderMessages: olderMap })
+
+        const runIds = visibleRunIdsFromMessages(msgs)
+        if (runIds.length > 0) {
+          try {
+            const localAgentData = await config.api.get('local-agent/runs', {
+              searchParams: { channel_id: channelId, run_ids: runIds.join(',') },
+            }).json<{ runs?: LocalAgentRunWire[] }>()
+            const localAgentRuns = Array.isArray(localAgentData.runs) ? localAgentData.runs : []
+            if (localAgentRuns.length > 0) {
+              set({ agentLoops: applyLocalAgentRunsToLoops(channelId, get().agentLoops, localAgentRuns) })
+            }
+          } catch {
+            // keep older messages even if supplementary local agent details fail.
+          }
+        }
+      } finally {
+        const nextLoadingOlder = new Set(get().loadingOlderChannels)
+        nextLoadingOlder.delete(channelId)
+        set({ loadingOlderChannels: nextLoadingOlder })
       }
     },
 
@@ -2064,12 +2197,18 @@ export function createMessagesStore(config: MessagesStoreConfig) {
 
     getTyping: (channelId) => get().getTypings(channelId)[0] || '',
 
+    hasOlder: (channelId) => get().hasOlderMessages.get(channelId) ?? false,
+
+    isLoadingOlder: (channelId) => get().loadingOlderChannels.has(channelId),
+
     reset: () => set({
       messages: new Map(),
       streams: new Map(),
       agentLoops: new Map(),
       members: new Map(),
       typingStatus: new Map(),
+      loadingOlderChannels: new Set(),
+      hasOlderMessages: new Map(),
       loadingChannel: null,
     }),
   }))

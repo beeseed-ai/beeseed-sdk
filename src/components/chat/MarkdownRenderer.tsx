@@ -7,6 +7,7 @@ import { cn } from '../../lib/cn.js'
 import { STORAGE_REF_RE, StorageRefChip } from '../../lib/storage-ref.js'
 
 const MENTION_RE = /@([一-鿿\w][一-鿿\w\-]*)/g
+const INLINE_CODE_CLASS = 'px-1.5 py-0.5 rounded bg-[#e8f5f8] text-[#0f5267] text-[0.9em] font-mono'
 
 function processInlineTokens(
   children: ReactNode,
@@ -142,7 +143,7 @@ export const MarkdownRenderer = memo(function MarkdownRenderer({
             if (text.startsWith('storage://')) {
               if (storageRefAvailable?.(text) === true) return <StorageRefChip refText={text} onClick={onStorageRefClick} />
               return (
-                <code className="px-1.5 py-0.5 rounded bg-muted text-[0.9em] font-mono">
+                <code className={INLINE_CODE_CLASS}>
                   {props.children}
                 </code>
               )
@@ -158,7 +159,7 @@ export const MarkdownRenderer = memo(function MarkdownRenderer({
               )
             }
             return (
-              <code className="px-1.5 py-0.5 rounded bg-muted text-[0.9em] font-mono">
+              <code className={INLINE_CODE_CLASS}>
                 {props.children}
               </code>
             )

@@ -103,6 +103,7 @@ function createBeeSeedContext(
       console.log('[Auth] onSignIn, wsRef exists:', !!wsRef)
       wsRef?.connect()
       void channelsStore.getState().fetchChannels()
+      void notificationsStore.getState().refresh()
     },
     onSignOut: (options) => {
       wsRef?.disconnect()
@@ -132,6 +133,7 @@ function createBeeSeedContext(
     }
     if (event.type === 'auth_ok') {
       channelsStore.getState().setChannels(event.channels ?? [])
+      void notificationsStore.getState().refresh()
     }
     messagesStore.getState().handleEvent(event)
 

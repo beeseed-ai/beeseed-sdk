@@ -223,7 +223,7 @@ export interface SelectedSkillIntent {
   skill_icon_url?: string
   agent_id: string
   agent_name: string
-  source?: 'skill_button' | 'slash'
+  source?: 'skill_button' | 'slash' | 'trigger'
 }
 
 // ── Ask-User ──

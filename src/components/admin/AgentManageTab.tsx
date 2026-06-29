@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { Bot, Plus, Save, Search, Trash2, X } from 'lucide-react'
+import { Bot, Plus, RefreshCw, Save, Search, Trash2, X } from 'lucide-react'
 import type { ModelTierName, ModelTierSettings } from '../../core/types.js'
 import { cn } from '../../lib/cn.js'
 import { useBeeSeedContext } from '../../provider/BeeSeedProvider.js'
@@ -10,6 +10,7 @@ interface AgentTemplateInfo {
   name: string
   role: string
   version?: string
+  is_active?: boolean
   provider: string
   model: string
   model_tier?: ModelTierName | ''
@@ -66,7 +67,17 @@ interface ModelOption {
   provider: string
 }
 
+interface AgentTemplateSyncResult {
+  agent_id: string
+  channels_matched: number
+  channels_updated: number
+  model_settings_updated?: number
+  skills_added: number
+  tools_added: number
+}
+
 const FALLBACK_TEMPERATURE = 0.7
+const PLATFORM_TEMPLATE_READ_ONLY = false
 const MODEL_TIER_OPTIONS: { value: ModelTierName; label: string; description: string }[] = [
   { value: 'fast', label: '快速', description: '适合日常轻量任务' },
   { value: 'thinking', label: '思考', description: '适合复杂推理和多步骤任务' },
@@ -130,6 +141,7 @@ const SKILL_LABELS: Record<string, string> = {
   'moxibustion-advisor': '辨证施灸顾问',
   'moxibustion-classics': '艾灸古籍知识库',
   pdf: 'PDF 处理助手',
+  'ppt-master': 'PPT Master',
   pptx: 'PPTX 演示文稿',
   'volcengine-search': '火山引擎事实核查搜索',
   xlsx: 'Excel 表格助手',
@@ -236,6 +248,9 @@ export function AgentManageTab() {
   const [saving, setSaving] = useState(false)
   const [saved, setSaved] = useState(false)
   const [saveError, setSaveError] = useState('')
+  const [syncingChannels, setSyncingChannels] = useState(false)
+  const [syncResult, setSyncResult] = useState<AgentTemplateSyncResult | null>(null)
+  const [syncError, setSyncError] = useState('')
   const loadSeqRef = useRef(0)
   const detailSeqRef = useRef(0)
 
@@ -273,7 +288,7 @@ export function AgentManageTab() {
 
   const loadAvailableTemplates = useCallback(async () => {
     const data = await api.get('admin/agent-templates/available').json<AgentTemplateInfo[]>()
-    setAvailableTemplates(data ?? [])
+    setAvailableTemplates((data ?? []).filter((template) => template.is_active !== false))
   }, [api])
 
   useEffect(() => {
@@ -319,6 +334,8 @@ export function AgentManageTab() {
     setDirty(false)
     setSaved(false)
     setSaveError('')
+    setSyncResult(null)
+    setSyncError('')
 
     Promise.all([
       api.get(`admin/agent-templates/${selectedId}/identity`).json<IdentityData>().catch(() => null),
@@ -337,20 +354,27 @@ export function AgentManageTab() {
   }, [api, selectedId])
 
   const updateIdentity = (patch: Partial<IdentityData>) => {
+    if (PLATFORM_TEMPLATE_READ_ONLY) return
     setIdentity((current) => ({ name: '', personality: '', content: '', ...(current ?? {}), ...patch }))
     setDirty(true)
     setSaved(false)
     setSaveError('')
+    setSyncResult(null)
+    setSyncError('')
   }
 
   const updateConfig = (patch: Partial<AgentConfig>) => {
+    if (PLATFORM_TEMPLATE_READ_ONLY) return
     setAgentConfig((current) => ({ ...(current ?? {}), ...patch }))
     setDirty(true)
     setSaved(false)
     setSaveError('')
+    setSyncResult(null)
+    setSyncError('')
   }
 
   const updateModelTierSettings = (patch: Partial<ModelTierSettings>) => {
+    if (PLATFORM_TEMPLATE_READ_ONLY) return
     setAgentConfig((current) => {
       const provider = current?.provider ?? selectedTemplate?.provider ?? ''
       const model = current?.model ?? selectedTemplate?.model ?? ''
@@ -360,9 +384,12 @@ export function AgentManageTab() {
     setDirty(true)
     setSaved(false)
     setSaveError('')
+    setSyncResult(null)
+    setSyncError('')
   }
 
   const updateModelTierConfig = (tier: ModelTierName, patch: Partial<ModelTierSettings['tiers'][ModelTierName]>) => {
+    if (PLATFORM_TEMPLATE_READ_ONLY) return
     setAgentConfig((current) => {
       const provider = current?.provider ?? selectedTemplate?.provider ?? ''
       const model = current?.model ?? selectedTemplate?.model ?? ''
@@ -392,6 +419,7 @@ export function AgentManageTab() {
   }
 
   const saveTemplate = async () => {
+    if (PLATFORM_TEMPLATE_READ_ONLY) return
     if (!selectedId || !identity || !agentConfig || !dirty) return
     setSaving(true)
     setSaved(false)
@@ -443,6 +471,22 @@ export function AgentManageTab() {
       setSaveError(err instanceof Error ? err.message : '保存失败')
     } finally {
       setSaving(false)
+    }
+  }
+
+  const syncTemplateChannels = async () => {
+    if (!selectedId || syncingChannels) return
+    setSyncingChannels(true)
+    setSyncError('')
+    setSyncResult(null)
+    try {
+      const result = await api.post(`admin/agent-templates/${selectedId}/sync-channels`).json<AgentTemplateSyncResult>()
+      setSyncResult(result)
+      void loadTemplates()
+    } catch (err) {
+      setSyncError(err instanceof Error ? err.message : '同步失败')
+    } finally {
+      setSyncingChannels(false)
     }
   }
 
@@ -528,10 +572,10 @@ export function AgentManageTab() {
   const extraTools = tools.filter((tool) => !TOOL_OPTIONS.includes(tool))
   const selectedAvatarPreset = selectedTemplate ? configAvatarPreset(selectedTemplate, agentConfig) : ''
   const avatarUrl = selectedTemplate ? templateAvatar(selectedTemplate, agentConfig) : ''
-  const filteredAvailableTemplates = availableTemplates.filter((template) => {
+  const filteredAvailableTemplates = availableTemplates.filter((template) => template.is_active !== false).filter((template) => {
     const query = availableQuery.trim().toLowerCase()
     if (!query) return true
-    return [template.id, template.name, template.version, template.model, template.provider]
+    return [template.id, template.name, template.role, template.version, template.model, template.provider]
       .some((value) => (value ?? '').toLowerCase().includes(query))
   })
   const filteredSkills = availableSkills.filter((skill) => {
@@ -563,7 +607,8 @@ export function AgentManageTab() {
                 <button
                   type="button"
                   onClick={() => void openAddModal()}
-                  className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-border bg-white text-[#181d26] transition-colors hover:bg-muted"
+                  disabled={PLATFORM_TEMPLATE_READ_ONLY}
+                  className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-border bg-white text-[#181d26] transition-colors hover:bg-muted disabled:pointer-events-none disabled:opacity-40"
                   title="添加 Agent 模板"
                 >
                   <Plus className="h-4 w-4" />
@@ -610,7 +655,7 @@ export function AgentManageTab() {
                     <button
                       type="button"
                       onClick={() => setDeleteTarget(template)}
-                      disabled={templateActionLoading === template.id}
+                      disabled={PLATFORM_TEMPLATE_READ_ONLY || templateActionLoading === template.id}
                       className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-white hover:text-red-600 disabled:pointer-events-none disabled:opacity-40"
                       title={template.blocked_reason || '删除模板'}
                     >
@@ -628,24 +673,51 @@ export function AgentManageTab() {
                     <div className="min-w-0">
                       <h3 className="truncate text-sm font-semibold text-[#1a1a1a]">{displayName}</h3>
                       <span className="text-xs text-muted-foreground">
-                        {role} · Template ID: {selectedTemplate.id} · 版本：{formatAgentVersion(selectedTemplate.version)}
+                        {role} · 配置 ID：{selectedTemplate.id} · 版本：{formatAgentVersion(selectedTemplate.version)}
                       </span>
                     </div>
-                    <button
-                      type="button"
-                      onClick={() => void saveTemplate()}
-                      disabled={saving || !dirty || !identity || !agentConfig}
-                      className="inline-flex h-9 items-center gap-2 rounded-lg bg-[#181d26] px-3 text-sm font-medium text-white transition-colors hover:bg-[#0d1218] disabled:pointer-events-none disabled:opacity-50"
-                    >
-                      <Save className="h-4 w-4" />
-                      {saving ? '保存中...' : saved ? '已保存' : '保存'}
-                    </button>
+                    <div className="flex shrink-0 items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={() => void syncTemplateChannels()}
+                        disabled={syncingChannels || !selectedId}
+                        className="inline-flex h-9 items-center gap-2 rounded-lg border border-border bg-white px-3 text-sm font-medium text-[#181d26] transition-colors hover:bg-muted disabled:pointer-events-none disabled:opacity-50"
+                        title="让已有频道使用最新配置"
+                      >
+                        <RefreshCw className={cn('h-4 w-4', syncingChannels && 'animate-spin')} />
+                        {syncingChannels ? '同步中...' : '同步到已有频道'}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => void saveTemplate()}
+                        disabled={PLATFORM_TEMPLATE_READ_ONLY || saving || !dirty || !identity || !agentConfig}
+                        className="inline-flex h-9 items-center gap-2 rounded-lg bg-[#181d26] px-3 text-sm font-medium text-white transition-colors hover:bg-[#0d1218] disabled:pointer-events-none disabled:opacity-50"
+                      >
+                        <Save className="h-4 w-4" />
+                        {saving ? '保存中...' : saved ? '已保存' : '保存'}
+                      </button>
+                    </div>
                   </div>
 
                   <div className="space-y-5 p-5">
                     {saveError && (
                       <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
                         {saveError}
+                      </div>
+                    )}
+                    {syncError && (
+                      <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+                        {syncError}
+                      </div>
+                    )}
+                    {syncResult && (
+                      <div className="rounded-lg border border-[#39bf45]/40 bg-[#39bf45]/10 px-3 py-2 text-sm text-[#006400]">
+                        已检查 {syncResult.channels_matched} 个频道，重载 {syncResult.channels_updated} 个频道。
+                      </div>
+                    )}
+                    {PLATFORM_TEMPLATE_READ_ONLY && (
+                      <div className="rounded-lg border border-[#d8e2ec] bg-[#f8fafc] px-3 py-2 text-sm leading-5 text-[#596577]">
+                        这里可查看当前配置；如配置已更新，可同步到已有频道。
                       </div>
                     )}
 
@@ -655,8 +727,9 @@ export function AgentManageTab() {
                         <button
                           type="button"
                           onClick={() => updateConfig({ avatar_preset: '' })}
+                          disabled={PLATFORM_TEMPLATE_READ_ONLY}
                           className={cn(
-                            'flex h-10 w-10 items-center justify-center rounded-full border bg-white transition-colors hover:bg-muted',
+                            'flex h-10 w-10 items-center justify-center rounded-full border bg-white transition-colors hover:bg-muted disabled:pointer-events-none disabled:opacity-70',
                             selectedAvatarPreset === '' ? 'border-[#181d26] ring-2 ring-[#181d26]/15' : 'border-border',
                           )}
                           title="默认头像"
@@ -668,8 +741,9 @@ export function AgentManageTab() {
                             key={preset}
                             type="button"
                             onClick={() => updateConfig({ avatar_preset: preset })}
+                            disabled={PLATFORM_TEMPLATE_READ_ONLY}
                             className={cn(
-                              'h-10 w-10 overflow-hidden rounded-full border bg-white transition-colors hover:bg-muted',
+                              'h-10 w-10 overflow-hidden rounded-full border bg-white transition-colors hover:bg-muted disabled:pointer-events-none disabled:opacity-70',
                               selectedAvatarPreset === preset ? 'border-[#181d26] ring-2 ring-[#181d26]/15' : 'border-border',
                             )}
                             title={preset}
@@ -697,7 +771,8 @@ export function AgentManageTab() {
                           type="text"
                           value={identity?.name ?? displayName}
                           onChange={(event) => updateIdentity({ name: event.target.value })}
-                          className="h-9 w-full rounded-lg border border-border bg-white px-3 text-sm text-[#1a1a1a] outline-none focus:border-[#9297a0] focus:ring-2 focus:ring-[#9297a0]/20"
+                          disabled={PLATFORM_TEMPLATE_READ_ONLY}
+                          className="h-9 w-full rounded-lg border border-border bg-white px-3 text-sm text-[#1a1a1a] outline-none focus:border-[#9297a0] focus:ring-2 focus:ring-[#9297a0]/20 disabled:bg-[#f8fafc] disabled:text-muted-foreground"
                         />
                       </div>
 
@@ -706,7 +781,8 @@ export function AgentManageTab() {
                         <select
                           value={modelTierSettings.default_tier}
                           onChange={(event) => updateModelTierSettings({ default_tier: normalizeModelTier(event.target.value) || 'fast' })}
-                          className="h-9 w-full rounded-lg border border-border bg-white px-3 text-sm text-[#1a1a1a] outline-none focus:border-[#9297a0] focus:ring-2 focus:ring-[#9297a0]/20"
+                          disabled={PLATFORM_TEMPLATE_READ_ONLY}
+                          className="h-9 w-full rounded-lg border border-border bg-white px-3 text-sm text-[#1a1a1a] outline-none focus:border-[#9297a0] focus:ring-2 focus:ring-[#9297a0]/20 disabled:bg-[#f8fafc] disabled:text-muted-foreground"
                         >
                           {MODEL_TIER_OPTIONS.map((option) => (
                             <option key={option.value} value={option.value}>
@@ -723,14 +799,15 @@ export function AgentManageTab() {
                         type="text"
                         value={identity?.personality ?? ''}
                         onChange={(event) => updateIdentity({ personality: event.target.value })}
-                        className="h-9 w-full rounded-lg border border-border bg-white px-3 text-sm text-[#1a1a1a] outline-none focus:border-[#9297a0] focus:ring-2 focus:ring-[#9297a0]/20"
+                        disabled={PLATFORM_TEMPLATE_READ_ONLY}
+                        className="h-9 w-full rounded-lg border border-border bg-white px-3 text-sm text-[#1a1a1a] outline-none focus:border-[#9297a0] focus:ring-2 focus:ring-[#9297a0]/20 disabled:bg-[#f8fafc] disabled:text-muted-foreground"
                       />
                     </div>
 
                     <div className="space-y-3 rounded-lg border border-border bg-[#fafafa] p-3">
                       <div>
                         <div className="text-sm font-medium text-[#181d26]">模型等级映射</div>
-                        <div className="mt-0.5 text-xs text-muted-foreground">为当前 Agent 单独配置快速、思考、专业三档对应的底层模型。</div>
+                        <div className="mt-0.5 text-xs text-muted-foreground">为当前 Agent 单独配置快速、思考、专业三档对应的模型。</div>
                       </div>
                       {MODEL_TIER_OPTIONS.map((option) => {
                         const tierConfig = modelTierSettings.tiers[option.value]
@@ -751,7 +828,8 @@ export function AgentManageTab() {
                               <select
                                 value={tierConfig.provider}
                                 onChange={(event) => updateTierProvider(option.value, event.target.value)}
-                                className="h-9 w-full rounded-lg border border-border bg-white px-3 text-sm text-[#1a1a1a] outline-none focus:border-[#9297a0] focus:ring-2 focus:ring-[#9297a0]/20"
+                                disabled={PLATFORM_TEMPLATE_READ_ONLY}
+                                className="h-9 w-full rounded-lg border border-border bg-white px-3 text-sm text-[#1a1a1a] outline-none focus:border-[#9297a0] focus:ring-2 focus:ring-[#9297a0]/20 disabled:bg-[#f8fafc] disabled:text-muted-foreground"
                               >
                                 {providerOptions.length === 0 ? (
                                   <option value={tierConfig.provider}>{tierConfig.provider || '-'}</option>
@@ -765,7 +843,8 @@ export function AgentManageTab() {
                               <select
                                 value={tierConfig.model}
                                 onChange={(event) => updateModelTierConfig(option.value, { model: event.target.value })}
-                                className="h-9 w-full rounded-lg border border-border bg-white px-3 text-sm text-[#1a1a1a] outline-none focus:border-[#9297a0] focus:ring-2 focus:ring-[#9297a0]/20"
+                                disabled={PLATFORM_TEMPLATE_READ_ONLY}
+                                className="h-9 w-full rounded-lg border border-border bg-white px-3 text-sm text-[#1a1a1a] outline-none focus:border-[#9297a0] focus:ring-2 focus:ring-[#9297a0]/20 disabled:bg-[#f8fafc] disabled:text-muted-foreground"
                               >
                                 {modelOptions.length === 0 ? (
                                   <option value={tierConfig.model}>{tierConfig.model || '-'}</option>
@@ -779,7 +858,8 @@ export function AgentManageTab() {
                                 type="checkbox"
                                 checked={tierConfig.thinking}
                                 onChange={(event) => updateModelTierConfig(option.value, { thinking: event.target.checked })}
-                                className="h-4 w-4 rounded border-border"
+                                disabled={PLATFORM_TEMPLATE_READ_ONLY}
+                                className="h-4 w-4 rounded border-border disabled:opacity-50"
                               />
                               Thinking
                             </label>
@@ -799,7 +879,8 @@ export function AgentManageTab() {
                           step="0.1"
                           value={temperature}
                           onChange={(event) => updateConfig({ temperature: Number(event.target.value) })}
-                          className="h-9 w-full"
+                          disabled={PLATFORM_TEMPLATE_READ_ONLY}
+                          className="h-9 w-full disabled:opacity-50"
                         />
                     </div>
 
@@ -814,8 +895,9 @@ export function AgentManageTab() {
                               type="button"
                               title={tool}
                               onClick={() => updateConfig({ tools: toggleItem(tools, tool) })}
+                              disabled={PLATFORM_TEMPLATE_READ_ONLY}
                               className={cn(
-                                'rounded-md border px-2.5 py-1 text-xs transition-colors',
+                                'rounded-md border px-2.5 py-1 text-xs transition-colors disabled:pointer-events-none disabled:opacity-70',
                                 active
                                   ? 'border-[#181d26] bg-[#181d26] text-white'
                                   : 'border-border bg-white text-[#555] hover:border-[#9297a0] hover:bg-muted',
@@ -831,7 +913,8 @@ export function AgentManageTab() {
                             type="button"
                             title={tool}
                             onClick={() => updateConfig({ tools: tools.filter((value) => value !== tool) })}
-                            className="rounded-md border border-[#181d26] bg-[#181d26] px-2.5 py-1 text-xs text-white transition-colors hover:bg-[#0d1218]"
+                            disabled={PLATFORM_TEMPLATE_READ_ONLY}
+                            className="rounded-md border border-[#181d26] bg-[#181d26] px-2.5 py-1 text-xs text-white transition-colors hover:bg-[#0d1218] disabled:pointer-events-none disabled:opacity-70"
                           >
                             {toolDisplayName(tool)}
                           </button>
@@ -845,7 +928,9 @@ export function AgentManageTab() {
                         <button
                           type="button"
                           onClick={() => void openSkillModal()}
-                          className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-border bg-white px-2.5 text-xs font-medium text-[#181d26] transition-colors hover:bg-muted"
+                          disabled={PLATFORM_TEMPLATE_READ_ONLY}
+                          className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-border bg-white px-2.5 text-xs font-medium text-[#181d26] transition-colors hover:bg-muted disabled:pointer-events-none disabled:opacity-50"
+                          title="添加技能"
                         >
                           <Plus className="h-3.5 w-3.5" />
                           添加技能
@@ -866,7 +951,8 @@ export function AgentManageTab() {
                               <button
                                 type="button"
                                 onClick={() => removeSkill(skill)}
-                                className="rounded-sm text-muted-foreground hover:text-red-600"
+                                disabled={PLATFORM_TEMPLATE_READ_ONLY}
+                                className="rounded-sm text-muted-foreground hover:text-red-600 disabled:pointer-events-none disabled:opacity-50"
                                 title="移除技能"
                               >
                                 <X className="h-3 w-3" />
@@ -883,7 +969,8 @@ export function AgentManageTab() {
                       <textarea
                         value={identity?.content ?? ''}
                         onChange={(event) => updateIdentity({ content: event.target.value })}
-                        className="h-36 w-full resize-y rounded-lg border border-border bg-white px-3 py-2 font-mono text-sm text-[#1a1a1a] outline-none focus:border-[#9297a0] focus:ring-2 focus:ring-[#9297a0]/20"
+                        disabled={PLATFORM_TEMPLATE_READ_ONLY}
+                        className="h-36 w-full resize-y rounded-lg border border-border bg-white px-3 py-2 font-mono text-sm text-[#1a1a1a] outline-none focus:border-[#9297a0] focus:ring-2 focus:ring-[#9297a0]/20 disabled:bg-[#f8fafc] disabled:text-muted-foreground"
                       />
                     </details>
                   </div>
@@ -903,7 +990,7 @@ export function AgentManageTab() {
             <div className="flex items-center justify-between border-b border-border px-5 py-4">
               <div>
                 <h3 className="text-sm font-semibold text-[#1a1a1a]">添加 Agent 模板</h3>
-                <p className="mt-1 text-xs text-muted-foreground">从平台模板库添加到当前 App</p>
+                <p className="mt-1 text-xs text-muted-foreground">从可用模板添加到当前 App</p>
               </div>
               <button
                 type="button"

@@ -134,11 +134,11 @@ function directoryDisplayName(dir: string) {
   return dir.replace(/\/$/, '').split('/').pop() || dir
 }
 
-function parseInviteEmails(value: string) {
+function parseInviteTargets(value: string) {
   return Array.from(new Set(
     value
       .split(/[\s,;，；]+/)
-      .map((email) => email.trim().toLowerCase())
+      .map((target) => target.trim())
       .filter(Boolean),
   ))
 }
@@ -235,7 +235,7 @@ export function DetailPanel({ channelId, members = [], tasks = [], files = [], o
   const [storagePreviewRef, setStoragePreviewRef] = useState<string | null>(null)
   const [membersOpen, setMembersOpen] = useState(true)
   const [userInviteOpen, setUserInviteOpen] = useState(false)
-  const [inviteEmails, setInviteEmails] = useState('')
+  const [inviteTargets, setInviteTargets] = useState('')
   const [inviteStatus, setInviteStatus] = useState('')
   const [storageOpen, setStorageOpen] = useState(false)
   const [agentSettingsOpen, setAgentSettingsOpen] = useState(false)
@@ -250,6 +250,8 @@ export function DetailPanel({ channelId, members = [], tasks = [], files = [], o
   const [agentQuery, setAgentQuery] = useState('')
   const [agentActionLoading, setAgentActionLoading] = useState('')
   const [agentActionError, setAgentActionError] = useState('')
+  const [userActionLoading, setUserActionLoading] = useState('')
+  const [userActionError, setUserActionError] = useState('')
   const [agentSettingsLoading, setAgentSettingsLoading] = useState(false)
   const [agentSettingsSaving, setAgentSettingsSaving] = useState(false)
 
@@ -262,6 +264,7 @@ export function DetailPanel({ channelId, members = [], tasks = [], files = [], o
   const currentMember = user ? users.find((m) => m.user_id === user.id) : null
   const canEditAgents = currentMember?.role === 'owner' || currentMember?.role === 'coordinator'
   const canManageAgentMembers = currentMember?.role === 'owner'
+  const canManageUserMembers = currentMember?.role === 'owner' || currentMember?.role === 'admin'
   const canInviteUsers = currentMember?.role === 'owner' || currentMember?.role === 'admin'
   const canConfigureAgentTier = Boolean(currentMember)
   const agentNames = new Map(agentMembers.map((agent) => [agent.agent_id, agent.display_name || agent.agent_id || 'Agent']))
@@ -481,16 +484,38 @@ export function DetailPanel({ channelId, members = [], tasks = [], files = [], o
     if (removed) setAgentSettingsOpen(false)
   }
 
+  function canRemoveUserMember(member: ChannelMemberInfo) {
+    if (!canManageUserMembers || !member.user_id || member.user_id === user?.id) return false
+    if (currentMember?.role === 'admin' && member.role !== 'member') return false
+    return true
+  }
+
+  async function removeChannelUser(member: ChannelMemberInfo) {
+    if (!channelId || !member.user_id || !canRemoveUserMember(member)) return
+    const name = member.display_name || member.nickname || member.user_id
+    if (!window.confirm(`将「${name}」移出当前频道？对方会收到通知。`)) return
+    setUserActionLoading(member.user_id)
+    setUserActionError('')
+    try {
+      await api.delete(`channels/${channelId}/members/users/${encodeURIComponent(member.user_id)}`)
+      await refreshChannelMemberSurface()
+    } catch {
+      setUserActionError('移除用户失败')
+    } finally {
+      setUserActionLoading('')
+    }
+  }
+
   async function inviteUserToChannel() {
-    const emails = parseInviteEmails(inviteEmails)
-    if (!channelId || emails.length === 0) return
+    const targets = parseInviteTargets(inviteTargets)
+    if (!channelId || targets.length === 0) return
     setInviteStatus('')
-    const result = await channelsStore.getState().inviteUsers(channelId, emails)
+    const result = await channelsStore.getState().inviteUsers(channelId, targets)
     if (result.error) {
       setInviteStatus(result.error)
       return
     }
-    setInviteEmails('')
+    setInviteTargets('')
     setInviteStatus('邀请已发送，等待对方接受。')
   }
 
@@ -778,6 +803,11 @@ export function DetailPanel({ channelId, members = [], tasks = [], files = [], o
                   {agentActionError}
                 </div>
               )}
+              {userActionError && (
+                <div className="mb-2 rounded-md border border-destructive/20 bg-destructive/5 px-2 py-1.5 text-xs text-destructive">
+                  {userActionError}
+                </div>
+              )}
               {cloudAgents.length > 0 && (
                 <>
                   <div className="text-[10px] text-muted-foreground/60 uppercase tracking-wider mb-1.5">云端 Agent — {cloudAgents.length}</div>
@@ -810,7 +840,7 @@ export function DetailPanel({ channelId, members = [], tasks = [], files = [], o
               )}
               {localAgents.length > 0 && (
                 <>
-                  <div className="text-[10px] text-muted-foreground/60 uppercase tracking-wider mb-1.5">本地 Agent — {localAgents.length}</div>
+                  <div className="text-[10px] text-muted-foreground/60 uppercase tracking-wider mb-1.5">平台技能 — {localAgents.length}</div>
                   <div className="space-y-2 mb-3">
                     {localAgents.map((m) => (
                       <div key={m.id} className="flex items-center gap-2.5">
@@ -822,8 +852,8 @@ export function DetailPanel({ channelId, members = [], tasks = [], files = [], o
                         </Avatar>
                         <div className="min-w-0 flex-1">
                           <div className="flex min-w-0 items-center gap-1.5">
-                            <div className="truncate text-xs font-medium">{m.display_name || '本地 Agent'}</div>
-                            <Badge variant="outline" className="h-4 shrink-0 rounded px-1 py-0 text-[10px] font-normal">本地</Badge>
+                            <div className="truncate text-xs font-medium">{m.display_name || '技能助手'}</div>
+                            <Badge variant="outline" className="h-4 shrink-0 rounded px-1 py-0 text-[10px] font-normal">技能</Badge>
                           </div>
                           <div className="truncate text-[10px] text-muted-foreground">{localAgentStatusText(localAgentSummary)}</div>
                         </div>
@@ -838,7 +868,7 @@ export function DetailPanel({ channelId, members = [], tasks = [], files = [], o
                   <div className="text-[10px] text-muted-foreground/60 uppercase tracking-wider mb-1.5">用户 — {users.length}</div>
                   <div className="space-y-2">
                     {users.map((m) => (
-                      <div key={m.id} className="flex items-center gap-2.5">
+                      <div key={m.id} className="group flex items-center gap-2.5">
                         <Avatar className="size-7 shrink-0">
                           {m.avatar_url ? <AvatarImage src={m.avatar_url} /> : null}
                           <AvatarFallback className="text-[10px] bg-blue-100 text-blue-700">{m.display_name?.[0] || '?'}</AvatarFallback>
@@ -847,6 +877,18 @@ export function DetailPanel({ channelId, members = [], tasks = [], files = [], o
                           <div className="text-xs font-medium truncate">{m.display_name}</div>
                         </div>
                         <span className="text-[10px] text-muted-foreground/60">{m.role === 'owner' ? '拥有者' : m.role}</span>
+                        {canRemoveUserMember(m) && (
+                          <button
+                            type="button"
+                            title="移出频道"
+                            aria-label={`移出频道 ${m.display_name || m.user_id || '用户'}`}
+                            disabled={userActionLoading === m.user_id}
+                            className="rounded p-1 text-muted-foreground opacity-0 transition-colors hover:bg-destructive/10 hover:text-destructive focus:opacity-100 disabled:opacity-50 group-hover:opacity-100"
+                            onClick={() => { void removeChannelUser(m) }}
+                          >
+                            <Trash2 className="h-3.5 w-3.5" />
+                          </button>
+                        )}
                       </div>
                     ))}
                   </div>
@@ -875,11 +917,11 @@ export function DetailPanel({ channelId, members = [], tasks = [], files = [], o
           </DialogHeader>
           <div className="mt-4 space-y-3">
             <Input
-              value={inviteEmails}
-              onChange={(event) => { setInviteEmails(event.target.value); setInviteStatus('') }}
-              placeholder="输入用户邮箱"
+              value={inviteTargets}
+              onChange={(event) => { setInviteTargets(event.target.value); setInviteStatus('') }}
+              placeholder="输入手机号或邮箱"
             />
-            <div className="text-[10px] leading-4 text-muted-foreground">多个邮箱可用逗号或空格分隔。</div>
+            <div className="text-[10px] leading-4 text-muted-foreground">多个手机号或邮箱可用逗号、分号或空格分隔。</div>
             {inviteStatus && (
               <div className={cn('text-xs', inviteStatus.includes('已发送') ? 'text-emerald-700' : 'text-destructive')}>
                 {inviteStatus}
@@ -888,7 +930,7 @@ export function DetailPanel({ channelId, members = [], tasks = [], files = [], o
           </div>
           <DialogFooter className="mt-4">
             <Button type="button" variant="outline" onClick={() => setUserInviteOpen(false)}>关闭</Button>
-            <Button type="button" disabled={parseInviteEmails(inviteEmails).length === 0} onClick={() => { void inviteUserToChannel() }}>
+            <Button type="button" disabled={parseInviteTargets(inviteTargets).length === 0} onClick={() => { void inviteUserToChannel() }}>
               发送邀请
             </Button>
           </DialogFooter>

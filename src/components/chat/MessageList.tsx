@@ -49,6 +49,9 @@ interface Props {
   onSubmitAnswer?: (askId: string, answers: Record<string, unknown>) => void
   onStopAgent?: (agentId: string, reason?: string, runId?: string) => void
   onOpenWorkflowRun?: (runId: string) => void
+  hasOlder?: boolean
+  loadingOlder?: boolean
+  onLoadOlder?: () => Promise<void> | void
   welcomeTitle?: string
   welcomeFallbackTitle?: string
   welcomeMessage?: string
@@ -353,6 +356,9 @@ export function MessageList({
   onSubmitAnswer,
   onStopAgent,
   onOpenWorkflowRun,
+  hasOlder = false,
+  loadingOlder = false,
+  onLoadOlder,
   welcomeTitle,
   welcomeFallbackTitle,
   welcomeMessage,
@@ -361,6 +367,7 @@ export function MessageList({
 }: Props) {
   const containerRef = useRef<HTMLDivElement>(null)
   const shouldAutoScroll = useRef(true)
+  const loadingOlderRef = useRef(false)
   const visibleLoops = useMemo(() => agentLoops ?? (agentLoop ? [agentLoop] : []), [agentLoop, agentLoops])
   const displayMessages = useMemo(() => applyMemberDisplay(messages, members), [messages, members])
   const timelineGroups = useMemo(() => buildTimelineGroups(displayMessages, visibleLoops), [displayMessages, visibleLoops])
@@ -394,6 +401,25 @@ export function MessageList({
     if (el) { el.scrollTop = el.scrollHeight }
   }, [])
 
+  const requestOlder = useCallback(async () => {
+    const el = containerRef.current
+    if (!el || !hasOlder || loadingOlder || loadingOlderRef.current || !onLoadOlder) return
+    loadingOlderRef.current = true
+    shouldAutoScroll.current = false
+    const previousScrollHeight = el.scrollHeight
+    try {
+      await onLoadOlder()
+    } finally {
+      requestAnimationFrame(() => {
+        const current = containerRef.current
+        if (current) {
+          current.scrollTop += current.scrollHeight - previousScrollHeight
+        }
+        loadingOlderRef.current = false
+      })
+    }
+  }, [hasOlder, loadingOlder, onLoadOlder])
+
   useEffect(() => {
     if (showingEmptyWelcome) {
       const el = containerRef.current
@@ -414,7 +440,10 @@ export function MessageList({
     const el = containerRef.current
     if (!el) return
     shouldAutoScroll.current = el.scrollHeight - el.scrollTop - el.clientHeight < 100
-  }, [])
+    if (el.scrollTop < 80) {
+      void requestOlder()
+    }
+  }, [requestOlder])
 
   const handleScrollToMessage = useCallback((msgId: number) => {
     const el = document.getElementById(`msg-${msgId}`)
@@ -465,6 +494,18 @@ export function MessageList({
 
         {timelineGroups.length > 0 && (
           <div className="flex flex-col justify-end min-h-full px-4 py-3 gap-1 overflow-x-hidden max-w-full">
+            {(hasOlder || loadingOlder) && (
+              <div className="flex justify-center py-2">
+                <button
+                  type="button"
+                  onClick={() => void requestOlder()}
+                  disabled={loadingOlder}
+                  className="h-8 rounded-lg border border-[#dddddd] bg-white px-3 text-xs font-medium text-[#41454d] shadow-sm transition-colors hover:bg-[#f7f7f7] disabled:cursor-default disabled:text-[#9ca3af] disabled:shadow-none"
+                >
+                  {loadingOlder ? '加载中...' : '加载更早消息'}
+                </button>
+              </div>
+            )}
             {timelineGroups.map((group, i) => {
               if (group.kind === 'tool_group') {
                 return <ToolGroupBubble key={`tg-${i}`} messages={group.messages} />
