@@ -154,6 +154,27 @@ export interface Message {
   created_at: string
 }
 
+export interface ChatArtifact {
+  artifactId: string
+  storageRef: string
+  fileName: string
+  contentType?: string
+  sizeBytes?: number
+  artifactKind?: string
+  version?: number
+  editable?: boolean
+  revisionMode?: string
+  objectId?: string
+  skillId?: string
+  externalSessionId?: string
+  bridgeId?: string
+}
+
+export interface ArtifactRevisionTarget extends ChatArtifact {
+  sourceMessageId?: number
+  sourceRunId?: string
+}
+
 // ── ChatMessage (internal display model, parsed from Message) ──
 
 export interface ChatMessage {
@@ -197,6 +218,7 @@ export interface ChatMessage {
   routingInfo?: { targets: string[]; method: string }
   // Explicit skill intents selected by the user before sending.
   selectedSkills?: SelectedSkillIntent[]
+  artifacts?: ChatArtifact[]
 }
 
 // ── Skill Shortcut ──

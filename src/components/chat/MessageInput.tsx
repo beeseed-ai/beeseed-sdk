@@ -1,7 +1,7 @@
 import { useRef, useCallback, useEffect, useLayoutEffect, useMemo, useState, type KeyboardEvent, type ChangeEvent } from 'react'
 import { useStore } from 'zustand'
-import { X, Plus, AtSign, Zap, ListChecks, Workflow, ArrowUp, Play, RefreshCw, Sparkles } from 'lucide-react'
-import type { ChatMessage, ChannelMemberInfo, SelectedSkillIntent, SkillShortcutAgent, SkillShortcutOption, Workflow as WorkflowDefinition } from '../../core/types.js'
+import { X, Plus, AtSign, Zap, ListChecks, Workflow, ArrowUp, Play, RefreshCw, Sparkles, PencilLine } from 'lucide-react'
+import type { ArtifactRevisionTarget, ChatMessage, ChannelMemberInfo, SelectedSkillIntent, SkillShortcutAgent, SkillShortcutOption, Workflow as WorkflowDefinition } from '../../core/types.js'
 import { cn } from '../../lib/cn.js'
 import { fileNameFromStorageRef, storageRefFromKey } from '../../lib/storage-ref.js'
 import { useAuth } from '../../hooks/use-auth.js'
@@ -24,6 +24,8 @@ interface Props {
   members?: ChannelMemberInfo[]
   quotedMessage?: ChatMessage | null
   onClearQuote?: () => void
+  revisionTarget?: ArtifactRevisionTarget | null
+  onClearRevisionTarget?: () => void
   insertText?: string | null
   onInsertTextConsumed?: () => void
   skillOptions?: SkillShortcutOption[]
@@ -98,6 +100,8 @@ export function MessageInput({
   members = [],
   quotedMessage,
   onClearQuote,
+  revisionTarget,
+  onClearRevisionTarget,
   insertText,
   onInsertTextConsumed,
   skillOptions = [],
@@ -412,8 +416,23 @@ export function MessageInput({
       : ''
     const content = [typedContent, refsContent].filter(Boolean).join('\n\n')
     if (!content) return
-    const metadata = selectedSkills.length > 0 ? { selected_skills: selectedSkills } : undefined
-    onSend(content, metadata)
+    const metadata: Record<string, unknown> = {}
+    if (selectedSkills.length > 0) metadata.selected_skills = selectedSkills
+    if (revisionTarget) {
+      metadata.artifact_revision = {
+        artifact_id: revisionTarget.artifactId,
+        storage_ref: revisionTarget.storageRef,
+        file_name: revisionTarget.fileName,
+        artifact_kind: revisionTarget.artifactKind,
+        version: revisionTarget.version,
+        source_message_id: revisionTarget.sourceMessageId,
+        source_run_id: revisionTarget.sourceRunId,
+        skill_id: revisionTarget.skillId,
+        external_session_id: revisionTarget.externalSessionId,
+        bridge_id: revisionTarget.bridgeId,
+      }
+    }
+    onSend(content, Object.keys(metadata).length > 0 ? metadata : undefined)
     el.value = ''
     setStorageRefs([])
     setSelectedSkills([])
@@ -424,7 +443,7 @@ export function MessageInput({
     closeQuickQuestionMenu()
     autoResize()
     el.focus()
-  }, [onSend, autoResize, storageRefs, selectedSkills, pendingSkill, closeSkillMenu, closeWorkflowMenu, closeQuickQuestionMenu])
+  }, [onSend, autoResize, storageRefs, selectedSkills, pendingSkill, closeSkillMenu, closeWorkflowMenu, closeQuickQuestionMenu, revisionTarget])
 
   const handleAttachFile = useCallback(async (file: File | undefined) => {
     if (!file || disabled) return
@@ -948,6 +967,29 @@ export function MessageInput({
         )}
 
         {/* Quoted message inside card */}
+        {revisionTarget && (
+          <div className="flex items-start gap-2 px-4 pt-3 pb-1">
+            <div className="flex min-w-0 flex-1 items-start gap-2 rounded-md border border-[#d8dde6] bg-[#f8fafc] px-2.5 py-2">
+              <PencilLine className="mt-0.5 h-3.5 w-3.5 shrink-0 text-[#181d26]" />
+              <div className="min-w-0 flex-1">
+                <p className="text-[11px] font-medium text-[#181d26]">正在修改产物</p>
+                <p className="truncate text-[11px] text-[#777169]">
+                  {revisionTarget.fileName}
+                  {revisionTarget.version ? ` · v${revisionTarget.version}` : ''}
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={onClearRevisionTarget}
+                className="shrink-0 rounded p-0.5 text-[#888] transition-colors hover:bg-black/5 hover:text-[#333]"
+                aria-label="取消修改产物"
+              >
+                <X className="h-3.5 w-3.5" />
+              </button>
+            </div>
+          </div>
+        )}
+
         {quotedMessage && (
           <div className="flex items-start gap-2 px-4 pt-3 pb-1">
             <div className="flex-1 border-l-2 border-[#aaa] pl-2 min-w-0">

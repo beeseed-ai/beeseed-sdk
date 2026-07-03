@@ -4,7 +4,7 @@ export { BeeSeedProvider, useBeeSeedContext, type BeeSeedContextValue } from './
 // Core types
 export type {
   User, Channel, ChannelWithMeta, ChannelMember, ChannelMemberInfo,
-  Message, ChatMessage, AgentMeta, AgentConfig,
+  Message, ChatMessage, ChatArtifact, ArtifactRevisionTarget, AgentMeta, AgentConfig,
   ModelTierName, ModelTierConfig, ModelTierSettings,
   SkillShortcutAgent, SkillShortcutOption, SelectedSkillIntent,
   WSEvent, WSCommand, AuthResponse, BeeSeedConfig, StreamState, HiveProfileSnapshot,

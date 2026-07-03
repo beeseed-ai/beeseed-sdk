@@ -177,6 +177,11 @@ function storagePreviewEndpointForKind(kind: StorageFileKind) {
   return null
 }
 
+function officeOnlinePreviewURL(fileURL: string) {
+  const absoluteURL = new URL(fileURL, window.location.origin).toString()
+  return `https://view.officeapps.live.com/op/embed.aspx?src=${encodeURIComponent(absoluteURL)}`
+}
+
 export function StorageFileIcon({ refText, className }: { refText: string; className?: string }) {
   const Icon = storageFileIconForKind(storageFileKindForRef(refText))
   return <Icon className={className} />
@@ -316,14 +321,25 @@ export function StoragePreviewDialog({ channelId, refText, onClose }: { channelI
               className="h-[70vh] w-full rounded border border-[#e5e5e5] bg-white"
             />
           ) : kind === 'presentation' && url ? (
-            <div className="flex min-h-[360px] flex-col items-center justify-center gap-4 rounded border border-[#e5e5e5] bg-white p-6 text-center">
-              <Icon className="h-12 w-12 text-[#254fad]" />
-              <div>
-                <div className="text-sm font-semibold text-[#333840]">演示文稿已生成</div>
-                <div className="mt-1 max-w-md text-xs leading-5 text-[#777169]">
-                  PPT/PPTX 文件目前不再通过第三方 iframe 内嵌预览，避免私有存储签名链接跨域失败。请打开或下载原文件查看。
-                </div>
+            <div className="space-y-3">
+              <div className="flex items-center gap-2 rounded border border-[#e5e5e5] bg-white px-3 py-2 text-xs text-[#5f6b7a]">
+                <Presentation className="h-4 w-4 text-[#254fad]" />
+                <span className="min-w-0 flex-1 truncate">正在使用 Office 在线预览演示文稿。</span>
+                <button
+                  type="button"
+                  onClick={() => window.open(officeOnlinePreviewURL(url), '_blank', 'noopener,noreferrer')}
+                  className="inline-flex h-7 items-center gap-1 rounded-md border border-[#d8dde6] px-2 font-medium text-[#333840] hover:bg-[#f8fafc]"
+                >
+                  <ExternalLink className="h-3.5 w-3.5" />
+                  新窗口打开
+                </button>
               </div>
+              <iframe
+                src={officeOnlinePreviewURL(url)}
+                title={name}
+                className="h-[70vh] w-full rounded border border-[#e5e5e5] bg-white"
+                allowFullScreen
+              />
               <button
                 type="button"
                 onClick={() => void download()}
@@ -331,7 +347,7 @@ export function StoragePreviewDialog({ channelId, refText, onClose }: { channelI
                 className="inline-flex min-h-9 items-center gap-2 rounded-md bg-[#181d26] px-3 text-sm font-medium text-white hover:bg-[#2a303a] disabled:cursor-not-allowed disabled:opacity-50"
               >
                 <Download className="h-4 w-4" />
-                {downloading ? '正在创建链接...' : '打开/下载原文件'}
+                {downloading ? '正在创建链接...' : '下载原文件'}
               </button>
             </div>
           ) : kind === 'audio' && url ? (

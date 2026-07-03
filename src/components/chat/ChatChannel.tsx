@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState, useCallback } from 'react'
-import type { ChannelMemberInfo, ChannelRuntimeSettings, ChatMessage, SkillShortcutAgent, SkillShortcutOption } from '../../core/types.js'
+import type { ArtifactRevisionTarget, ChannelMemberInfo, ChannelRuntimeSettings, ChatArtifact, ChatMessage, SkillShortcutAgent, SkillShortcutOption } from '../../core/types.js'
 import { cn } from '../../lib/cn.js'
 import { useAuth } from '../../hooks/use-auth.js'
 import { useAppConfig } from '../../hooks/use-app-config.js'
@@ -41,6 +41,7 @@ export function ChatChannel({ channelId, className, header }: Props) {
   } = useChat(channelId)
   const { composerInsertText, consumeComposerInsert, openWorkflowRun } = useDetailPanel()
   const [quotedMessage, setQuotedMessage] = useState<ChatMessage | null>(null)
+  const [revisionTarget, setRevisionTarget] = useState<ArtifactRevisionTarget | null>(null)
   const [configSkillOptions, setConfigSkillOptions] = useState<SkillShortcutOption[]>([])
   const channelSettings = useMemo(
     () => parseChannelRuntimeSettings(channels.find((channel) => channel.id === channelId)?.settings),
@@ -104,7 +105,16 @@ export function ChatChannel({ channelId, className, header }: Props) {
     } else {
       send(content, metadata)
     }
+    setRevisionTarget(null)
   }, [quotedMessage, send, sendWithQuote])
+
+  const handleReviseArtifact = useCallback((artifact: ChatArtifact, message: ChatMessage) => {
+    setRevisionTarget({
+      ...artifact,
+      sourceMessageId: message.msgId,
+      sourceRunId: message.agentRunId,
+    })
+  }, [])
 
   return (
     <div className={cn('flex h-full flex-col bg-[#fafafa]', className)}>
@@ -136,6 +146,7 @@ export function ChatChannel({ channelId, className, header }: Props) {
               onSubmitAnswer={submitAnswer}
               onStopAgent={stopAgent}
               onOpenWorkflowRun={openWorkflowRun}
+              onReviseArtifact={handleReviseArtifact}
               hasOlder={hasOlderMessages}
               loadingOlder={loadingOlderMessages}
               onLoadOlder={loadOlderMessages}
@@ -155,6 +166,8 @@ export function ChatChannel({ channelId, className, header }: Props) {
               members={members}
               quotedMessage={quotedMessage}
               onClearQuote={() => setQuotedMessage(null)}
+              revisionTarget={revisionTarget}
+              onClearRevisionTarget={() => setRevisionTarget(null)}
               insertText={composerInsertText}
               onInsertTextConsumed={consumeComposerInsert}
               skillOptions={skillOptions}

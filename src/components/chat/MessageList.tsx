@@ -1,6 +1,6 @@
 import { useEffect, useRef, useMemo, useCallback, useState } from 'react'
 import { Square } from 'lucide-react'
-import type { ChatMessage, StreamState, AgentLoopState, AgentLoopEventItem, ChannelMemberInfo } from '../../core/types.js'
+import type { ChatArtifact, ChatMessage, StreamState, AgentLoopState, AgentLoopEventItem, ChannelMemberInfo } from '../../core/types.js'
 import { MessageBubble } from './MessageBubble.js'
 import { ToolGroupBubble } from './ToolGroupBubble.js'
 import { StreamRenderer } from './StreamRenderer.js'
@@ -49,6 +49,7 @@ interface Props {
   onSubmitAnswer?: (askId: string, answers: Record<string, unknown>) => void
   onStopAgent?: (agentId: string, reason?: string, runId?: string) => void
   onOpenWorkflowRun?: (runId: string) => void
+  onReviseArtifact?: (artifact: ChatArtifact, message: ChatMessage) => void
   hasOlder?: boolean
   loadingOlder?: boolean
   onLoadOlder?: () => Promise<void> | void
@@ -356,6 +357,7 @@ export function MessageList({
   onSubmitAnswer,
   onStopAgent,
   onOpenWorkflowRun,
+  onReviseArtifact,
   hasOlder = false,
   loadingOlder = false,
   onLoadOlder,
@@ -540,6 +542,7 @@ export function MessageList({
                   onScrollToMessage={handleScrollToMessage}
                   onSubmitAnswer={onSubmitAnswer}
                   onOpenWorkflowRun={onOpenWorkflowRun}
+                  onReviseArtifact={onReviseArtifact}
                 />
               )
             })}

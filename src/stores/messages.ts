@@ -3,7 +3,7 @@ import type { KyInstance } from 'ky'
 import type {
   Message, ChatMessage, StreamState, WSEvent,
   ChannelMemberInfo, AgentLoopState, AgentLoopTurn, AgentLoopToolCall, AgentLoopSkillUse,
-  AgentLoopEventItem, AgentTodoItem, AskUserData, AskUserQuestion, SelectedSkillIntent,
+  AgentLoopEventItem, AgentTodoItem, AskUserData, AskUserQuestion, SelectedSkillIntent, ChatArtifact,
 } from '../core/types.js'
 
 const AGENT_LOOP_STALE_AFTER_MS = 30 * 60 * 1000
@@ -83,6 +83,41 @@ function parseSelectedSkills(meta: Record<string, unknown>): SelectedSkillIntent
     }]
   })
   return skills.length > 0 ? skills : undefined
+}
+
+function parseMessageArtifacts(meta: Record<string, unknown>): ChatArtifact[] | undefined {
+  const output = meta.output && typeof meta.output === 'object' && !Array.isArray(meta.output)
+    ? meta.output as Record<string, unknown>
+    : meta
+  const raw = output.artifacts
+  if (!Array.isArray(raw)) return undefined
+
+  const artifacts = raw.flatMap((item) => {
+    if (!item || typeof item !== 'object' || Array.isArray(item)) return []
+    const record = item as Record<string, unknown>
+    const artifactId = typeof record.artifact_id === 'string' ? record.artifact_id.trim() : ''
+    const storageRef = typeof record.storage_ref === 'string' ? record.storage_ref.trim() : ''
+    if (!artifactId || !storageRef.startsWith('storage://')) return []
+    const fileName = typeof record.file_name === 'string' && record.file_name.trim()
+      ? record.file_name.trim()
+      : storageRef.split('/').pop() || 'artifact'
+    return [{
+      artifactId,
+      storageRef,
+      fileName,
+      contentType: typeof record.content_type === 'string' ? record.content_type : undefined,
+      sizeBytes: typeof record.size_bytes === 'number' ? record.size_bytes : undefined,
+      artifactKind: typeof record.artifact_kind === 'string' ? record.artifact_kind : undefined,
+      version: typeof record.version === 'number' ? record.version : undefined,
+      editable: record.editable === true,
+      revisionMode: typeof record.revision_mode === 'string' ? record.revision_mode : undefined,
+      objectId: typeof record.object_id === 'string' ? record.object_id : undefined,
+      skillId: typeof record.skill_id === 'string' ? record.skill_id : undefined,
+      externalSessionId: typeof record.external_session_id === 'string' ? record.external_session_id : undefined,
+      bridgeId: typeof record.bridge_id === 'string' ? record.bridge_id : undefined,
+    }]
+  })
+  return artifacts.length > 0 ? artifacts : undefined
 }
 
 function agentLoopStoreKey(channelId: string, agentId: string, runId?: string): string {
@@ -612,6 +647,7 @@ export function parseMessage(m: Message, myUserId?: string): ChatMessage | null 
     suggestions: Array.isArray(meta.suggestions) ? meta.suggestions as string[] : undefined,
     thinkingContent: (meta.thinking_content as string) || undefined,
     selectedSkills: parseSelectedSkills(meta),
+    artifacts: parseMessageArtifacts(meta),
     routingInfo: meta.routing_info ? {
       targets: ((meta.routing_info as Record<string, unknown>).target_agent_ids as string[]) ?? [],
       method: ((meta.routing_info as Record<string, unknown>).routing_method as string) ?? '',

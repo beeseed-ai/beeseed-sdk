@@ -1,6 +1,6 @@
 import { useState, useCallback, useMemo } from 'react'
-import { Copy, Check, CornerDownLeft, GitBranch, Zap } from 'lucide-react'
-import type { ChatMessage } from '../../core/types.js'
+import { Copy, Check, CornerDownLeft, GitBranch, Zap, PencilLine } from 'lucide-react'
+import type { ChatArtifact, ChatMessage } from '../../core/types.js'
 import { cn } from '../../lib/cn.js'
 import { storageRefsFromText, stripStorageReferenceBlock } from '../../lib/storage-ref.js'
 import { MarkdownRenderer } from './MarkdownRenderer.js'
@@ -19,6 +19,7 @@ interface Props {
   onScrollToMessage?: (msgId: number) => void
   onSubmitAnswer?: (askId: string, answers: Record<string, unknown>) => void
   onOpenWorkflowRun?: (runId: string) => void
+  onReviseArtifact?: (artifact: ChatArtifact, message: ChatMessage) => void
   className?: string
 }
 
@@ -65,7 +66,7 @@ function compactTaskSchedulerMessage(content: string): string {
 }
 
 export function MessageBubble({
-  message, channelId, currentUserId, onQuote, onMentionClick, onScrollToMessage, onSubmitAnswer, onOpenWorkflowRun, className,
+  message, channelId, currentUserId, onQuote, onMentionClick, onScrollToMessage, onSubmitAnswer, onOpenWorkflowRun, onReviseArtifact, className,
 }: Props) {
   const [copied, setCopied] = useState(false)
   const [previewImage, setPreviewImage] = useState<string | null>(null)
@@ -168,6 +169,10 @@ export function MessageBubble({
   const isUser = message.role === 'user'
   const isImage = message.contentType === 'image'
   const visibleContent = existingRefs.length > 0 ? stripStorageReferenceBlock(message.content, existingRefSet) : message.content
+  const editableArtifacts = useMemo(
+    () => (message.artifacts ?? []).filter((artifact) => artifact.editable),
+    [message.artifacts],
+  )
 
   return (
     <div
@@ -261,6 +266,12 @@ export function MessageBubble({
                   />
                 )}
                 {existingRefs.length > 0 && <StorageAttachmentPreview channelId={channelId} refs={existingRefs} compact={!visibleContent} />}
+                {editableArtifacts.length > 0 && (
+                  <EditableArtifactActions
+                    artifacts={editableArtifacts}
+                    onRevise={(artifact) => onReviseArtifact?.(artifact, message)}
+                  />
+                )}
               </>
             ) : (
               <>
@@ -273,6 +284,12 @@ export function MessageBubble({
                   />
                 )}
                 {existingRefs.length > 0 && <StorageAttachmentPreview channelId={channelId} refs={existingRefs} compact={!visibleContent} />}
+                {editableArtifacts.length > 0 && (
+                  <EditableArtifactActions
+                    artifacts={editableArtifacts}
+                    onRevise={(artifact) => onReviseArtifact?.(artifact, message)}
+                  />
+                )}
               </>
             )}
           </div>
@@ -349,6 +366,50 @@ export function MessageBubble({
       </div>
 
       {previewImage && <ImagePreview src={previewImage} onClose={() => setPreviewImage(null)} />}
+    </div>
+  )
+}
+
+function artifactKindLabel(artifact: ChatArtifact): string {
+  const kind = artifact.artifactKind?.trim()
+  if (kind === 'pptx') return '演示文稿'
+  if (kind === 'docx') return 'Word 文档'
+  if (kind === 'xlsx') return '表格'
+  if (kind === 'archive') return '工程包'
+  return '产物'
+}
+
+function EditableArtifactActions({
+  artifacts,
+  onRevise,
+}: {
+  artifacts: ChatArtifact[]
+  onRevise: (artifact: ChatArtifact) => void
+}) {
+  return (
+    <div className="mt-2 flex w-full flex-col gap-1.5">
+      {artifacts.map((artifact) => (
+        <div
+          key={artifact.artifactId}
+          className="flex max-w-full items-center gap-2 rounded-md border border-[#d8dde6] bg-white px-2.5 py-2"
+        >
+          <span className="min-w-0 flex-1">
+            <span className="block truncate text-xs font-medium text-[#181d26]">{artifact.fileName}</span>
+            <span className="block text-[10px] text-[#777169]">
+              {artifactKindLabel(artifact)}
+              {artifact.version ? ` · v${artifact.version}` : ''}
+            </span>
+          </span>
+          <button
+            type="button"
+            onClick={() => onRevise(artifact)}
+            className="inline-flex h-8 shrink-0 items-center gap-1 rounded-md border border-[#181d26] bg-[#181d26] px-2.5 text-xs font-medium text-white transition-colors hover:bg-[#0d1218]"
+          >
+            <PencilLine className="h-3.5 w-3.5" />
+            修改
+          </button>
+        </div>
+      ))}
     </div>
   )
 }
