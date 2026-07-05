@@ -1,6 +1,8 @@
 import { createStore } from 'zustand/vanilla'
 import type { KyInstance } from 'ky'
 import type { StorageObject, StoragePolicy, StorageUsage } from '../core/types.js'
+import { ApiError } from '../core/errors.js'
+import { formatBytes } from '../lib/format.js'
 import { storageAttachmentDownloadPayload } from '../lib/storage-presign.js'
 import { MOCK_OBJECTS, MOCK_DIRECTORIES } from '../mocks/storage.js'
 
@@ -97,9 +99,9 @@ export function createStorageStore(config: StorageStoreConfig) {
         await get().browse(channelId, visiblePrefix)
         return completed
       } catch (err) {
-        const message = err instanceof Error ? err.message : '上传失败'
+        const message = storageUploadErrorMessage(err)
         set({ uploadError: message })
-        throw err
+        throw new Error(message)
       } finally {
         set({ uploading: false })
       }
@@ -216,4 +218,24 @@ function contentTypeForUpload(file: File): string {
   default:
     return 'application/octet-stream'
   }
+}
+
+function storageUploadErrorMessage(err: unknown) {
+  if (err instanceof ApiError) {
+    const code = typeof err.details?.code === 'string' ? err.details.code : err.code
+    const limitKey = typeof err.details?.limit_key === 'string' ? err.details.limit_key : ''
+    if (err.status === 402 && code === 'SUBSCRIPTION_LIMIT_EXCEEDED' && limitKey === 'storage_bytes') {
+      const planName = typeof err.details?.plan_name === 'string' && err.details.plan_name.trim()
+        ? err.details.plan_name.trim()
+        : '当前套餐'
+      const current = typeof err.details?.current === 'number' ? err.details.current : null
+      const limit = typeof err.details?.limit === 'number' ? err.details.limit : null
+      const usageText = current !== null && limit !== null ? `当前 ${formatBytes(current)} / ${formatBytes(limit)}，` : ''
+      return `存储容量已达${planName}上限，${usageText}暂时不能继续上传文件。`
+    }
+    if (err.status === 402 && code === 'SUBSCRIPTION_REQUIRED') {
+      return '当前套餐暂不支持上传文件，请开通套餐后继续。'
+    }
+  }
+  return err instanceof Error ? err.message : '上传失败'
 }

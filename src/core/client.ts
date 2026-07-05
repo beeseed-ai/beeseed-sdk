@@ -25,6 +25,7 @@ export function createApiClient(config: ClientConfig): KyInstance {
               (body['error'] as string) || `${response.status} ${response.statusText}`,
               response.status,
               body['code'] as string | undefined,
+              body,
             )
           }
         },
