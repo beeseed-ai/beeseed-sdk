@@ -1044,6 +1044,44 @@ function displayMessageCount(messages: Message[]): number {
   return messages.reduce((count, message) => count + (isPersistedAgentLoopEvent(message) ? 0 : 1), 0)
 }
 
+interface MessagePage {
+  messages: Message[]
+  hasOlder?: boolean
+  nextBefore?: number
+}
+
+function parseBooleanHeader(value: string | null): boolean | undefined {
+  if (value === null) return undefined
+  if (value === 'true') return true
+  if (value === 'false') return false
+  return undefined
+}
+
+function parsePositiveIntegerHeader(value: string | null): number | undefined {
+  if (!value) return undefined
+  const parsed = Number.parseInt(value, 10)
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : undefined
+}
+
+function oldestWireMessageID(messages: Message[]): number | undefined {
+  let oldest: number | undefined
+  for (const message of messages) {
+    if (typeof message.id !== 'number' || !Number.isFinite(message.id)) continue
+    oldest = oldest === undefined ? message.id : Math.min(oldest, message.id)
+  }
+  return oldest
+}
+
+async function fetchMessagePage(api: KyInstance, channelId: string, searchParams: Record<string, string>): Promise<MessagePage> {
+  const response = await api.get(`channels/${channelId}/messages`, { searchParams })
+  const messages = await response.json<Message[]>()
+  return {
+    messages,
+    hasOlder: parseBooleanHeader(response.headers.get('X-BeeSeed-Has-Older')),
+    nextBefore: parsePositiveIntegerHeader(response.headers.get('X-BeeSeed-Next-Before')) ?? oldestWireMessageID(messages),
+  }
+}
+
 function visibleRunIdsFromMessages(messages: Message[]): string[] {
   const runIds = new Set<string>()
   for (const message of messages) {
@@ -1186,6 +1224,7 @@ export interface MessagesState {
   typingStatus: Map<string, string>
   loadingOlderChannels: Set<string>
   hasOlderMessages: Map<string, boolean>
+  olderMessageCursors: Map<string, number>
   loadingChannel: string | null
 
   fetchMessages: (channelId: string) => Promise<void>
@@ -1248,14 +1287,14 @@ export function createMessagesStore(config: MessagesStoreConfig) {
     typingStatus: new Map(),
     loadingOlderChannels: new Set(),
     hasOlderMessages: new Map(),
+    olderMessageCursors: new Map(),
     loadingChannel: null,
 
     fetchMessages: async (channelId) => {
       set({ loadingChannel: channelId })
       try {
-        const msgs = await config.api.get(`channels/${channelId}/messages`, {
-          searchParams: { limit: String(MESSAGE_PAGE_SIZE) },
-        }).json<Message[]>()
+        const page = await fetchMessagePage(config.api, channelId, { limit: String(MESSAGE_PAGE_SIZE) })
+        const msgs = page.messages
         const userId = config.getCurrentUserId()
         const parsed = msgs
           .map((m) => parseMessage(m, userId))
@@ -1272,8 +1311,14 @@ export function createMessagesStore(config: MessagesStoreConfig) {
           loops.set(key, loop)
         }
         const olderMap = new Map(get().hasOlderMessages)
-        olderMap.set(channelId, displayMessageCount(msgs) >= MESSAGE_PAGE_SIZE)
-        set({ messages: map, agentLoops: loops, hasOlderMessages: olderMap, loadingChannel: null })
+        olderMap.set(channelId, page.hasOlder ?? displayMessageCount(msgs) >= MESSAGE_PAGE_SIZE)
+        const cursorMap = new Map(get().olderMessageCursors)
+        if (page.nextBefore) {
+          cursorMap.set(channelId, page.nextBefore)
+        } else {
+          cursorMap.delete(channelId)
+        }
+        set({ messages: map, agentLoops: loops, hasOlderMessages: olderMap, olderMessageCursors: cursorMap, loadingChannel: null })
 
         const runIds = visibleRunIdsFromMessages(msgs)
         if (runIds.length === 0) return
@@ -1298,7 +1343,7 @@ export function createMessagesStore(config: MessagesStoreConfig) {
       if (state.loadingOlderChannels.has(channelId) || state.hasOlderMessages.get(channelId) === false) {
         return
       }
-      const before = oldestMessageID(state.messages.get(channelId) ?? [])
+      const before = state.olderMessageCursors.get(channelId) ?? oldestMessageID(state.messages.get(channelId) ?? [])
       if (!before) {
         const olderMap = new Map(state.hasOlderMessages)
         olderMap.set(channelId, false)
@@ -1309,9 +1354,11 @@ export function createMessagesStore(config: MessagesStoreConfig) {
       loadingOlder.add(channelId)
       set({ loadingOlderChannels: loadingOlder })
       try {
-        const msgs = await config.api.get(`channels/${channelId}/messages`, {
-          searchParams: { limit: String(MESSAGE_PAGE_SIZE), before: String(before) },
-        }).json<Message[]>()
+        const page = await fetchMessagePage(config.api, channelId, {
+          limit: String(MESSAGE_PAGE_SIZE),
+          before: String(before),
+        })
+        const msgs = page.messages
         const userId = config.getCurrentUserId()
         const parsed = msgs
           .map((m) => parseMessage(m, userId))
@@ -1325,8 +1372,14 @@ export function createMessagesStore(config: MessagesStoreConfig) {
           }
         }
         const olderMap = new Map(get().hasOlderMessages)
-        olderMap.set(channelId, displayMessageCount(msgs) >= MESSAGE_PAGE_SIZE)
-        set({ messages: map, agentLoops: loops, hasOlderMessages: olderMap })
+        olderMap.set(channelId, page.hasOlder ?? displayMessageCount(msgs) >= MESSAGE_PAGE_SIZE)
+        const cursorMap = new Map(get().olderMessageCursors)
+        if (page.nextBefore) {
+          cursorMap.set(channelId, page.nextBefore)
+        } else {
+          cursorMap.delete(channelId)
+        }
+        set({ messages: map, agentLoops: loops, hasOlderMessages: olderMap, olderMessageCursors: cursorMap })
 
         const runIds = visibleRunIdsFromMessages(msgs)
         if (runIds.length > 0) {

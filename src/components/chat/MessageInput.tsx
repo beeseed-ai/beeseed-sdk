@@ -690,23 +690,14 @@ export function MessageInput({
     ref.current?.focus()
   }
 
-  const insertQuickQuestion = (question: string) => {
+  const sendQuickQuestion = (question: string) => {
     const el = ref.current
     const cleanQuestion = question.trim()
-    if (!el || !cleanQuestion) return
-    const start = el.selectionStart ?? el.value.length
-    const end = el.selectionEnd ?? el.value.length
-    const before = el.value.slice(0, start)
-    const after = el.value.slice(end)
-    const prefix = before.length > 0 && !/[\s\n]$/.test(before) ? '\n' : ''
-    const suffix = after.length > 0 && !/^[\s\n]/.test(after) ? '\n' : ''
-    const inserted = `${prefix}${cleanQuestion}${suffix}`
-    el.value = before + inserted + after
-    const cursor = before.length + inserted.length
-    el.setSelectionRange(cursor, cursor)
+    if (!el || !cleanQuestion || disabled || uploading) return
+    el.value = cleanQuestion
     closeQuickQuestionMenu()
     autoResize()
-    el.focus()
+    handleSend()
   }
 
   const handleCreateWorkflowShortcut = () => {
@@ -948,7 +939,7 @@ export function MessageInput({
           >
             <div className="border-b border-[#eeeeee] px-3 py-2">
               <div className="text-xs font-medium text-[#181d26]">快捷提问</div>
-              <div className="mt-0.5 truncate text-[11px] text-[#777169]">选择后台为当前频道配置的问题，插入到输入框后可继续编辑。</div>
+              <div className="mt-0.5 truncate text-[11px] text-[#777169]">选择后台为当前频道配置的问题，选择后会立即发送。</div>
             </div>
             <div className="max-h-[min(16rem,52dvh)] overflow-y-auto py-1">
               {normalizedQuickQuestions.map((question, index) => (
@@ -956,7 +947,7 @@ export function MessageInput({
                   key={`${question}-${index}`}
                   type="button"
                   className="flex w-full items-start gap-2 px-3 py-2 text-left text-sm text-[#181d26] hover:bg-[#f8fafc] focus-visible:bg-[#f8fafc] focus-visible:outline-none"
-                  onMouseDown={(event) => { event.preventDefault(); insertQuickQuestion(question) }}
+                  onMouseDown={(event) => { event.preventDefault(); sendQuickQuestion(question) }}
                 >
                   <Sparkles className="mt-0.5 h-3.5 w-3.5 shrink-0 text-[#0f766e]" />
                   <span className="min-w-0 flex-1 leading-5">{question}</span>

@@ -173,16 +173,13 @@ function knowledgeLabel(knowledgeId: string, bases: KnowledgeBase[]) {
   return base?.display_name || base?.name || knowledgeId
 }
 
-function isManagedDefaultKnowledgeBase(base: KnowledgeBase) {
-  return base.name === 'default' && (
-    base.description === 'Default app knowledge base'
-      || base.description === 'Default channel knowledge base'
-  )
+function isManagedDefaultChannelKnowledgeBase(base: KnowledgeBase) {
+  return base.name === 'default' && base.description === 'Default channel knowledge base'
 }
 
 function isTemplateSelectableKnowledgeBase(base: KnowledgeBase) {
   return base.is_active !== false
-    && !isManagedDefaultKnowledgeBase(base)
+    && !isManagedDefaultChannelKnowledgeBase(base)
     && !base.channel_id
     && (base.scope_type === 'app' || base.scope_type === 'organization' || base.scope_type === 'platform')
 }

@@ -8,7 +8,7 @@ interface Props {
 }
 
 export function ThinkingBlock({ content, isStreaming, className }: Props) {
-  const [open, setOpen] = useState(isStreaming ?? false)
+  const [open, setOpen] = useState(false)
 
   if (!content && !isStreaming) return null
 
@@ -31,7 +31,7 @@ export function ThinkingBlock({ content, isStreaming, className }: Props) {
           </span>
         )}
       </button>
-      {(open || isStreaming) && content && (
+      {open && content && (
         <div className="mt-1 ml-4.5 max-h-[200px] overflow-y-auto rounded-md bg-muted/50 px-3 py-2 text-xs text-muted-foreground whitespace-pre-wrap leading-relaxed">
           {content}
           {isStreaming && (

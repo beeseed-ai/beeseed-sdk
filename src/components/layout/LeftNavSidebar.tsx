@@ -93,8 +93,8 @@ export function LeftNavSidebar({ activeFeature, onFeatureChange, channels, curre
   }, [branding.logo])
 
   return (
-    <div className={cn('w-[200px] shrink-0 border-r border-border bg-white flex flex-col', className)}>
-      <div className="px-3 pt-3 pb-2">
+    <div className={cn('flex h-full min-h-0 w-[200px] shrink-0 flex-col overflow-hidden border-r border-border bg-white', className)}>
+      <div className="shrink-0 px-3 pt-3 pb-2">
         <div className="flex min-w-0 items-center gap-2 rounded-md px-2 py-1.5">
           {hasLogo ? (
             <img
@@ -117,7 +117,7 @@ export function LeftNavSidebar({ activeFeature, onFeatureChange, channels, curre
       </div>
 
       {/* Top nav actions */}
-      <div className="px-3 pb-2 space-y-0.5">
+      <div className="shrink-0 px-3 pb-2 space-y-0.5">
         <button
           onClick={() => { onFeatureChange('chat'); setCreateDialogOpen(true) }}
           className="flex items-center gap-2.5 w-full rounded-md px-2.5 py-2 text-sm text-foreground hover:bg-black/5 transition-colors"
@@ -145,7 +145,7 @@ export function LeftNavSidebar({ activeFeature, onFeatureChange, channels, curre
       </div>
 
       {/* Channel list section */}
-      <div className="flex-1 flex flex-col overflow-hidden">
+      <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
         <div className="flex items-center justify-between px-3 pt-3 pb-1.5">
           <span className="text-xs font-medium text-muted-foreground/70 uppercase tracking-wider">频道</span>
           <div className="flex items-center gap-0.5">
@@ -158,7 +158,7 @@ export function LeftNavSidebar({ activeFeature, onFeatureChange, channels, curre
           </div>
         </div>
 
-        <div className="flex-1 overflow-y-auto px-2 pb-2" data-testid="app-channel-list">
+        <div className="min-h-0 flex-1 overflow-y-auto px-2 pb-2 [scrollbar-gutter:stable]" data-testid="app-channel-list">
           {channels.length === 0 ? (
             <div className="px-2 py-2 text-xs text-muted-foreground/70">暂无频道</div>
           ) : channelSections.map((section) => (
@@ -226,7 +226,7 @@ export function LeftNavSidebar({ activeFeature, onFeatureChange, channels, curre
       <ProfileModal open={profileOpen} onOpenChange={setProfileOpen} />
 
       {/* Footer */}
-      <div className="border-t border-border px-3 py-2.5 relative">
+      <div className="relative shrink-0 border-t border-border px-3 py-2.5">
         <div className="flex items-center gap-2">
           <button
             onClick={() => setMenuOpen(!menuOpen)}

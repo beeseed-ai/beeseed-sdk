@@ -8,6 +8,7 @@ import { ImagePreview } from './ImagePreview.js'
 import { AskUserCard } from './AskUserCard.js'
 import { StorageAttachmentPreview, useExistingStorageRefs } from './StorageAttachmentPreview.js'
 import { SkillIcon } from '../skills/SkillIcon.js'
+import { formatChatTimestamp } from '../../lib/format.js'
 
 interface Props {
   message: ChatMessage
@@ -85,7 +86,7 @@ export function MessageBubble({
     onQuote?.(message)
   }, [message, onQuote])
 
-  const timeStr = new Date(message.timestamp).toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' })
+  const timeStr = formatChatTimestamp(message.timestamp)
   const senderLabel = message.senderName || (message.isAgent ? 'Agent' : '用户')
 
   // Ask-User card

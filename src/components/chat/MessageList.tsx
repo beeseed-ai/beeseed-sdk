@@ -9,6 +9,7 @@ import { Avatar, AvatarFallback, AvatarImage } from '../ui/avatar.js'
 import { Button } from '../ui/button.js'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '../ui/dialog.js'
 import { stripStorageReferenceBlock } from '../../lib/storage-ref.js'
+import { formatChatTimestamp } from '../../lib/format.js'
 
 const CHAT_MAX_WIDTH = 820
 const DEFAULT_WELCOME_MESSAGE = '你身边的智能助手，可以为你答疑解惑、尽情创作，快来点击以下任一功能体验吧～'
@@ -97,6 +98,14 @@ function agentLoopKey(loop: AgentLoopState): string {
 function agentDisplayName(members: ChannelMemberInfo[] | undefined, agentId: string) {
   const member = members?.find((m) => m.agent_id === agentId)
   return member?.display_name || agentId
+}
+
+function agentLoopTimestamp(loop: AgentLoopState, events?: AgentLoopEventItem[]): number {
+  let timestamp = events?.[0]?.timestamp ?? loop.startedAt ?? 0
+  for (const event of events ?? []) {
+    if (event.timestamp && (!timestamp || event.timestamp < timestamp)) timestamp = event.timestamp
+  }
+  return timestamp || Date.now()
 }
 
 function memberDisplayName(member: ChannelMemberInfo): string {
@@ -286,6 +295,7 @@ function AgentLoopBlock({ loop, members, finalMessage, events, showTerminal = tr
   const [stopReason, setStopReason] = useState('')
   const member = members?.find((m) => m.agent_id === loop.agentId)
   const agentName = agentDisplayName(members, loop.agentId)
+  const timeStr = formatChatTimestamp(agentLoopTimestamp(loop, events))
   const canStop = loop.status === 'running' && !!onStop
   const handleStop = () => {
     onStop?.(loop.agentId, stopReason, loop.runId)
@@ -301,6 +311,7 @@ function AgentLoopBlock({ loop, members, finalMessage, events, showTerminal = tr
       <div className="min-w-0 flex-1">
         <div className="mb-1 flex items-center gap-2">
           <span className="text-xs text-[#777169]">{agentName}</span>
+          {timeStr && <span className="text-[10px] text-[#999999]">{timeStr}</span>}
           {canStop && (
             <button
               type="button"
@@ -370,6 +381,9 @@ export function MessageList({
   const containerRef = useRef<HTMLDivElement>(null)
   const shouldAutoScroll = useRef(true)
   const loadingOlderRef = useRef(false)
+  const hasOlderRef = useRef(hasOlder)
+  const loadingOlderPropRef = useRef(loadingOlder)
+  const onLoadOlderRef = useRef(onLoadOlder)
   const visibleLoops = useMemo(() => agentLoops ?? (agentLoop ? [agentLoop] : []), [agentLoop, agentLoops])
   const displayMessages = useMemo(() => applyMemberDisplay(messages, members), [messages, members])
   const timelineGroups = useMemo(() => buildTimelineGroups(displayMessages, visibleLoops), [displayMessages, visibleLoops])
@@ -398,6 +412,12 @@ export function MessageList({
     : []
   const showingEmptyWelcome = timelineGroups.length === 0 && visibleStreams.length === 0 && visibleTypings.length === 0
 
+  useEffect(() => {
+    hasOlderRef.current = hasOlder
+    loadingOlderPropRef.current = loadingOlder
+    onLoadOlderRef.current = onLoadOlder
+  }, [hasOlder, loadingOlder, onLoadOlder])
+
   const scrollToBottom = useCallback(() => {
     const el = containerRef.current
     if (el) { el.scrollTop = el.scrollHeight }
@@ -405,22 +425,34 @@ export function MessageList({
 
   const requestOlder = useCallback(async () => {
     const el = containerRef.current
-    if (!el || !hasOlder || loadingOlder || loadingOlderRef.current || !onLoadOlder) return
+    const loadOlder = onLoadOlderRef.current
+    if (!el || !hasOlderRef.current || loadingOlderPropRef.current || loadingOlderRef.current || !loadOlder) return
     loadingOlderRef.current = true
     shouldAutoScroll.current = false
     const previousScrollHeight = el.scrollHeight
     try {
-      await onLoadOlder()
+      await loadOlder()
     } finally {
       requestAnimationFrame(() => {
         const current = containerRef.current
         if (current) {
           current.scrollTop += current.scrollHeight - previousScrollHeight
+          if (current.scrollTop < 80 && hasOlderRef.current) {
+            window.setTimeout(() => { void requestOlder() }, 0)
+          }
         }
         loadingOlderRef.current = false
       })
     }
-  }, [hasOlder, loadingOlder, onLoadOlder])
+  }, [])
+
+  useEffect(() => {
+    const el = containerRef.current
+    if (!el || showingEmptyWelcome || !hasOlder || loadingOlder) return
+    if (el.scrollHeight <= el.clientHeight + 16) {
+      void requestOlder()
+    }
+  }, [showingEmptyWelcome, timelineGroups.length, hasOlder, loadingOlder, requestOlder])
 
   useEffect(() => {
     if (showingEmptyWelcome) {

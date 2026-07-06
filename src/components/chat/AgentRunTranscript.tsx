@@ -1,5 +1,5 @@
 import { useState, type ReactNode } from 'react'
-import { Check, ChevronRight, Circle, Clock3, Sparkles, Wrench } from 'lucide-react'
+import { AlertCircle, Check, ChevronRight, Circle, Clock3, Sparkles, Wrench } from 'lucide-react'
 import type { AgentLoopState, AgentLoopToolCall, AgentLoopSkillUse, ChatMessage, AgentLoopEventItem } from '../../core/types.js'
 import { cn } from '../../lib/cn.js'
 import { MarkdownRenderer } from './MarkdownRenderer.js'
@@ -42,6 +42,133 @@ function outputSummary(value?: string): string {
   const text = oneLine(value)
   if (!text) return ''
   return text.length > 120 ? `${text.slice(0, 120)}...` : text
+}
+
+function toolStatusText(tool: AgentLoopToolCall, mode: 'call' | 'result' | 'line'): string {
+  if (mode === 'call') return `正在调用 ${tool.name}`
+  const label =
+    tool.status === 'calling' ? '调用中'
+      : tool.status === 'success' ? '完成'
+        : '失败'
+  const summary = mode === 'result' ? outputSummary(tool.output) : ''
+  return `${tool.name} ${label}${summary ? `：${summary}` : ''}`
+}
+
+function eventStatusText(item: AgentLoopEventItem, finalAnswer: string): string {
+  if (item.type === 'progress') return oneLine(item.summary)
+  if (item.type === 'assistant_content') {
+    const content = oneLine(item.content)
+    return sameText(content, finalAnswer) ? '' : content
+  }
+  if (item.type === 'skill_use' && item.skill) {
+    const label = item.skill.displayName || item.skill.name
+    if (item.skill.status === 'missing' || item.skill.status === 'error') return `技能不可用：${label}`
+    return `启用技能 ${label}`
+  }
+  if (item.type === 'tool_call' && item.tool) return toolStatusText(item.tool, 'call')
+  if (item.type === 'tool_result' && item.tool) return toolStatusText(item.tool, 'result')
+  return ''
+}
+
+function latestEventStatus(events: AgentLoopEventItem[] | undefined, finalAnswer: string): string {
+  if (!events?.length) return ''
+  const ordered = events.slice().sort((a, b) => {
+    const seqDiff = (a.seq ?? 0) - (b.seq ?? 0)
+    if (seqDiff !== 0) return seqDiff
+    return a.timestamp - b.timestamp
+  })
+  for (let index = ordered.length - 1; index >= 0; index -= 1) {
+    const text = eventStatusText(ordered[index]!, finalAnswer)
+    if (text) return text
+  }
+  return ''
+}
+
+function latestTurnStatus(loop: AgentLoopState, finalAnswer: string): string {
+  const turn = loop.turns[loop.turns.length - 1]
+  if (!turn) return loop.status === 'running' ? '等待 LLM 响应...' : ''
+
+  const activeTool = [...(turn.toolCalls ?? [])].reverse().find((tool) => tool.status === 'calling')
+  if (activeTool) return toolStatusText(activeTool, 'call')
+
+  const progress = oneLine(turn.progress)
+  if (progress && !sameText(progress, finalAnswer)) return progress
+
+  const latestTool = [...(turn.toolCalls ?? [])].reverse()[0]
+  if (latestTool) return toolStatusText(latestTool, 'line')
+
+  const thinking = oneLine(turn.thinking)
+  if (thinking && !sameText(thinking, finalAnswer)) return thinking
+
+  const content = oneLine(turn.content)
+  if (content && !sameText(content, finalAnswer)) return content
+
+  if (turn.status === 'active' && loop.status === 'running') return '等待 LLM 响应...'
+  return loop.currentTurn > 1 ? `继续处理 ${loop.currentTurn}` : '开始处理'
+}
+
+function observedEndAt(loop: AgentLoopState, finalMessage: ChatMessage | undefined, events: AgentLoopEventItem[] | undefined): number | undefined {
+  if (loop.completedAt) return loop.completedAt
+  if (loop.status === 'running') return undefined
+
+  let latest = finalMessage?.timestamp ?? 0
+  for (const event of events ?? []) {
+    latest = Math.max(latest, event.timestamp)
+  }
+  for (const turn of loop.turns) {
+    latest = Math.max(latest, turn.completedAt ?? turn.startedAt ?? 0)
+    for (const tool of turn.toolCalls ?? []) {
+      latest = Math.max(latest, tool.completedAt ?? tool.startedAt ?? 0)
+    }
+  }
+  return latest > loop.startedAt ? latest : undefined
+}
+
+function processStatusLabel(loop: AgentLoopState, completedAt: number | undefined, displayError?: string): string {
+  const duration = elapsedSeconds(loop.startedAt, completedAt)
+  if (loop.status === 'completed') return `完成${duration ? ` ${duration}` : ''}`
+  if (loop.status === 'running') return '处理中'
+  if (loop.status === 'max_turns_reached') return `已达到最大轮次 (${loop.currentTurn})`
+  if (loop.status === 'waiting_for_user') return '等待用户回答'
+  if (loop.status === 'waiting_expired') return '等待已超时'
+  if (loop.status === 'stopped') return '已停止'
+  if (loop.status === 'interrupted') return '已中断'
+  if (loop.status === 'error') return displayError ? '错误' : '处理失败'
+  return loop.status
+}
+
+function processStatusSummary(loop: AgentLoopState, events: AgentLoopEventItem[] | undefined, finalAnswer: string, displayError?: string): string {
+  if (loop.status === 'completed') return latestEventStatus(events, finalAnswer) || '已生成最终回复'
+  if (loop.status === 'error') return displayError || loop.error || latestEventStatus(events, finalAnswer) || '处理失败'
+  if (loop.status === 'stopped') return latestEventStatus(events, finalAnswer) || '用户已停止本次处理'
+  if (loop.status === 'interrupted') return displayError || loop.error || latestEventStatus(events, finalAnswer) || '本次处理已中断'
+  if (loop.status === 'waiting_for_user') return latestEventStatus(events, finalAnswer) || '等待用户补充信息'
+  if (loop.status === 'waiting_expired') return latestEventStatus(events, finalAnswer) || '等待用户回答已超时'
+  if (loop.status === 'max_turns_reached') return latestEventStatus(events, finalAnswer) || latestTurnStatus(loop, finalAnswer)
+  return latestEventStatus(events, finalAnswer) || latestTurnStatus(loop, finalAnswer)
+}
+
+function processStatusTone(loop: AgentLoopState): string {
+  if (loop.status === 'completed') return 'text-[#006400]'
+  if (loop.status === 'error') return 'text-red-700'
+  if (loop.status === 'interrupted' || loop.status === 'waiting_expired' || loop.status === 'max_turns_reached') return 'text-amber-700'
+  if (loop.status === 'waiting_for_user') return 'text-amber-700'
+  return 'text-[#181d26]'
+}
+
+function ProcessStatusIcon({ loop }: { loop: AgentLoopState }) {
+  if (loop.status === 'running') {
+    return (
+      <span className="relative flex size-3.5 shrink-0 items-center justify-center">
+        <span className="absolute inline-flex size-3 rounded-full bg-[#181d26]/15 animate-ping" />
+        <span className="relative inline-flex size-2 rounded-full bg-[#181d26]" />
+      </span>
+    )
+  }
+  if (loop.status === 'completed') return <Check className="size-3.5 shrink-0 text-[#006400]" />
+  if (loop.status === 'error') return <AlertCircle className="size-3.5 shrink-0 text-red-700" />
+  if (loop.status === 'waiting_for_user') return <Clock3 className="size-3.5 shrink-0 text-amber-700" />
+  return <Circle className="size-3.5 shrink-0 fill-zinc-400 text-zinc-400" />
 }
 
 function TranscriptLine({
@@ -349,7 +476,6 @@ export function AgentRunTranscript({
   const terminalError = displayError ?? loop.error
   const hasFinalAnswer = loop.status === 'completed' && finalAnswer.trim() !== ''
   const orderedEvents = events?.length ? events : loop.events?.length ? loop.events : undefined
-  const shouldCollapseProcess = !isRunning && hasFinalAnswer
   const [processOpen, setProcessOpen] = useState(false)
   const hasProcess = orderedEvents ? orderedEvents.length > 0 : loop.turns.some((turn) => (
     turn.thinking
@@ -358,6 +484,9 @@ export function AgentRunTranscript({
     || (turn.skillUses ?? []).length > 0
     || (turn.toolCalls ?? []).length > 0
   ))
+  const shouldCollapseProcess = hasProcess
+  const processLabel = processStatusLabel(loop, observedEndAt(loop, finalMessage, orderedEvents), terminalError)
+  const processSummary = processStatusSummary(loop, orderedEvents, finalAnswer, terminalError)
 
   const processContent = orderedEvents ? orderedEvents.map((item) => renderEventItem(item, loop, finalAnswer)) : loop.turns.map((turn, index) => {
     const visibleContent = showContent === 'none'
@@ -411,17 +540,29 @@ export function AgentRunTranscript({
 
   return (
     <div className={cn('space-y-0.5', className)}>
-      {shouldCollapseProcess && hasProcess ? (
+      {shouldCollapseProcess ? (
         <>
           <button
             type="button"
+            aria-expanded={processOpen}
+            title={processSummary ? `${processLabel} · ${processSummary}` : processLabel}
             onClick={() => setProcessOpen((open) => !open)}
-            className="mb-1 flex min-h-6 items-center gap-2 rounded-md px-1.5 text-left text-xs text-[#777169] hover:bg-black/[0.04]"
+            className="mb-1 flex min-h-8 w-full min-w-0 items-center gap-2 rounded-md border border-[#dddddd] bg-white px-2.5 py-1.5 text-left text-xs transition-colors hover:bg-[#f8fafc]"
           >
-            <ChevronRight className={cn('size-3 shrink-0 text-[#999] transition-transform', processOpen && 'rotate-90')} />
-            <span>{processOpen ? '收起处理过程' : '查看处理过程'}</span>
+            <ChevronRight className={cn('size-3 shrink-0 text-[#777169] transition-transform', processOpen && 'rotate-90')} />
+            <ProcessStatusIcon loop={loop} />
+            <span className={cn('shrink-0 font-medium', processStatusTone(loop))}>{processLabel}</span>
+            {processSummary && (
+              <span
+                className="min-w-0 flex-1 truncate text-[#555]"
+                aria-live={loop.status === 'running' ? 'polite' : undefined}
+                aria-atomic={loop.status === 'running' ? 'true' : undefined}
+              >
+                {processSummary}
+              </span>
+            )}
           </button>
-          {processOpen && processContent}
+          {processOpen && <div className="ml-5 border-l border-[#dddddd] pl-2 pt-1">{processContent}</div>}
         </>
       ) : processContent}
 
