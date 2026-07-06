@@ -143,9 +143,9 @@ export function AskUserCard({ data, currentUserId, onSubmit, className }: Props)
         {/* Question */}
         <div className="px-4 py-3 space-y-3">
           <div>
-            <h4 className="text-sm font-medium">{question.title}</h4>
+            <h4 className="text-sm font-normal leading-5 text-[#41454d]">{question.title}</h4>
             {question.description && (
-              <p className="text-sm text-muted-foreground mt-1 whitespace-pre-line">{question.description}</p>
+              <p className="text-base font-semibold leading-6 text-[#181d26] mt-1 whitespace-pre-line">{question.description}</p>
             )}
           </div>
           {renderQuestion(question)}
