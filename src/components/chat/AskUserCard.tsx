@@ -44,6 +44,23 @@ function normalizeQuestionForDisplay(question: AskUserQuestion, data: AskUserDat
   }
 }
 
+const questionMetaStyle = {
+  fontFamily: 'inherit',
+  fontSize: '14px',
+  fontWeight: 400,
+  lineHeight: '20px',
+  color: '#41454d',
+}
+
+const questionPromptStyle = {
+  fontFamily: 'inherit',
+  fontSize: '16px',
+  fontWeight: 700,
+  lineHeight: '24px',
+  color: '#181d26',
+  whiteSpace: 'pre-line',
+}
+
 export function AskUserCard({ data, currentUserId, onSubmit, className }: Props) {
   const questions = useMemo(
     () => (Array.isArray(data.questions) ? data.questions.map((question) => normalizeQuestionForDisplay(question, data)) : []),
@@ -143,9 +160,9 @@ export function AskUserCard({ data, currentUserId, onSubmit, className }: Props)
         {/* Question */}
         <div className="px-4 py-3 space-y-3">
           <div>
-            <h4 className="text-sm font-normal leading-5 text-[#41454d]">{question.title}</h4>
+            <div data-ask-user-question-meta style={questionMetaStyle}>{question.title}</div>
             {question.description && (
-              <p className="text-base font-semibold leading-6 text-[#181d26] mt-1 whitespace-pre-line">{question.description}</p>
+              <div data-ask-user-question-prompt className="mt-1" style={questionPromptStyle}>{question.description}</div>
             )}
           </div>
           {renderQuestion(question)}
