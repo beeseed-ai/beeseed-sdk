@@ -257,6 +257,7 @@ export interface AskUserQuestion {
   description?: string
   required?: boolean
   options?: Array<{ id: string; label: string; description?: string; image_url?: string }>
+  allow_free_text?: boolean
   placeholder?: string
   multiline?: boolean
   confirm_text?: string

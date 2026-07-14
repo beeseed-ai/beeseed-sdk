@@ -117,7 +117,7 @@ export function AskUserCard({ data, currentUserId, onSubmit, className }: Props)
     if (q.required === false) return true
     const val = answers[q.id]
     if (val === null || val === undefined) return false
-    if (q.type === 'text_input' && (val as string).trim() === '') return false
+    if ((q.type === 'text_input' || q.type === 'single_select') && typeof val === 'string' && val.trim() === '') return false
     if ((q.type === 'multi_select' || q.type === 'image_grid') && (val as string[]).length === 0) return false
     return true
   })
@@ -131,7 +131,7 @@ export function AskUserCard({ data, currentUserId, onSubmit, className }: Props)
     const val = answered ? (data.answers?.[q.id] ?? answers[q.id]) : answers[q.id]
     switch (q.type) {
       case 'single_select':
-        return <SingleSelect question={q} value={val as string | null} onChange={(v) => setAnswer(q.id, v)} disabled={readOnly} />
+        return <SingleSelect key={q.id} question={q} value={val as string | null} onChange={(v) => setAnswer(q.id, v)} disabled={readOnly} />
       case 'multi_select':
         return <MultiSelect question={q} value={(val as string[]) || []} onChange={(v) => setAnswer(q.id, v)} disabled={readOnly} />
       case 'text_input':
