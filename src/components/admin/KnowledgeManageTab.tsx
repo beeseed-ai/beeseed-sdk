@@ -203,6 +203,8 @@ export function KnowledgeManageTab() {
   const [subscriptionLoading, setSubscriptionLoading] = useState(false)
   const [subscriptionWorkingId, setSubscriptionWorkingId] = useState('')
   const [uploading, setUploading] = useState(false)
+  const [deleteBaseTarget, setDeleteBaseTarget] = useState<KnowledgeBase | null>(null)
+  const [deletingBaseId, setDeletingBaseId] = useState('')
   const [deletingSourceId, setDeletingSourceId] = useState<number | null>(null)
   const [distilling, setDistilling] = useState(false)
   const [dragging, setDragging] = useState(false)
@@ -468,6 +470,34 @@ export function KnowledgeManageTab() {
     }
   }
 
+  const deleteBase = async (base: KnowledgeBase) => {
+    if (base.scope_type !== 'app' || base.name === 'default') return
+    setDeletingBaseId(base.id)
+    try {
+      await api.delete(`knowledge/bases/${base.id}`).json<{ status: string }>()
+      const nextSelectedID = selectedBaseId === base.id
+        ? appBases.find((item) => item.id !== base.id)?.id || ''
+        : selectedBaseId
+      if (selectedBaseId === base.id) {
+        setSelectedBaseId(nextSelectedID)
+        setSelection(null)
+        setGraphData(null)
+        setSources([])
+        sourcesRef.current = []
+        if (nextSelectedID) {
+          void loadSources(nextSelectedID)
+        }
+      }
+      await Promise.all([
+        loadBases({ silent: true }),
+        loadSubscriptionCatalog({ silent: true }),
+      ])
+      setDeleteBaseTarget(null)
+    } finally {
+      setDeletingBaseId('')
+    }
+  }
+
   const subscribeBase = async (base: KnowledgeBase) => {
     setSubscriptionWorkingId(base.id)
     try {
@@ -544,6 +574,8 @@ export function KnowledgeManageTab() {
               bases={appBases}
               selectedBaseId={selectedBaseId}
               onSelect={selectAppBase}
+              onDelete={(base) => setDeleteBaseTarget(base)}
+              deletingBaseId={deletingBaseId}
             />
             <ExternalKnowledgeGroup
               bases={externalBases}
@@ -625,6 +657,55 @@ export function KnowledgeManageTab() {
           )}
         </div>
       </div>
+
+      {deleteBaseTarget && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 px-4">
+          <div className="w-full max-w-md rounded-xl border border-border bg-white shadow-xl">
+            <div className="flex items-center justify-between border-b border-border px-5 py-4">
+              <div>
+                <h3 className="text-base font-semibold text-[#181d26]">删除知识库</h3>
+                <p className="mt-1 text-xs text-muted-foreground">此操作无法撤销。</p>
+              </div>
+              <Button
+                variant="ghost"
+                size="icon-sm"
+                onClick={() => setDeleteBaseTarget(null)}
+                disabled={Boolean(deletingBaseId)}
+                title="关闭"
+              >
+                <X className="h-4 w-4" />
+              </Button>
+            </div>
+            <div className="space-y-3 px-5 py-4">
+              <p className="text-sm leading-6 text-[#333840]">
+                确定删除「{deleteBaseTarget.display_name || deleteBaseTarget.name}」吗？删除后会同时移除其中资料、分块和知识图谱关系。
+              </p>
+              {deleteBaseTarget.source_count > 0 && (
+                <div className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-xs leading-5 text-red-700">
+                  当前知识库包含 {deleteBaseTarget.source_count} 个资料、{deleteBaseTarget.chunk_count} 个分块。
+                </div>
+              )}
+            </div>
+            <div className="flex justify-end gap-2 border-t border-border px-5 py-4">
+              <Button
+                variant="outline"
+                onClick={() => setDeleteBaseTarget(null)}
+                disabled={Boolean(deletingBaseId)}
+              >
+                取消
+              </Button>
+              <Button
+                variant="destructive"
+                onClick={() => void deleteBase(deleteBaseTarget)}
+                disabled={Boolean(deletingBaseId)}
+              >
+                {deletingBaseId ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
+                确认删除
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
@@ -773,12 +854,16 @@ function KnowledgeBaseGroup({
   bases,
   selectedBaseId,
   onSelect,
+  onDelete,
+  deletingBaseId = '',
 }: {
   title: string
   icon: LucideIcon
   bases: KnowledgeBase[]
   selectedBaseId: string
   onSelect: (id: string) => void
+  onDelete?: (base: KnowledgeBase) => void
+  deletingBaseId?: string
 }) {
   return (
     <div className="mb-4">
@@ -789,23 +874,44 @@ function KnowledgeBaseGroup({
       <div className="space-y-1">
         {bases.length === 0 ? (
           <div className="rounded-md border border-border px-3 py-2 text-xs text-muted-foreground">暂无</div>
-        ) : bases.map((base) => (
-          <button
-            key={base.id}
-            type="button"
-            onClick={() => onSelect(base.id)}
-            className={cn(
-              'w-full rounded-md border px-3 py-2 text-left transition-colors',
-              selectedBaseId === base.id ? 'border-[#181d26] bg-[#f5f5f5]' : 'border-transparent hover:bg-[#fafafa]',
-            )}
-          >
-            <div className="flex items-center justify-between gap-2">
-              <span className="truncate text-sm font-medium text-[#1a1a1a]">{base.display_name}</span>
-              <ScopeBadge scope={base.scope_type} />
+        ) : bases.map((base) => {
+          const active = selectedBaseId === base.id
+          const deleting = deletingBaseId === base.id
+          const isDefaultAppBase = base.scope_type === 'app' && base.name === 'default'
+          return (
+            <div
+              key={base.id}
+              className={cn(
+                'group flex items-start gap-2 rounded-md border px-3 py-2 transition-colors',
+                active ? 'border-[#181d26] bg-[#f5f5f5]' : 'border-transparent hover:bg-[#fafafa]',
+              )}
+            >
+              <button
+                type="button"
+                onClick={() => onSelect(base.id)}
+                className="min-w-0 flex-1 text-left"
+              >
+                <div className="flex items-center justify-between gap-2">
+                  <span className="truncate text-sm font-medium text-[#1a1a1a]">{base.display_name}</span>
+                  <ScopeBadge scope={base.scope_type} />
+                </div>
+                <div className="mt-1 text-xs text-muted-foreground">{base.source_count} 资料 · {base.chunk_count} 分块</div>
+              </button>
+              {onDelete && (
+                <Button
+                  variant="ghost"
+                  size="icon-sm"
+                  className="mt-0.5 h-7 w-7 shrink-0 text-muted-foreground opacity-0 transition-opacity hover:text-red-600 group-hover:opacity-100 focus:opacity-100 disabled:opacity-40"
+                  disabled={isDefaultAppBase || deleting || Boolean(deletingBaseId)}
+                  title={isDefaultAppBase ? '默认 App 知识库不能删除' : '删除知识库'}
+                  onClick={() => onDelete(base)}
+                >
+                  {deleting ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Trash2 className="h-3.5 w-3.5" />}
+                </Button>
+              )}
             </div>
-            <div className="mt-1 text-xs text-muted-foreground">{base.source_count} 资料 · {base.chunk_count} 分块</div>
-          </button>
-        ))}
+          )
+        })}
       </div>
     </div>
   )

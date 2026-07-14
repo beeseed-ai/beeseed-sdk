@@ -5,6 +5,7 @@ import { storageAttachmentDownloadPayload, storagePresignDownloadPayload, storag
 import { fileNameFromStorageRef, keyFromStorageRef } from '../../lib/storage-ref.js'
 import { useBeeSeedContext } from '../../provider/BeeSeedProvider.js'
 import { MarkdownRenderer } from './MarkdownRenderer.js'
+import type { StorageObject } from '../../core/types.js'
 
 interface Props {
   channelId: string
@@ -177,6 +178,68 @@ function storagePreviewEndpointForKind(kind: StorageFileKind) {
   return null
 }
 
+function dirnameOfKey(key: string) {
+  const idx = key.lastIndexOf('/')
+  return idx >= 0 ? key.slice(0, idx + 1) : ''
+}
+
+function basenameOfKey(key: string) {
+  return key.split('/').filter(Boolean).pop() || key
+}
+
+function storageObjectMatchesKey(obj: StorageObject, requestedKey: string) {
+  const requestedBase = basenameOfKey(requestedKey)
+  return obj.key === requestedKey
+    || obj.name === requestedKey
+    || obj.display_name === requestedKey
+    || obj.key.endsWith(`/${requestedBase}`)
+    || obj.name === requestedBase
+    || obj.display_name === requestedBase
+}
+
+async function resolvePreviewKey(api: ReturnType<typeof useBeeSeedContext>['api'], channelId: string, requestedKey: string) {
+  const prefix = dirnameOfKey(requestedKey)
+  const prefixes = prefix ? [prefix, ''] : ['']
+  const seen = new Set<string>()
+
+  for (const candidatePrefix of prefixes) {
+    if (seen.has(candidatePrefix)) continue
+    seen.add(candidatePrefix)
+    const data = await api.get(`channels/${channelId}/storage`, {
+      searchParams: candidatePrefix ? { prefix: candidatePrefix } : {},
+    }).json<{ objects?: StorageObject[] }>()
+    const match = (data.objects ?? []).find((obj) => storageObjectMatchesKey(obj, requestedKey))
+    if (match?.key) return match.key
+  }
+
+  return requestedKey
+}
+
+async function requestStoragePreviewURL(
+  api: ReturnType<typeof useBeeSeedContext>['api'],
+  channelId: string,
+  refText: string,
+  kind: StorageFileKind,
+) {
+  const proxyEndpoint = storagePreviewEndpointForKind(kind)
+  const requestForKey = (key: string) => proxyEndpoint
+    ? api.post(`channels/${channelId}/storage/${proxyEndpoint}`, {
+      json: { key },
+    }).json<{ url: string }>()
+    : api.post(`channels/${channelId}/storage/presign-download`, {
+      json: storagePreviewPresignPayload(`storage://${key}`),
+    }).json<{ url: string }>()
+
+  const requestedKey = keyFromStorageRef(refText)
+  try {
+    return await requestForKey(requestedKey)
+  } catch (err) {
+    const resolvedKey = await resolvePreviewKey(api, channelId, requestedKey)
+    if (resolvedKey === requestedKey) throw err
+    return requestForKey(resolvedKey)
+  }
+}
+
 function officeOnlinePreviewURL(fileURL: string) {
   const absoluteURL = new URL(fileURL, window.location.origin).toString()
   return `https://view.officeapps.live.com/op/embed.aspx?src=${encodeURIComponent(absoluteURL)}`
@@ -218,14 +281,7 @@ export function StoragePreviewDialog({ channelId, refText, onClose }: { channelI
       return
     }
 
-    const proxyEndpoint = storagePreviewEndpointForKind(kind)
-    const previewURLRequest = proxyEndpoint
-      ? api.post(`channels/${channelId}/storage/${proxyEndpoint}`, {
-        json: { key: keyFromStorageRef(refText) },
-      }).json<{ url: string }>()
-      : api.post(`channels/${channelId}/storage/presign-download`, {
-        json: storagePreviewPresignPayload(refText),
-      }).json<{ url: string }>()
+    const previewURLRequest = requestStoragePreviewURL(api, channelId, refText, kind)
 
     void previewURLRequest
       .then(async (data) => {
@@ -254,8 +310,9 @@ export function StoragePreviewDialog({ channelId, refText, onClose }: { channelI
     if (config.useMockData || downloading) return
     setDownloading(true)
     try {
+      const key = await resolvePreviewKey(api, channelId, keyFromStorageRef(refText))
       const data = await api.post(`channels/${channelId}/storage/presign-download`, {
-        json: storageAttachmentDownloadPayload(keyFromStorageRef(refText)),
+        json: storageAttachmentDownloadPayload(key),
       }).json<{ url: string }>()
       if (data.url) window.open(data.url, '_blank', 'noopener,noreferrer')
     } catch (err) {

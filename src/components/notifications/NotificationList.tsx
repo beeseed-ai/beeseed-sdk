@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Bell, Check, X } from 'lucide-react'
+import { Bell, Check, Trash2, X } from 'lucide-react'
 import { useNotifications } from '../../hooks/use-notifications.js'
 import { cn } from '../../lib/cn.js'
 import { formatTime } from '../../lib/format.js'
@@ -9,8 +9,9 @@ interface NotificationListProps {
 }
 
 export function NotificationList({ className }: NotificationListProps) {
-  const { notifications, loading, markRead, markAllRead, act } = useNotifications()
+  const { notifications, loading, markRead, markAllRead, clearAll, act } = useNotifications()
   const [actingId, setActingId] = useState<number | null>(null)
+  const [clearing, setClearing] = useState(false)
   const [actionError, setActionError] = useState('')
 
   async function handleAction(id: number, action: 'accept' | 'decline') {
@@ -24,13 +25,38 @@ export function NotificationList({ className }: NotificationListProps) {
     }
   }
 
+  async function handleClearAll() {
+    if (!window.confirm('确认清除全部通知吗？清除后无法恢复。')) return
+    setClearing(true)
+    setActionError('')
+    try {
+      const result = await clearAll()
+      if (result.error) setActionError('清除通知失败，请稍后重试。')
+    } finally {
+      setClearing(false)
+    }
+  }
+
   return (
     <div className={cn('flex max-h-[400px] w-[320px] flex-col', className)}>
       <div className="flex items-center justify-between px-3 py-2 border-b border-border">
         <span className="text-sm font-medium">通知</span>
-        <button onClick={() => markAllRead()} className="text-[10px] text-primary hover:underline">
-          全部已读
-        </button>
+        {notifications.length > 0 && (
+          <div className="flex items-center gap-3">
+            <button type="button" onClick={() => markAllRead()} className="text-[10px] text-primary hover:underline">
+              全部已读
+            </button>
+            <button
+              type="button"
+              disabled={clearing}
+              onClick={() => { void handleClearAll() }}
+              className="inline-flex items-center gap-1 text-[10px] text-destructive hover:underline disabled:opacity-50"
+            >
+              <Trash2 className="h-3 w-3" />
+              {clearing ? '清除中...' : '清除'}
+            </button>
+          </div>
+        )}
       </div>
       {actionError && (
         <div className="border-b border-destructive/20 bg-destructive/5 px-3 py-2 text-xs text-destructive">

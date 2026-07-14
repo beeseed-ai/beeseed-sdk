@@ -9,6 +9,27 @@ import type {
 const AGENT_LOOP_STALE_AFTER_MS = 30 * 60 * 1000
 const AGENT_LOOP_STALE_MESSAGE = '长时间没有收到 Agent 进度，任务可能已中断。'
 const MESSAGE_PAGE_SIZE = 30
+const STORAGE_MUTATION_EVENT = 'beeseed:storage-mutated'
+const STORAGE_MUTATION_TOOLS = new Set(['storage_write', 'storage_delete'])
+
+function isStorageMutationTool(name: unknown, success: unknown) {
+  return typeof name === 'string' && STORAGE_MUTATION_TOOLS.has(name) && success !== false
+}
+
+function emitStorageMutation(channelId: string, toolName: string) {
+  if (typeof window === 'undefined') return
+  window.dispatchEvent(new CustomEvent(STORAGE_MUTATION_EVENT, {
+    detail: { channelId, toolName },
+  }))
+}
+
+function maybeEmitStorageMutationFromMessage(channelId: string, message: Message) {
+  if (message.msg_type !== 'tool_result') return
+  const meta = (message.metadata ?? {}) as Record<string, unknown>
+  if (isStorageMutationTool(meta.name, meta.success)) {
+    emitStorageMutation(channelId, meta.name as string)
+  }
+}
 
 // ── Message parsing (wire Message → display ChatMessage) ──
 
@@ -1439,6 +1460,7 @@ export function createMessagesStore(config: MessagesStoreConfig) {
 
       switch (event.type) {
         case 'message': {
+          maybeEmitStorageMutationFromMessage(event.channel_id, event.message)
           const parsed = parseMessage(event.message, userId)
           if (!parsed) break
           const map = new Map(state.messages)
@@ -1655,6 +1677,9 @@ export function createMessagesStore(config: MessagesStoreConfig) {
 
         case 'tool_result': {
           if (shouldIgnoreStaleLiveAgentEvent(state, event)) break
+          if (isStorageMutationTool(event.name, event.success)) {
+            emitStorageMutation(event.channel_id, event.name)
+          }
           const streams = new Map(state.streams)
           const key = eventLoopKey(event)
           const existing = streams.get(key)

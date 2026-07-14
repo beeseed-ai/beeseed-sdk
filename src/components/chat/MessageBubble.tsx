@@ -2,11 +2,11 @@ import { useState, useCallback, useMemo } from 'react'
 import { Copy, Check, CornerDownLeft, GitBranch, Zap, PencilLine } from 'lucide-react'
 import type { ChatArtifact, ChatMessage } from '../../core/types.js'
 import { cn } from '../../lib/cn.js'
-import { storageRefsFromText, stripStorageReferenceBlock } from '../../lib/storage-ref.js'
+import { storageRefFromKey, storageRefsFromText, stripStorageReferenceBlock } from '../../lib/storage-ref.js'
 import { MarkdownRenderer } from './MarkdownRenderer.js'
 import { ImagePreview } from './ImagePreview.js'
 import { AskUserCard } from './AskUserCard.js'
-import { StorageAttachmentPreview, useExistingStorageRefs } from './StorageAttachmentPreview.js'
+import { StorageAttachmentPreview, StoragePreviewDialog, useExistingStorageRefs } from './StorageAttachmentPreview.js'
 import { SkillIcon } from '../skills/SkillIcon.js'
 import { formatChatTimestamp } from '../../lib/format.js'
 
@@ -71,6 +71,7 @@ export function MessageBubble({
 }: Props) {
   const [copied, setCopied] = useState(false)
   const [previewImage, setPreviewImage] = useState<string | null>(null)
+  const [storagePreviewRef, setStoragePreviewRef] = useState<string | null>(null)
   const [openSkillId, setOpenSkillId] = useState<string | null>(null)
   const storageRefs = useMemo(() => storageRefsFromText(message.content), [message.content])
   const { existingRefs, isExistingRef } = useExistingStorageRefs(channelId, storageRefs)
@@ -85,6 +86,10 @@ export function MessageBubble({
   const handleQuote = useCallback(() => {
     onQuote?.(message)
   }, [message, onQuote])
+
+  const handleStorageRefClick = useCallback((key: string) => {
+    setStoragePreviewRef(storageRefFromKey(key))
+  }, [])
 
   const timeStr = formatChatTimestamp(message.timestamp)
   const senderLabel = message.senderName || (message.isAgent ? 'Agent' : '用户')
@@ -263,6 +268,7 @@ export function MessageBubble({
                     content={visibleContent}
                     className="prose prose-sm max-w-none break-words text-inherit [&_p]:my-1 [&_p:first-child]:mt-0 [&_p:last-child]:mb-0"
                     onMentionClick={onMentionClick}
+                    onStorageRefClick={handleStorageRefClick}
                     storageRefAvailable={isExistingRef}
                   />
                 )}
@@ -281,6 +287,7 @@ export function MessageBubble({
                     content={visibleContent}
                     className="prose prose-base max-w-none break-words [&_pre]:overflow-x-auto [&_pre]:max-w-full [&_pre]:rounded-lg [&_pre]:bg-[#f5f5f5] [&_pre]:p-3 [&_pre]:text-xs [&_code.inline-code]:rounded [&_code.inline-code]:bg-[#e8f5f8] [&_code.inline-code]:px-1.5 [&_code.inline-code]:py-0.5 [&_code.inline-code]:text-xs [&_code.inline-code]:text-[#0f5267] [&_a]:text-black [&_a]:underline [&_p]:my-2 [&_p:last-child]:mb-0 [&_p:first-child]:mt-0 [&_ul]:my-1 [&_li]:my-0 [&_ol]:list-decimal [&_ol]:pl-5 [&_ul]:list-disc [&_ul]:pl-5 [&_hr]:my-4 [&_hr]:border-t [&_hr]:border-[#e5e5e5] [&_table]:border-collapse [&_table]:w-full [&_th]:border [&_th]:border-[#e5e5e5] [&_th]:px-3 [&_th]:py-1.5 [&_th]:bg-[#f5f5f5] [&_th]:text-left [&_td]:border [&_td]:border-[#e5e5e5] [&_td]:px-3 [&_td]:py-1.5"
                     onMentionClick={onMentionClick}
+                    onStorageRefClick={handleStorageRefClick}
                     storageRefAvailable={isExistingRef}
                   />
                 )}
@@ -367,6 +374,7 @@ export function MessageBubble({
       </div>
 
       {previewImage && <ImagePreview src={previewImage} onClose={() => setPreviewImage(null)} />}
+      {storagePreviewRef && <StoragePreviewDialog channelId={channelId} refText={storagePreviewRef} onClose={() => setStoragePreviewRef(null)} />}
     </div>
   )
 }

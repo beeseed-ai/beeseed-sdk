@@ -138,23 +138,10 @@ function createBeeSeedContext(
     messagesStore.getState().handleEvent(event)
 
     if (event.type === 'message' || event.type === 'message_end') {
-      const currentChannelId = channelsStore.getState().currentChannelId
-      const messageId = event.message?.id
-      if (event.channel_id === currentChannelId && typeof messageId === 'number' && messageId > 0) {
-        channelsStore.getState().markRead(event.channel_id)
-        wsRef?.send({ type: 'read_ack', channel_id: event.channel_id, msg_id: messageId })
-      } else {
-        void channelsStore.getState().fetchChannels()
-      }
+      void channelsStore.getState().fetchChannels()
     }
     if (event.type === 'channels_updated') {
-      const currentChannelId = channelsStore.getState().currentChannelId
-      void channelsStore.getState().fetchChannels().finally(() => {
-        if (event.channel_id && event.channel_id === currentChannelId) {
-          void messagesStore.getState().fetchMembers(event.channel_id)
-          channelsStore.getState().markRead(event.channel_id)
-        }
-      })
+      void channelsStore.getState().fetchChannels()
     }
     if (event.type === 'notification') {
       notificationsStore.getState().handleWsNotification(event.notification)

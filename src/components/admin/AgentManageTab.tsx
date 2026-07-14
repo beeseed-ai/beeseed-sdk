@@ -1085,14 +1085,14 @@ export function AgentManageTab() {
 
               {deleteTarget.removable === false ? (
                 <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm leading-5 text-amber-800">
-                  {deleteTarget.blocked_reason || '当前模板仍在使用，暂时不能删除。'}
-                  {typeof deleteTarget.usage_count === 'number' && deleteTarget.usage_count > 0 && (
-                    <span> 已有 {deleteTarget.usage_count} 个频道使用该模板。</span>
-                  )}
+                  {deleteTarget.blocked_reason || '频道模板仍引用该 Agent，暂时不能删除。'}
                 </div>
               ) : (
                 <div className="rounded-lg border border-border bg-[#fafafa] px-3 py-2 text-sm leading-5 text-[#555]">
                   删除后将无法在新频道中选择该模板，已有频道不受影响。
+                  {typeof deleteTarget.usage_count === 'number' && deleteTarget.usage_count > 0 && (
+                    <span> 当前已有 {deleteTarget.usage_count} 个频道使用该 Agent，删除模板不会影响这些频道。</span>
+                  )}
                 </div>
               )}
 

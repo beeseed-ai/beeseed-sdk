@@ -2,6 +2,7 @@ import { FileText } from 'lucide-react'
 import { cn } from './cn.js'
 
 export const STORAGE_REF_RE = /storage:\/\/[^\s)\]}>，。；：！？,;:!?]+/g
+const STORAGE_PATH_RE = /(^|[\s([（「『【<])((?:[^\s)\]}>，。；：！？,;!?]+\/)+[^\s)\]}>，。；：！？,;!?]+\.(?:md|markdown|txt|pdf|doc|docx|xls|xlsx|ppt|pptx|csv|json|jsonl|yaml|yml|html|htm|png|jpg|jpeg|webp|gif|svg|zip|rar|7z|tar|gz|tgz|mp3|wav|m4a|mp4|mov|webm))(?![^\s)\]}>，。；：！？,;!?])/gi
 const GENERATED_PREFIX_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}-(.+)$/i
 
 export function storageRefFromKey(key: string) {
@@ -23,12 +24,64 @@ export function fileNameFromStorageRef(ref: string) {
   return base.match(GENERATED_PREFIX_RE)?.[1] || base
 }
 
-export function storageRefsFromText(text: string) {
-  const refs: string[] = []
+export interface StorageInlineRefMatch {
+  rawText: string
+  refText: string
+  index: number
+  length: number
+}
+
+function pushStoragePathMatches(text: string, matches: StorageInlineRefMatch[]) {
+  STORAGE_PATH_RE.lastIndex = 0
+  let match: RegExpExecArray | null
+  while ((match = STORAGE_PATH_RE.exec(text)) !== null) {
+    const boundary = match[1] ?? ''
+    const rawText = match[2] ?? ''
+    if (!rawText || rawText.includes('://')) continue
+    matches.push({
+      rawText,
+      refText: storageRefFromKey(rawText),
+      index: match.index + boundary.length,
+      length: rawText.length,
+    })
+  }
+}
+
+export function isLikelyStoragePathRef(text: string) {
+  STORAGE_PATH_RE.lastIndex = 0
+  const match = STORAGE_PATH_RE.exec(` ${text.trim()}`)
+  return match?.[2] === text.trim() && !text.includes('://')
+}
+
+export function storageInlineRefMatches(text: string) {
+  const matches: StorageInlineRefMatch[] = []
   STORAGE_REF_RE.lastIndex = 0
   let match: RegExpExecArray | null
   while ((match = STORAGE_REF_RE.exec(text)) !== null) {
-    refs.push(match[0])
+    matches.push({
+      rawText: match[0],
+      refText: storageRefFromKey(keyFromStorageRef(match[0])),
+      index: match.index,
+      length: match[0].length,
+    })
+  }
+  pushStoragePathMatches(text, matches)
+
+  const sorted = matches.sort((a, b) => a.index - b.index || b.length - a.length)
+  const out: StorageInlineRefMatch[] = []
+  let consumedUntil = -1
+  for (const item of sorted) {
+    if (item.index < consumedUntil) continue
+    out.push(item)
+    consumedUntil = item.index + item.length
+  }
+  return out
+}
+
+export function storageRefsFromText(text: string) {
+  const refs: string[] = []
+  for (const match of storageInlineRefMatches(text)) {
+    if (!refs.includes(match.refText)) refs.push(match.refText)
   }
   return refs
 }

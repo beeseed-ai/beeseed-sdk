@@ -1,8 +1,10 @@
-import { useState, type ReactNode } from 'react'
+import { useMemo, useState, type ReactNode } from 'react'
 import { AlertCircle, Check, ChevronRight, Circle, Clock3, Sparkles, Wrench } from 'lucide-react'
 import type { AgentLoopState, AgentLoopToolCall, AgentLoopSkillUse, ChatMessage, AgentLoopEventItem } from '../../core/types.js'
 import { cn } from '../../lib/cn.js'
+import { storageRefFromKey, storageRefsFromText } from '../../lib/storage-ref.js'
 import { MarkdownRenderer } from './MarkdownRenderer.js'
+import { StoragePreviewDialog, useExistingStorageRefs } from './StorageAttachmentPreview.js'
 import { SkillIcon } from '../skills/SkillIcon.js'
 
 interface Props {
@@ -360,22 +362,31 @@ function ToolResultEventLine({ tool }: { tool: AgentLoopToolCall }) {
   )
 }
 
-function AssistantText({ content, streaming = false, final = false }: { content: string; streaming?: boolean; final?: boolean }) {
+function AssistantText({ channelId, content, streaming = false, final = false }: { channelId: string; content: string; streaming?: boolean; final?: boolean }) {
+  const [storagePreviewRef, setStoragePreviewRef] = useState<string | null>(null)
+  const storageRefs = useMemo(() => storageRefsFromText(content), [content])
+  const { isExistingRef } = useExistingStorageRefs(channelId, storageRefs)
+
   return (
-    <TranscriptLine
-      icon={final ? <Check className="size-3.5 text-[#006400]" /> : <span className="mt-1 inline-flex size-1.5 rounded-full bg-[#181d26]/55" />}
-      className={final ? 'pt-1.5' : undefined}
-    >
-      <div className="text-sm leading-6 text-[#181d26]">
-        <MarkdownRenderer
-          content={content}
-          className="prose prose-sm max-w-none break-words [&_p]:my-1 [&_p:first-child]:mt-0 [&_p:last-child]:mb-0 [&_ul]:my-1 [&_ol]:my-1 [&_li]:my-0 [&_h1]:text-base [&_h2]:text-base [&_h3]:text-sm [&_h1]:font-semibold [&_h2]:font-semibold [&_h3]:font-semibold [&_code.inline-code]:rounded [&_code.inline-code]:bg-[#e8f5f8] [&_code.inline-code]:px-1 [&_code.inline-code]:py-0.5 [&_code.inline-code]:text-[#0f5267]"
-        />
-        {streaming && (
-          <span className="ml-0.5 inline-block h-4 w-1.5 animate-pulse bg-[#181d26]/50 align-text-bottom" />
-        )}
-      </div>
-    </TranscriptLine>
+    <>
+      <TranscriptLine
+        icon={final ? <Check className="size-3.5 text-[#006400]" /> : <span className="mt-1 inline-flex size-1.5 rounded-full bg-[#181d26]/55" />}
+        className={final ? 'pt-1.5' : undefined}
+      >
+        <div className="text-sm leading-6 text-[#181d26]">
+          <MarkdownRenderer
+            content={content}
+            className="prose prose-sm max-w-none break-words [&_p]:my-1 [&_p:first-child]:mt-0 [&_p:last-child]:mb-0 [&_ul]:my-1 [&_ol]:my-1 [&_li]:my-0 [&_h1]:text-base [&_h2]:text-base [&_h3]:text-sm [&_h1]:font-semibold [&_h2]:font-semibold [&_h3]:font-semibold [&_code.inline-code]:rounded [&_code.inline-code]:bg-[#e8f5f8] [&_code.inline-code]:px-1 [&_code.inline-code]:py-0.5 [&_code.inline-code]:text-[#0f5267]"
+            onStorageRefClick={(key) => setStoragePreviewRef(storageRefFromKey(key))}
+            storageRefAvailable={isExistingRef}
+          />
+          {streaming && (
+            <span className="ml-0.5 inline-block h-4 w-1.5 animate-pulse bg-[#181d26]/50 align-text-bottom" />
+          )}
+        </div>
+      </TranscriptLine>
+      {storagePreviewRef && <StoragePreviewDialog channelId={channelId} refText={storagePreviewRef} onClose={() => setStoragePreviewRef(null)} />}
+    </>
   )
 }
 
@@ -437,7 +448,7 @@ function TerminalLine({ loop, displayError, terminalAction }: { loop: AgentLoopS
 
 function renderEventItem(item: AgentLoopEventItem, loop: AgentLoopState, finalAnswer: string) {
   if (item.type === 'assistant_content' && item.content && !sameText(item.content, finalAnswer)) {
-    return <AssistantText key={item.id} content={item.content} streaming={loop.status === 'running'} />
+    return <AssistantText key={item.id} channelId={loop.channelId} content={item.content} streaming={loop.status === 'running'} />
   }
   if (item.type === 'progress' && item.summary && !sameText(item.summary, finalAnswer)) {
     return (
@@ -517,7 +528,7 @@ export function AgentRunTranscript({
         )}
 
         {shouldShowContent && (
-          <AssistantText content={visibleContent} streaming={turn.status === 'active' && isRunning} />
+          <AssistantText channelId={loop.channelId} content={visibleContent} streaming={turn.status === 'active' && isRunning} />
         )}
 
         {(turn.skillUses ?? []).map((skill) => <SkillLine key={skill.id} skill={skill} />)}
@@ -567,7 +578,7 @@ export function AgentRunTranscript({
       ) : processContent}
 
       {showTerminal && hasFinalAnswer ? (
-        <AssistantText content={finalAnswer} final />
+        <AssistantText channelId={loop.channelId} content={finalAnswer} final />
       ) : (
         showTerminal && loop.status !== 'running' && <TerminalLine loop={loop} displayError={terminalError} terminalAction={terminalAction} />
       )}

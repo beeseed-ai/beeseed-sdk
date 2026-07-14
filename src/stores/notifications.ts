@@ -11,6 +11,7 @@ export interface NotificationsState {
   refresh: () => Promise<void>
   markRead: (id: number) => Promise<void>
   markAllRead: () => Promise<void>
+  clearAll: () => Promise<{ error: string | null }>
   act: (id: number, action: 'accept' | 'decline') => Promise<{ error: string | null }>
   handleWsNotification: (n: AppNotification) => void
   reset: () => void
@@ -63,6 +64,20 @@ export function createNotificationsStore(config: NotificationsStoreConfig) {
         await config.api.post('notifications/read-all')
         set({ notifications: get().notifications.map((n) => ({ ...n, is_read: true })), unreadCount: 0 })
       } catch { /* */ }
+    },
+
+    clearAll: async () => {
+      if (config.useMock) {
+        set({ notifications: [], unreadCount: 0 })
+        return { error: null }
+      }
+      try {
+        await config.api.delete('notifications')
+        set({ notifications: [], unreadCount: 0 })
+        return { error: null }
+      } catch (err) {
+        return { error: err instanceof Error ? err.message : '清除通知失败' }
+      }
     },
 
     act: async (id, action) => {
