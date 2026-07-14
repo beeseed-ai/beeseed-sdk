@@ -7,6 +7,7 @@ import { TextInput } from './ask-user/TextInput.js'
 import { ConfirmAction } from './ask-user/ConfirmAction.js'
 import { ImageGrid } from './ask-user/ImageGrid.js'
 import { QuestionPager } from './ask-user/QuestionPager.js'
+import { MarkdownRenderer } from './MarkdownRenderer.js'
 
 interface Props {
   data: AskUserData
@@ -42,6 +43,10 @@ function normalizeQuestionForDisplay(question: AskUserQuestion, data: AskUserDat
     confirm_text: question.confirm_text || '启用',
     cancel_text: question.cancel_text || '暂不启用',
   }
+}
+
+export function normalizeAskUserMarkdown(value: string): string {
+  return value.replace(/\\r\\n|\\n|\\r/g, '\n')
 }
 
 const questionMetaStyle = {
@@ -119,6 +124,8 @@ export function AskUserCard({ data, currentUserId, onSubmit, className }: Props)
 
   const question = questions[currentPage]
   if (!question) return null
+  const questionDescription = question.description?.trim() ? question.description : ''
+  const titleStyle = questionDescription ? questionMetaStyle : questionPromptStyle
 
   const renderQuestion = (q: AskUserQuestion) => {
     const val = answered ? (data.answers?.[q.id] ?? answers[q.id]) : answers[q.id]
@@ -160,9 +167,23 @@ export function AskUserCard({ data, currentUserId, onSubmit, className }: Props)
         {/* Question */}
         <div className="px-4 py-3 space-y-3">
           <div>
-            <div data-ask-user-question-meta style={questionMetaStyle}>{question.title}</div>
-            {question.description && (
-              <div data-ask-user-question-prompt className="mt-1" style={questionPromptStyle}>{question.description}</div>
+            <div
+              data-ask-user-question-meta={questionDescription ? true : undefined}
+              data-ask-user-question-prompt={questionDescription ? undefined : true}
+              style={titleStyle}
+            >
+              <MarkdownRenderer
+                content={normalizeAskUserMarkdown(question.title)}
+                className="[&_p:first-child]:mt-0 [&_p:last-child]:mb-0"
+              />
+            </div>
+            {questionDescription && (
+              <div data-ask-user-question-prompt className="mt-1" style={questionPromptStyle}>
+                <MarkdownRenderer
+                  content={normalizeAskUserMarkdown(questionDescription)}
+                  className="[&_p:first-child]:mt-0 [&_p:last-child]:mb-0"
+                />
+              </div>
             )}
           </div>
           {renderQuestion(question)}
