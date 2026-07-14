@@ -57,13 +57,13 @@ const questionMetaStyle = {
   color: '#41454d',
 }
 
-const questionPromptStyle = {
+export const questionPromptStyle = {
   fontFamily: 'inherit',
   fontSize: '16px',
   fontWeight: 700,
   lineHeight: '24px',
   color: '#181d26',
-  whiteSpace: 'pre-line',
+  whiteSpace: 'normal' as const,
 }
 
 export function AskUserCard({ data, currentUserId, onSubmit, className }: Props) {
