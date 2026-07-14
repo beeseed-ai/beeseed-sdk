@@ -2,30 +2,62 @@ import { useCallback, useEffect } from 'react'
 import { useStore } from 'zustand'
 import { useBeeSeedContext } from '../provider/BeeSeedProvider.js'
 import type { ChatMessage, ChannelMemberInfo } from '../core/types.js'
+import { latestPendingAskUserForUser, pendingAskUserKey, readAckBeforePendingAsk } from '../lib/ask-user-action.js'
 
-export function useChat(channelId: string | null) {
-  const { channelsStore, messagesStore, ws } = useBeeSeedContext()
+interface UseChatOptions {
+  markRead?: boolean
+}
+
+export function useChat(channelId: string | null, options?: UseChatOptions) {
+  const { authStore, channelsStore, messagesStore, ws } = useBeeSeedContext()
   const state = useStore(messagesStore)
+  const markRead = options?.markRead === true
 
   useEffect(() => {
     if (!channelId) return
     let cancelled = false
     const s = messagesStore.getState()
     void s.fetchMessages(channelId).then(() => {
-      if (cancelled || channelsStore.getState().currentChannelId !== channelId) return
-      const latestMsgId = latestMessageId(s.getMessages(channelId))
-      if (latestMsgId > 0) {
-        ws.send({ type: 'read_ack', channel_id: channelId, msg_id: latestMsgId })
-        channelsStore.getState().markRead(channelId)
-      }
+      if (cancelled) return
     })
     void s.fetchMembers(channelId)
     ws.send({ type: 'join_channel', channel_id: channelId })
     return () => {
       cancelled = true
-      ws.send({ type: 'leave_channel', channel_id: channelId })
     }
   }, [channelId, channelsStore, messagesStore, ws])
+
+  const channelMessages = channelId ? state.getMessages(channelId) : []
+  const latestMsgId = latestMessageId(channelMessages)
+  const pendingAskUserMessage = latestPendingAskUserForUser(channelMessages, authStore.getState().user?.id)
+  const pendingAskKey = pendingAskUserKey(pendingAskUserMessage)
+  useEffect(() => {
+    if (!channelId || !markRead || latestMsgId <= 0) return
+    const ackIfReading = () => {
+      if (channelsStore.getState().currentChannelId !== channelId) return
+      if (typeof document !== 'undefined' && document.visibilityState !== 'visible') return
+      if (typeof document !== 'undefined' && typeof document.hasFocus === 'function' && !document.hasFocus()) return
+      if (pendingAskUserMessage) {
+        const readableThroughMsgId = readAckBeforePendingAsk(pendingAskUserMessage)
+        if (readableThroughMsgId > 0) {
+          ws.send({ type: 'read_ack', channel_id: channelId, msg_id: readableThroughMsgId, reading: true })
+        }
+        const channel = channelsStore.getState().channels.find((item) => item.id === channelId)
+        if ((channel?.unread_count ?? 0) === 0) channelsStore.getState().updateUnread(channelId, 1)
+        return
+      }
+      ws.send({ type: 'read_ack', channel_id: channelId, msg_id: latestMsgId, reading: true })
+      channelsStore.getState().markRead(channelId)
+    }
+    ackIfReading()
+    if (typeof window === 'undefined' || typeof document === 'undefined') return
+    window.addEventListener('focus', ackIfReading)
+    document.addEventListener('visibilitychange', ackIfReading)
+    return () => {
+      window.removeEventListener('focus', ackIfReading)
+      document.removeEventListener('visibilitychange', ackIfReading)
+    }
+  }, [channelId, channelsStore, latestMsgId, markRead, pendingAskKey, pendingAskUserMessage, ws])
 
   const send = useCallback(
     (content: string, metadata?: Record<string, unknown>) => {
@@ -59,7 +91,7 @@ export function useChat(channelId: string | null) {
   const ack = useCallback(
     (msgId: number) => {
       if (!channelId) return
-      ws.send({ type: 'read_ack', channel_id: channelId, msg_id: msgId })
+      ws.send({ type: 'read_ack', channel_id: channelId, msg_id: msgId, reading: true })
     },
     [channelId, ws],
   )

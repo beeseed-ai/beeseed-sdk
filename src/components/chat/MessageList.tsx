@@ -10,6 +10,7 @@ import { Button } from '../ui/button.js'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '../ui/dialog.js'
 import { stripStorageReferenceBlock } from '../../lib/storage-ref.js'
 import { formatChatTimestamp } from '../../lib/format.js'
+import { latestPendingAskUserForUser, pendingAskUserKey } from '../../lib/ask-user-action.js'
 
 const CHAT_MAX_WIDTH = 820
 const DEFAULT_WELCOME_MESSAGE = '你身边的智能助手，可以为你答疑解惑、尽情创作，快来点击以下任一功能体验吧～'
@@ -380,12 +381,17 @@ export function MessageList({
 }: Props) {
   const containerRef = useRef<HTMLDivElement>(null)
   const shouldAutoScroll = useRef(true)
+  const lastForcedAskUserKeyRef = useRef<string | null>(null)
   const loadingOlderRef = useRef(false)
   const hasOlderRef = useRef(hasOlder)
   const loadingOlderPropRef = useRef(loadingOlder)
   const onLoadOlderRef = useRef(onLoadOlder)
   const visibleLoops = useMemo(() => agentLoops ?? (agentLoop ? [agentLoop] : []), [agentLoop, agentLoops])
   const displayMessages = useMemo(() => applyMemberDisplay(messages, members), [messages, members])
+  const actionableAskUserKey = useMemo(
+    () => pendingAskUserKey(latestPendingAskUserForUser(displayMessages, currentUserId)),
+    [currentUserId, displayMessages],
+  )
   const timelineGroups = useMemo(() => buildTimelineGroups(displayMessages, visibleLoops), [displayMessages, visibleLoops])
   const loopGroupLastIndexes = useMemo(() => {
     const indexes = new Map<string, number>()
@@ -422,6 +428,17 @@ export function MessageList({
     const el = containerRef.current
     if (el) { el.scrollTop = el.scrollHeight }
   }, [])
+
+  useEffect(() => {
+    if (!actionableAskUserKey || lastForcedAskUserKeyRef.current === actionableAskUserKey) return
+    lastForcedAskUserKeyRef.current = actionableAskUserKey
+    shouldAutoScroll.current = true
+    scrollToBottom()
+    requestAnimationFrame(() => {
+      scrollToBottom()
+      requestAnimationFrame(scrollToBottom)
+    })
+  }, [actionableAskUserKey, scrollToBottom])
 
   const requestOlder = useCallback(async () => {
     const el = containerRef.current

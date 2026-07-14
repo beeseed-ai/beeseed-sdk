@@ -38,7 +38,7 @@ export function ChatChannel({ channelId, className, header }: Props) {
     hasOlderMessages,
     loadingOlderMessages,
     loadOlderMessages,
-  } = useChat(channelId)
+  } = useChat(channelId, { markRead: true })
   const { composerInsertText, consumeComposerInsert, openWorkflowRun } = useDetailPanel()
   const [quotedMessage, setQuotedMessage] = useState<ChatMessage | null>(null)
   const [revisionTarget, setRevisionTarget] = useState<ArtifactRevisionTarget | null>(null)
