@@ -1,6 +1,6 @@
 import { createStore } from 'zustand/vanilla'
 import type { KyInstance } from 'ky'
-import type { ChannelWithMeta, ChannelMember } from '../core/types.js'
+import type { ChannelWithMeta, ChannelMember, ExternalChannelCreateInput, ExternalChannelResponse } from '../core/types.js'
 
 export interface ChannelsState {
   channels: ChannelWithMeta[]
@@ -11,6 +11,8 @@ export interface ChannelsState {
   setCurrentChannel: (channelId: string | null) => void
   setChannels: (channels: ChannelWithMeta[]) => void
   createChannel: (input: { name: string; purpose?: string; agent_ids?: string[] }) => Promise<{ channel: ChannelWithMeta; members: ChannelMember[] } | null>
+  getChannelByExternalRef: (externalRef: string) => Promise<ExternalChannelResponse | null>
+  createChannelByExternalRef: (input: ExternalChannelCreateInput) => Promise<ExternalChannelResponse | null>
   deleteChannel: (channelId: string) => Promise<{ error: string | null }>
   requestJoin: (channelId: string) => Promise<{ error: string | null }>
   inviteUsers: (channelId: string, targets: string[]) => Promise<{ error: string | null }>
@@ -61,6 +63,31 @@ export function createChannelsStore(config: ChannelsStoreConfig) {
         if (!channel) return null
         set({ channels: [channel, ...get().channels] })
         return { channel: channel, members: data.members }
+      } catch {
+        return null
+      }
+    },
+
+    getChannelByExternalRef: async (externalRef) => {
+      const ref = externalRef.trim()
+      if (!ref) return null
+      try {
+        return await config.api.get('channels', {
+          searchParams: { external_ref: ref },
+        }).json<ExternalChannelResponse>()
+      } catch {
+        return null
+      }
+    },
+
+    createChannelByExternalRef: async (input) => {
+      const externalRef = input.external_ref.trim()
+      const name = input.name.trim()
+      if (!externalRef || !name) return null
+      try {
+        return await config.api.post('channels', {
+          json: { ...input, external_ref: externalRef, name },
+        }).json<ExternalChannelResponse>()
       } catch {
         return null
       }

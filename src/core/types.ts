@@ -113,6 +113,28 @@ export interface ChannelWithMeta extends Channel {
   owner_email?: string
 }
 
+export type ChannelObservedState = 'active' | 'archived' | 'deleted'
+
+export interface ExternalChannelCreateInput {
+  external_ref: string
+  name: string
+  purpose?: string
+  agent_ids?: string[]
+  channel_type?: string
+  storage_type?: string
+  metadata?: Record<string, unknown>
+}
+
+export interface ExternalChannelResponse {
+  channel: Channel
+  members: ChannelMember[]
+  app_id: string
+  external_ref: string
+  metadata: Record<string, unknown>
+  observed_state: ChannelObservedState
+  created: boolean
+}
+
 export interface ChannelRuntimeSettings {
   welcome_title?: string
   welcome_message?: string
