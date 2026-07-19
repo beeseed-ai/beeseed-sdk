@@ -4,6 +4,7 @@ export { BeeSeedProvider, useBeeSeedContext, type BeeSeedContextValue } from './
 // Core types
 export type {
   User, Channel, ChannelWithMeta, ChannelMember, ChannelMemberInfo,
+  ChannelObservedState, ExternalChannelCreateInput, ExternalChannelResponse,
   Message, ChatMessage, ChatArtifact, ArtifactRevisionTarget, AgentMeta, AgentConfig,
   ModelTierName, ModelTierConfig, ModelTierSettings,
   SkillShortcutAgent, SkillShortcutOption, SelectedSkillIntent,
