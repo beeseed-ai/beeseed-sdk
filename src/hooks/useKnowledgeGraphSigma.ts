@@ -156,19 +156,20 @@ export const useKnowledgeGraphSigma = (
       layoutTimeoutRef.current = null
     }
 
-    if (!layoutRef.current) return
-
-    layoutRef.current.stop()
+    const layout = layoutRef.current
     layoutRef.current = null
 
-    const graph = graphRef.current
-    const sigma = sigmaRef.current
-    if (graph && sigma) {
-      noverlap.assign(graph, NOVERLAP_SETTINGS)
-      sigma.refresh()
+    try {
+      layout?.stop()
+      const graph = graphRef.current
+      const sigma = sigmaRef.current
+      if (layout && graph && sigma) {
+        noverlap.assign(graph, NOVERLAP_SETTINGS)
+        sigma.refresh()
+      }
+    } finally {
+      setIsLayoutRunning(false)
     }
-
-    setIsLayoutRunning(false)
   }, [])
 
   const setSelectedNode = useCallback((nodeId: string | null) => {
@@ -364,7 +365,10 @@ export const useKnowledgeGraphSigma = (
   // Run FA2 layout via Web Worker
   const runLayout = useCallback((graph: Graph) => {
     const nodeCount = graph.order
-    if (nodeCount === 0) return
+    if (nodeCount === 0) {
+      setIsLayoutRunning(false)
+      return
+    }
 
     // Kill existing layout
     if (layoutRef.current) {
@@ -388,38 +392,41 @@ export const useKnowledgeGraphSigma = (
     const duration = getLayoutDuration(nodeCount)
 
     layoutTimeoutRef.current = setTimeout(() => {
-      if (layoutRef.current) {
-        layoutRef.current.stop()
+      layoutTimeoutRef.current = null
+      if (layoutRef.current === layout) {
         layoutRef.current = null
 
-        // Snapshot current positions (FA2's result)
-        const beforePositions = new Map<string, { x: number; y: number }>()
-        graph.forEachNode((node, attrs) => {
-          beforePositions.set(node, { x: attrs.x, y: attrs.y })
-        })
+        try {
+          layout.stop()
+          // Snapshot current positions (FA2's result)
+          const beforePositions = new Map<string, { x: number; y: number }>()
+          graph.forEachNode((node, attrs) => {
+            beforePositions.set(node, { x: attrs.x, y: attrs.y })
+          })
 
-        // Compute noverlap target positions on a copy, then animate
-        noverlap.assign(graph, NOVERLAP_SETTINGS)
-        const afterPositions = new Map<string, { x: number; y: number }>()
-        graph.forEachNode((node, attrs) => {
-          afterPositions.set(node, { x: attrs.x, y: attrs.y })
-        })
+          // Compute noverlap target positions on a copy, then animate
+          noverlap.assign(graph, NOVERLAP_SETTINGS)
+          const afterPositions = new Map<string, { x: number; y: number }>()
+          graph.forEachNode((node, attrs) => {
+            afterPositions.set(node, { x: attrs.x, y: attrs.y })
+          })
 
-        // Restore FA2 positions, then animate to noverlap result
-        graph.forEachNode((node) => {
-          const pos = beforePositions.get(node)
-          if (pos) {
-            graph.setNodeAttribute(node, 'x', pos.x)
-            graph.setNodeAttribute(node, 'y', pos.y)
+          // Restore FA2 positions, then animate to noverlap result
+          graph.forEachNode((node) => {
+            const pos = beforePositions.get(node)
+            if (pos) {
+              graph.setNodeAttribute(node, 'x', pos.x)
+              graph.setNodeAttribute(node, 'y', pos.y)
+            }
+          })
+
+          const sigma = sigmaRef.current
+          if (sigma) {
+            animatePositions(graph, afterPositions, sigma, 600)
           }
-        })
-
-        const sigma = sigmaRef.current
-        if (sigma) {
-          animatePositions(graph, afterPositions, sigma, 600)
+        } finally {
+          setIsLayoutRunning(false)
         }
-
-        setIsLayoutRunning(false)
       }
     }, duration)
   }, [])
@@ -438,6 +445,7 @@ export const useKnowledgeGraphSigma = (
         clearTimeout(layoutTimeoutRef.current)
         layoutTimeoutRef.current = null
       }
+      setIsLayoutRunning(false)
 
       graphRef.current = newGraph
       sigma.setGraph(newGraph)
@@ -546,36 +554,38 @@ export const useKnowledgeGraphSigma = (
       clearTimeout(layoutTimeoutRef.current)
       layoutTimeoutRef.current = null
     }
-    if (layoutRef.current) {
-      layoutRef.current.stop()
-      layoutRef.current = null
+    try {
+      if (layoutRef.current) {
+        layoutRef.current.stop()
+        layoutRef.current = null
 
-      const graph = graphRef.current
-      const sigma = sigmaRef.current
-      if (graph && sigma) {
-        // Snapshot → noverlap → animate
-        const beforePositions = new Map<string, { x: number; y: number }>()
-        graph.forEachNode((node, attrs) => {
-          beforePositions.set(node, { x: attrs.x, y: attrs.y })
-        })
+        const graph = graphRef.current
+        const sigma = sigmaRef.current
+        if (graph && sigma) {
+          // Snapshot → noverlap → animate
+          const beforePositions = new Map<string, { x: number; y: number }>()
+          graph.forEachNode((node, attrs) => {
+            beforePositions.set(node, { x: attrs.x, y: attrs.y })
+          })
 
-        noverlap.assign(graph, NOVERLAP_SETTINGS)
-        const afterPositions = new Map<string, { x: number; y: number }>()
-        graph.forEachNode((node, attrs) => {
-          afterPositions.set(node, { x: attrs.x, y: attrs.y })
-        })
+          noverlap.assign(graph, NOVERLAP_SETTINGS)
+          const afterPositions = new Map<string, { x: number; y: number }>()
+          graph.forEachNode((node, attrs) => {
+            afterPositions.set(node, { x: attrs.x, y: attrs.y })
+          })
 
-        graph.forEachNode((node) => {
-          const pos = beforePositions.get(node)
-          if (pos) {
-            graph.setNodeAttribute(node, 'x', pos.x)
-            graph.setNodeAttribute(node, 'y', pos.y)
-          }
-        })
+          graph.forEachNode((node) => {
+            const pos = beforePositions.get(node)
+            if (pos) {
+              graph.setNodeAttribute(node, 'x', pos.x)
+              graph.setNodeAttribute(node, 'y', pos.y)
+            }
+          })
 
-        animatePositions(graph, afterPositions, sigma, 600)
+          animatePositions(graph, afterPositions, sigma, 600)
+        }
       }
-
+    } finally {
       setIsLayoutRunning(false)
     }
   }, [])
