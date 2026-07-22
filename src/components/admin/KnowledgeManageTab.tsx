@@ -51,16 +51,18 @@ type KnowledgeGraphEntitySource = {
   source_id: number
   excerpt?: string
 }
-type KnowledgeGraphData = {
+export type ChannelKnowledgeGraphData = {
   sources?: KnowledgeSource[]
   entities: KnowledgeGraphEntity[]
   relations: KnowledgeGraphRelation[]
   entity_sources?: KnowledgeGraphEntitySource[]
 }
-type Selection =
+type KnowledgeGraphData = ChannelKnowledgeGraphData
+export type KnowledgeGraphSelection =
   | { type: 'source'; source: KnowledgeSource }
   | { type: 'entity'; entity: KnowledgeGraphEntity }
   | null
+type Selection = KnowledgeGraphSelection
 
 type SigmaNode = {
   id: string
@@ -1289,7 +1291,7 @@ function SourcesList({
   )
 }
 
-function SigmaKnowledgeGraph({
+export function SigmaKnowledgeGraph({
   sources,
   graph,
   selection,
@@ -1310,9 +1312,10 @@ function SigmaKnowledgeGraph({
   const hasGraphData = graph.entities.length > 0
     || graph.relations.length > 0
     || (graph.entity_sources?.length || 0) > 0
+  const graphSignature = useMemo(() => JSON.stringify(graph), [graph])
   const sigmaData = useMemo(() => (
     hasGraphData ? toSigmaData(graphSources, graph) : { nodes: [], edges: [] }
-  ), [graphSources, graph, hasGraphData])
+  ), [graphSources, graphSignature, hasGraphData])
   const handleNodeClick = useCallback((nodeId: string) => {
     if (nodeId.startsWith('s_')) {
       const source = sources.find((item) => `s_${item.id}` === nodeId)
