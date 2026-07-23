@@ -9,6 +9,7 @@ interface AgentTemplateInfo {
   id: string
   name: string
   role: string
+  runtime?: 'worker' | 'codex' | string
   version?: string
   is_active?: boolean
   provider: string
@@ -33,6 +34,7 @@ interface IdentityData {
 
 interface AgentConfig {
   role?: string
+  runtime?: 'worker' | 'codex' | string
   template_version?: string
   provider?: string
   model?: string
@@ -43,6 +45,7 @@ interface AgentConfig {
   tools?: string[]
   skills?: string[]
   avatar_preset?: string
+  agents_md?: string
   [key: string]: unknown
 }
 
@@ -434,6 +437,7 @@ export function AgentManageTab() {
       const defaultModel = defaultModelTierConfig(nextModelTiers)
       const configPayload = {
         ...agentConfig,
+        runtime: agentConfig.runtime || selectedTemplate?.runtime || 'worker',
         provider: defaultModel.provider,
         model: defaultModel.model,
         thinking: defaultModel.thinking,
@@ -565,6 +569,7 @@ export function AgentManageTab() {
   const selectedTemplate = selectedId ? templates.find((template) => template.id === selectedId) ?? null : null
   const displayName = labelOrFallback(identity?.name || selectedTemplate?.name, selectedTemplate?.id || 'Agent')
   const role = labelOrFallback(agentConfig?.role || selectedTemplate?.role, selectedTemplate?.id || 'agent')
+  const runtime = agentConfig?.runtime || selectedTemplate?.runtime || 'worker'
   const modelTierSettings = normalizeModelTierSettings(agentConfig?.model_tiers ?? selectedTemplate?.model_tiers, agentConfig?.provider ?? selectedTemplate?.provider, agentConfig?.model ?? selectedTemplate?.model)
   const temperature = typeof agentConfig?.temperature === 'number' ? agentConfig.temperature : FALLBACK_TEMPERATURE
   const tools = agentConfig?.tools ?? selectedTemplate?.tools ?? []
@@ -673,7 +678,7 @@ export function AgentManageTab() {
                     <div className="min-w-0">
                       <h3 className="truncate text-sm font-semibold text-[#1a1a1a]">{displayName}</h3>
                       <span className="text-xs text-muted-foreground">
-                        {role} · 配置 ID：{selectedTemplate.id} · 版本：{formatAgentVersion(selectedTemplate.version)}
+                        {role} · {runtime === 'codex' ? 'Docker Codex' : 'Worker Agent'} · 配置 ID：{selectedTemplate.id} · 版本：{formatAgentVersion(selectedTemplate.version)}
                       </span>
                     </div>
                     <div className="flex shrink-0 items-center gap-2">
@@ -804,6 +809,30 @@ export function AgentManageTab() {
                       />
                     </div>
 
+                    {runtime === 'codex' && (
+                      <div className="space-y-2 rounded-lg border border-border bg-[#fafafa] p-3">
+                        <div className="flex items-start justify-between gap-3">
+                          <div>
+                            <div className="text-sm font-medium text-[#181d26]">Docker Codex 运行配置</div>
+                            <div className="mt-0.5 text-xs leading-5 text-muted-foreground">保存后先发布不可变 Agent/Skill release；新配置在下一次 Runtime 重建或 ensure 时生效，不热改正在运行的 turn。</div>
+                          </div>
+                          <span className="shrink-0 rounded-md border border-[#181d26] bg-[#181d26] px-2 py-1 text-xs text-white">runtime: codex</span>
+                        </div>
+                        <label className="block text-xs font-medium text-[#555]" htmlFor="agent-codex-agents-md">AGENTS.md</label>
+                        <textarea
+                          id="agent-codex-agents-md"
+                          value={agentConfig?.agents_md ?? ''}
+                          onChange={(event) => updateConfig({ agents_md: event.target.value, runtime: 'codex' })}
+                          disabled={PLATFORM_TEMPLATE_READ_ONLY}
+                          maxLength={256 * 1024}
+                          spellCheck={false}
+                          placeholder="配置 Docker Codex 的项目级行为、边界和协作规则…"
+                          className="h-48 w-full resize-y rounded-lg border border-border bg-white px-3 py-2 font-mono text-sm leading-5 text-[#1a1a1a] outline-none focus:border-[#9297a0] focus:ring-2 focus:ring-[#9297a0]/20 disabled:bg-[#f8fafc] disabled:text-muted-foreground"
+                        />
+                        <div className="text-right text-xs text-muted-foreground">{(agentConfig?.agents_md ?? '').length} / {256 * 1024}</div>
+                      </div>
+                    )}
+
                     <div className="space-y-3 rounded-lg border border-border bg-[#fafafa] p-3">
                       <div>
                         <div className="text-sm font-medium text-[#181d26]">模型等级映射</div>
@@ -885,7 +914,7 @@ export function AgentManageTab() {
                     </div>
 
                     <div>
-                      <label className="mb-2 block text-xs font-medium text-[#555]">工具</label>
+                      <label className="mb-2 block text-xs font-medium text-[#555]">MCP / Tools 能力</label>
                       <div className="flex flex-wrap gap-2">
                         {TOOL_OPTIONS.map((tool) => {
                           const active = tools.includes(tool)
