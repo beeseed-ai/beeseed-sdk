@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { BookOpen, Check, FileText, Loader2, RotateCcw, Search, Trash2, X } from 'lucide-react'
+import { BookOpen, FileText, Loader2, Search, Trash2 } from 'lucide-react'
 import type { ChannelWithMeta, KnowledgeSearchResult, KnowledgeSource } from '../../core/types.js'
 import { useChannels } from '../../hooks/use-channels.js'
 import { useBeeSeedContext } from '../../provider/BeeSeedProvider.js'
@@ -60,14 +60,13 @@ export function KnowledgePanel({ channels, channelId, onChannelChange }: Knowled
   const [searchQuery, setSearchQuery] = useState('')
   const [searchResults, setSearchResults] = useState<KnowledgeSearchResult[]>([])
   const [searching, setSearching] = useState(false)
-  const [sourceView, setSourceView] = useState<'published' | 'candidate' | 'upload' | 'rejected'>('published')
+  const [sourceView, setSourceView] = useState<'system' | 'upload'>('system')
   const sourceGroups = useMemo(() => ({
-    published: sources.filter((source) => (source.review_status ?? 'published') === 'published' && source.source_type !== 'file_upload'),
-    candidate: sources.filter((source) => source.review_status === 'candidate'),
+    system: sources.filter((source) => (source.review_status ?? 'published') === 'published' && source.source_type !== 'file_upload'),
     upload: sources.filter((source) => source.source_type === 'file_upload' && (source.review_status ?? 'published') === 'published'),
-    rejected: sources.filter((source) => source.review_status === 'rejected' || source.review_status === 'quarantined'),
   }), [sources])
   const visibleSources = sourceGroups[sourceView]
+  const visibleSourceCount = sourceGroups.system.length + sourceGroups.upload.length
 
   const loadChannelKnowledge = useCallback(async (currentChannelId: string, signal?: AbortSignal) => {
     setLoading(true)
@@ -136,12 +135,6 @@ export function KnowledgePanel({ channels, channelId, onChannelChange }: Knowled
     await loadChannelKnowledge(selectedChannelId)
   }
 
-  const reviewSource = async (sourceId: number, action: 'publish' | 'reject' | 'restore') => {
-    if (!selectedChannelId) return
-    await api.post(`knowledge/sources/${sourceId}/${action}`, { json: {} })
-    await loadChannelKnowledge(selectedChannelId)
-  }
-
   const selectedChannel = availableChannels.find((channel) => channel.id === selectedChannelId)
 
   return (
@@ -181,16 +174,14 @@ export function KnowledgePanel({ channels, channelId, onChannelChange }: Knowled
                   <TabsTrigger value="search">搜索</TabsTrigger>
                   <TabsTrigger value="graph">图谱</TabsTrigger>
                 </TabsList>
-                <span className="text-xs text-muted-foreground">{selectedChannel?.name || '当前频道'} · {sources.length} 个来源</span>
+                <span className="text-xs text-muted-foreground">{selectedChannel?.name || '当前频道'} · {visibleSourceCount} 个来源</span>
               </div>
 
               <TabsContent value="sources" className="min-h-0 flex-1 overflow-y-auto p-3 sm:p-5">
-                <div className="mb-4 flex flex-wrap gap-2" aria-label="知识来源审核状态">
+                <div className="mb-4 flex flex-wrap gap-2" aria-label="知识来源类型">
                   {([
-                    ['published', '已发布'],
-                    ['candidate', '待整理'],
+                    ['system', '系统沉淀'],
                     ['upload', '上传资料'],
-                    ['rejected', '已拒绝'],
                   ] as const).map(([value, label]) => (
                     <button
                       key={value}
@@ -215,8 +206,6 @@ export function KnowledgePanel({ channels, channelId, onChannelChange }: Knowled
                           <div className="truncate text-sm font-medium">{source.title}</div>
                           {source.summary && <div className="mt-0.5 line-clamp-2 text-xs text-muted-foreground">{source.summary}</div>}
                           <div className="mt-1 flex items-center gap-2">
-                            {source.review_status === 'candidate' && <Badge variant="warning" className="text-[10px]">待审核</Badge>}
-                            {source.review_status === 'rejected' && <Badge variant="outline" className="text-[10px]">已忽略</Badge>}
                             <Badge variant={source.status === 'ready' ? 'success' : source.status === 'error' || source.status === 'failed' ? 'destructive' : 'outline'} className="text-[10px]">
                               {source.status === 'ready' ? '就绪' : source.status === 'processing' ? '处理中' : source.status === 'error' || source.status === 'failed' ? '错误' : '等待中'}
                             </Badge>
@@ -224,21 +213,6 @@ export function KnowledgePanel({ channels, channelId, onChannelChange }: Knowled
                             {source.file_size > 0 && <span className="text-[10px] text-muted-foreground">{formatBytes(source.file_size)}</span>}
                           </div>
                         </div>
-                        {source.review_status === 'candidate' && (
-                          <div className="flex shrink-0 items-center gap-1">
-                            <button type="button" onClick={() => void reviewSource(source.id, 'publish')} className="rounded-md border border-emerald-200 bg-emerald-50 p-1.5 text-emerald-700 hover:bg-emerald-100" aria-label={`沉淀 ${source.title}`}>
-                              <Check className="h-3.5 w-3.5" />
-                            </button>
-                            <button type="button" onClick={() => void reviewSource(source.id, 'reject')} className="rounded-md border border-border p-1.5 text-muted-foreground hover:bg-muted" aria-label={`忽略 ${source.title}`}>
-                              <X className="h-3.5 w-3.5" />
-                            </button>
-                          </div>
-                        )}
-                        {source.review_status === 'rejected' && (
-                          <button type="button" onClick={() => void reviewSource(source.id, 'restore')} className="rounded-md border border-border p-1.5 text-muted-foreground hover:bg-muted" aria-label={`恢复 ${source.title}`}>
-                            <RotateCcw className="h-3.5 w-3.5" />
-                          </button>
-                        )}
                         <button type="button" onClick={() => void deleteSource(source.id)} className="hidden rounded p-1 hover:bg-destructive/10 group-hover:block" aria-label={`删除 ${source.title}`}>
                           <Trash2 className="h-3.5 w-3.5 text-destructive" />
                         </button>
