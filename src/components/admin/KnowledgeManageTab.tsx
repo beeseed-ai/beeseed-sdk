@@ -1206,11 +1206,13 @@ function UploadZone({
   )
 }
 
-function SourcesList({
+export function SourcesList({
   sources,
   loading,
   deletingSourceId,
   selectedID,
+  header,
+  className,
   onSelect,
   onDelete,
 }: {
@@ -1218,12 +1220,16 @@ function SourcesList({
   loading: boolean
   deletingSourceId?: number | null
   selectedID?: number | null
+  header?: ReactNode
+  className?: string
   onSelect?: (source: KnowledgeSource) => void
   onDelete?: (source: KnowledgeSource) => void
 }) {
   return (
-    <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-lg border border-border bg-white">
-      <div className="shrink-0 border-b border-border px-4 py-3 text-sm font-medium text-[#1a1a1a]">知识来源</div>
+    <div className={cn('flex min-h-0 flex-1 flex-col overflow-hidden rounded-lg border border-border bg-white', className)}>
+      <div className="shrink-0 border-b border-border px-4 py-3 text-sm font-medium text-[#1a1a1a]">
+        {header ?? '知识来源'}
+      </div>
       {loading ? (
         <div className="flex items-center justify-center gap-2 p-8 text-sm text-muted-foreground">
           <Loader2 className="h-4 w-4 animate-spin" />
@@ -1237,38 +1243,42 @@ function SourcesList({
             (() => {
               const deleting = deletingSourceId === source.id
               return (
-            <button
+            <div
               key={source.id}
-              type="button"
-              disabled={deleting}
-              onClick={() => onSelect?.(source)}
               className={cn(
                 'group flex w-full items-start gap-3 px-4 py-3 text-left transition-colors hover:bg-[#fafafa]',
                 selectedID === source.id && 'bg-slate-50 shadow-[inset_3px_0_0_#181d26]',
                 deleting && 'cursor-wait opacity-60',
               )}
             >
-              <FileText className="mt-0.5 h-4 w-4 shrink-0 text-[#667085]" />
-              <div className="min-w-0 flex-1">
-                <div className="truncate text-sm font-medium text-[#1a1a1a]">{source.title}</div>
-                <div className="mt-1 flex flex-wrap items-center gap-2">
-                  <SourceStatusBadge source={source} />
-                  <span className="text-xs text-muted-foreground">{source.chunk_count} 分块</span>
-                  {source.file_size > 0 && <span className="text-xs text-muted-foreground">{formatBytes(source.file_size)}</span>}
-                  {source.origin_type && <span className="text-xs text-muted-foreground">{source.origin_type}</span>}
-                </div>
-                {(source.processing_message || source.processing_stage) && source.status !== 'ready' && (
-                  <div className="mt-2 max-w-xl">
-                    <div className="flex justify-between text-[11px] text-muted-foreground">
-                      <span>{source.processing_message || source.processing_stage}</span>
-                      <span>{source.processing_progress ?? 0}%</span>
-                    </div>
-                    <div className="mt-1 h-1 rounded-full bg-muted">
-                      <div className="h-1 rounded-full bg-[#181d26]" style={{ width: `${Math.max(0, Math.min(100, source.processing_progress ?? 0))}%` }} />
-                    </div>
+              <button
+                type="button"
+                disabled={deleting}
+                onClick={() => onSelect?.(source)}
+                className="flex min-w-0 flex-1 items-start gap-3 text-left"
+              >
+                <FileText className="mt-0.5 h-4 w-4 shrink-0 text-[#667085]" />
+                <div className="min-w-0 flex-1">
+                  <div className="truncate text-sm font-medium text-[#1a1a1a]">{source.title}</div>
+                  <div className="mt-1 flex flex-wrap items-center gap-2">
+                    <SourceStatusBadge source={source} />
+                    <span className="text-xs text-muted-foreground">{source.chunk_count} 分块</span>
+                    {source.file_size > 0 && <span className="text-xs text-muted-foreground">{formatBytes(source.file_size)}</span>}
+                    {source.origin_type && <span className="text-xs text-muted-foreground">{source.origin_type}</span>}
                   </div>
-                )}
-              </div>
+                  {(source.processing_message || source.processing_stage) && source.status !== 'ready' && (
+                    <div className="mt-2 max-w-xl">
+                      <div className="flex justify-between text-[11px] text-muted-foreground">
+                        <span>{source.processing_message || source.processing_stage}</span>
+                        <span>{source.processing_progress ?? 0}%</span>
+                      </div>
+                      <div className="mt-1 h-1 rounded-full bg-muted">
+                        <div className="h-1 rounded-full bg-[#181d26]" style={{ width: `${Math.max(0, Math.min(100, source.processing_progress ?? 0))}%` }} />
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </button>
               {onDelete && (
                 <Button
                   variant="ghost"
@@ -1284,7 +1294,7 @@ function SourcesList({
                   {deleting ? <Loader2 className="h-3.5 w-3.5 animate-spin text-muted-foreground" /> : <Trash2 className="h-3.5 w-3.5 text-destructive" />}
                 </Button>
               )}
-            </button>
+            </div>
               )
             })()
           ))}
