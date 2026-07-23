@@ -31,6 +31,18 @@ interface ChannelTemplate {
   icon?: string
   agents: string[]
   knowledge?: string[]
+  knowledge_extraction_prompt?: {
+    extraction_prompt: string
+    extraction_prompt_mode: 'auto' | 'manual'
+    extraction_prompt_version: number
+    extraction_prompt_generated_from: {
+      channel_name: string
+      channel_description: string
+    }
+    extraction_prompt_updated_at: string
+    extraction_prompt_status: 'ready' | 'fallback'
+    extraction_prompt_error?: string
+  }
   welcome_title?: string
   welcome_message?: string
   quick_questions?: string[]
@@ -122,6 +134,7 @@ function normalizeTemplates(templates: ChannelTemplate[] | undefined): ChannelTe
     icon: template.icon || 'bot',
     agents: template.agents?.length ? template.agents : ['assistant'],
     knowledge: template.knowledge ?? [],
+    knowledge_extraction_prompt: template.knowledge_extraction_prompt,
     welcome_title: template.welcome_title ?? '',
     welcome_message: template.welcome_message ?? '',
     quick_questions: normalizeQuickQuestions(template.quick_questions),

@@ -1,31 +1,33 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { RefreshCw, RotateCcw, Save } from 'lucide-react'
-import type { Channel, ChannelWithMeta } from '../../core/types.js'
 import { useBeeSeedContext } from '../../provider/BeeSeedProvider.js'
 import { Input } from '../ui/input.js'
 
 interface ChannelKnowledgePromptState {
-  extraction_prompt?: string
-  extraction_prompt_mode?: 'auto' | 'manual'
-  extraction_prompt_version?: number
-  extraction_prompt_updated_at?: string
-  extraction_prompt_status?: 'ready' | 'fallback'
+  extraction_prompt: string
+  extraction_prompt_mode: 'auto' | 'manual'
+  extraction_prompt_version: number
+  extraction_prompt_updated_at: string
+  extraction_prompt_status: 'ready' | 'fallback'
   extraction_prompt_error?: string
 }
 
-interface ChannelDetailResponse {
-  channel: Channel
-  channel_description?: string
+export interface ChannelTemplateOption {
+  id?: string
+  name?: string
+  description?: string
 }
 
-function readKnowledgePromptState(settings?: string): ChannelKnowledgePromptState {
-  if (!settings) return {}
-  try {
-    const parsed = JSON.parse(settings) as { knowledge?: ChannelKnowledgePromptState }
-    return parsed.knowledge ?? {}
-  } catch {
-    return {}
-  }
+interface ChannelSettingsResponse {
+  channel_templates?: ChannelTemplateOption[]
+}
+
+interface ChannelTemplatePromptResponse {
+  template_id: string
+  name: string
+  description: string
+  knowledge_prompt: ChannelKnowledgePromptState
+  channels_updated: number
 }
 
 function formatUpdatedAt(value?: string) {
@@ -34,12 +36,21 @@ function formatUpdatedAt(value?: string) {
   return Number.isNaN(date.getTime()) ? value : date.toLocaleString()
 }
 
+export function uniqueChannelTemplateOptions(items: ChannelTemplateOption[] | undefined) {
+  const seen = new Set<string>()
+  return (items ?? []).filter((item) => {
+    const id = item.id?.trim()
+    if (!id || seen.has(id)) return false
+    seen.add(id)
+    return true
+  })
+}
+
 export function ChannelKnowledgePromptSettings() {
   const { api } = useBeeSeedContext()
-  const [channels, setChannels] = useState<ChannelWithMeta[]>([])
-  const [selectedChannelId, setSelectedChannelId] = useState('')
-  const [channel, setChannel] = useState<Channel | null>(null)
-  const [channelDescription, setChannelDescription] = useState('')
+  const [templates, setTemplates] = useState<ChannelTemplateOption[]>([])
+  const [selectedTemplateId, setSelectedTemplateId] = useState('')
+  const [detail, setDetail] = useState<ChannelTemplatePromptResponse | null>(null)
   const [query, setQuery] = useState('')
   const [prompt, setPrompt] = useState('')
   const [loading, setLoading] = useState(true)
@@ -51,42 +62,39 @@ export function ChannelKnowledgePromptSettings() {
   const [error, setError] = useState('')
   const detailRequestRef = useRef(0)
 
-  const promptState = useMemo(() => readKnowledgePromptState(channel?.settings), [channel?.settings])
-  const filteredChannels = useMemo(() => {
-    const active = channels.filter((item) => !item.deleted_at)
+  const filteredTemplates = useMemo(() => {
     const normalized = query.trim().toLowerCase()
-    const matched = normalized
-      ? active.filter((item) => [item.name ?? '', item.owner_name ?? '', item.owner_email ?? ''].join(' ').toLowerCase().includes(normalized))
-      : active
-    const visible = matched.slice(0, 100)
-    const selected = active.find((item) => item.id === selectedChannelId)
-    if (selected && !visible.some((item) => item.id === selected.id)) {
-      return [selected, ...visible.slice(0, 99)]
+    const matched = !normalized ? templates : templates.filter((item) => (
+      `${item.name ?? ''} ${item.description ?? ''}`.toLowerCase().includes(normalized)
+    ))
+    const selected = templates.find((item) => item.id === selectedTemplateId)
+    if (selected && !matched.some((item) => item.id === selected.id)) {
+      return [selected, ...matched]
     }
-    return visible
-  }, [channels, query, selectedChannelId])
+    return matched
+  }, [query, selectedTemplateId, templates])
 
-  const loadChannelDetail = useCallback(async (channelId: string) => {
+  const loadTemplateDetail = useCallback(async (templateId: string) => {
     const requestID = ++detailRequestRef.current
-    if (!channelId) {
-      setChannel(null)
+    if (!templateId) {
+      setDetail(null)
       setPrompt('')
-      setChannelDescription('')
       setDetailLoading(false)
       return
     }
     setDetailLoading(true)
     setError('')
     try {
-      const data = await api.get(`admin/channels/${encodeURIComponent(channelId)}`).json<ChannelDetailResponse>()
+      const data = await api.get(
+        `admin/channel-templates/${encodeURIComponent(templateId)}/knowledge-prompt`,
+      ).json<ChannelTemplatePromptResponse>()
       if (requestID !== detailRequestRef.current) return
-      setChannel(data.channel)
-      setChannelDescription(data.channel_description ?? '')
-      setPrompt(readKnowledgePromptState(data.channel.settings).extraction_prompt ?? '')
+      setDetail(data)
+      setPrompt(data.knowledge_prompt.extraction_prompt ?? '')
       setDirty(false)
     } catch (err) {
       if (requestID === detailRequestRef.current) {
-        setError(err instanceof Error ? err.message : '频道提示词加载失败')
+        setError(err instanceof Error ? err.message : '频道模板提示词加载失败')
       }
     } finally {
       if (requestID === detailRequestRef.current) setDetailLoading(false)
@@ -95,15 +103,15 @@ export function ChannelKnowledgePromptSettings() {
 
   useEffect(() => {
     let active = true
-    api.get('admin/channels').json<ChannelWithMeta[]>()
-      .then((items) => {
+    api.get('admin/settings/channels').json<ChannelSettingsResponse>()
+      .then((data) => {
         if (!active) return
-        const next = (items ?? []).filter((item) => !item.deleted_at)
-        setChannels(next)
-        setSelectedChannelId((current) => current || next[0]?.id || '')
+        const next = uniqueChannelTemplateOptions(data.channel_templates)
+        setTemplates(next)
+        setSelectedTemplateId((current) => current || next[0]?.id || '')
       })
       .catch((err) => {
-        if (active) setError(err instanceof Error ? err.message : '频道列表加载失败')
+        if (active) setError(err instanceof Error ? err.message : '频道模板列表加载失败')
       })
       .finally(() => {
         if (active) setLoading(false)
@@ -112,20 +120,23 @@ export function ChannelKnowledgePromptSettings() {
   }, [api])
 
   useEffect(() => {
-    void loadChannelDetail(selectedChannelId)
-  }, [loadChannelDetail, selectedChannelId])
+    void loadTemplateDetail(selectedTemplateId)
+  }, [loadTemplateDetail, selectedTemplateId])
 
   async function savePrompt() {
-    if (!channel || !dirty || !prompt.trim()) return
+    if (!detail || !dirty || !prompt.trim()) return
     setSaving(true)
     setError('')
     setNotice('')
     try {
-      await api.patch(`admin/channels/${encodeURIComponent(channel.id)}`, {
-        json: { knowledge_extraction_prompt: prompt },
-      })
-      await loadChannelDetail(channel.id)
-      setNotice('提示词已保存为手工模式')
+      const data = await api.patch(
+        `admin/channel-templates/${encodeURIComponent(detail.template_id)}/knowledge-prompt`,
+        { json: { knowledge_extraction_prompt: prompt } },
+      ).json<ChannelTemplatePromptResponse>()
+      setDetail(data)
+      setPrompt(data.knowledge_prompt.extraction_prompt)
+      setDirty(false)
+      setNotice(`提示词已保存，并同步到 ${data.channels_updated} 个现有频道`)
     } catch (err) {
       setError(err instanceof Error ? err.message : '提示词保存失败')
     } finally {
@@ -134,16 +145,19 @@ export function ChannelKnowledgePromptSettings() {
   }
 
   async function regeneratePrompt() {
-    if (!channel) return
+    if (!detail) return
     setRegenerating(true)
     setError('')
     setNotice('')
     try {
-      await api.patch(`admin/channels/${encodeURIComponent(channel.id)}`, {
-        json: { regenerate_knowledge_extraction_prompt: true },
-      })
-      await loadChannelDetail(channel.id)
-      setNotice('已根据当前频道名称和描述重新生成')
+      const data = await api.patch(
+        `admin/channel-templates/${encodeURIComponent(detail.template_id)}/knowledge-prompt`,
+        { json: { regenerate_knowledge_extraction_prompt: true } },
+      ).json<ChannelTemplatePromptResponse>()
+      setDetail(data)
+      setPrompt(data.knowledge_prompt.extraction_prompt)
+      setDirty(false)
+      setNotice(`已重新生成，并同步到 ${data.channels_updated} 个现有频道`)
     } catch (err) {
       setError(err instanceof Error ? err.message : '提示词重新生成失败')
     } finally {
@@ -151,16 +165,18 @@ export function ChannelKnowledgePromptSettings() {
     }
   }
 
+  const promptState = detail?.knowledge_prompt
+
   return (
     <section className="overflow-hidden rounded-xl border border-border bg-white">
       <div className="flex flex-wrap items-start justify-between gap-3 border-b border-border px-5 py-4">
         <div>
           <h2 className="text-sm font-semibold text-[#181d26]">知识抽取提示词</h2>
           <p className="mt-1 text-xs leading-5 text-muted-foreground">
-            系统按频道名称和描述生成；手工编辑后不会被自动覆盖。
+            每个频道模板只显示一次；保存后同步到该模板创建的所有频道。
           </p>
         </div>
-        {channel && (
+        {promptState && (
           <div className="flex items-center gap-2 text-xs text-muted-foreground">
             <span>{promptState.extraction_prompt_mode === 'manual' ? '手工模式' : '自动模式'}</span>
             <span>版本 {promptState.extraction_prompt_version ?? 0}</span>
@@ -172,36 +188,36 @@ export function ChannelKnowledgePromptSettings() {
       <div className="space-y-4 p-5">
         <div className="grid gap-3 md:grid-cols-[minmax(0,1fr)_minmax(0,1.4fr)]">
           <div>
-            <label htmlFor="knowledge-prompt-channel-search" className="mb-1.5 block text-xs font-medium text-[#555]">搜索频道</label>
+            <label htmlFor="knowledge-prompt-channel-search" className="mb-1.5 block text-xs font-medium text-[#555]">搜索频道模板</label>
             <Input
               id="knowledge-prompt-channel-search"
               value={query}
               onChange={(event) => setQuery(event.target.value)}
-              placeholder="按频道名或创建人搜索"
+              placeholder="按频道模板名称或描述搜索"
             />
           </div>
           <div>
-            <label htmlFor="knowledge-prompt-channel-select" className="mb-1.5 block text-xs font-medium text-[#555]">频道</label>
+            <label htmlFor="knowledge-prompt-channel-select" className="mb-1.5 block text-xs font-medium text-[#555]">频道模板</label>
             <select
               id="knowledge-prompt-channel-select"
-              value={selectedChannelId}
-              onChange={(event) => setSelectedChannelId(event.target.value)}
+              value={selectedTemplateId}
+              onChange={(event) => setSelectedTemplateId(event.target.value)}
               disabled={loading}
               className="h-9 w-full rounded-lg border border-border bg-white px-3 text-sm text-[#1a1a1a] outline-none focus:border-[#9297a0] focus:ring-2 focus:ring-[#9297a0]/20 disabled:opacity-50"
             >
-              {filteredChannels.length === 0 && <option value="">暂无匹配频道</option>}
-              {filteredChannels.map((item) => (
-                <option key={item.id} value={item.id}>{item.name || '未命名频道'}</option>
+              {filteredTemplates.length === 0 && <option value="">暂无匹配频道模板</option>}
+              {filteredTemplates.map((item) => (
+                <option key={item.id} value={item.id}>{item.name || '未命名频道模板'}</option>
               ))}
             </select>
           </div>
         </div>
 
-        {channel ? (
+        {detail ? (
           <>
             <div className="rounded-lg border border-border bg-[#fafafa] px-3 py-2 text-xs leading-5 text-muted-foreground">
               <span className="font-medium text-[#555]">生成依据：</span>
-              {channel.name || '未命名频道'} · {channelDescription || '未设置频道描述'}
+              {detail.name || '未命名频道模板'} · {detail.description || '未设置频道描述'}
             </div>
             <div>
               <label htmlFor="knowledge-extraction-prompt" className="mb-1.5 block text-xs font-medium text-[#555]">当前生效提示词</label>
@@ -219,10 +235,10 @@ export function ChannelKnowledgePromptSettings() {
               />
               <div className="mt-1 flex flex-wrap justify-between gap-2 text-xs text-muted-foreground">
                 <span>必须包含“重点抽取”和“忽略”，最多 8,000 字。</span>
-                <span>更新于 {formatUpdatedAt(promptState.extraction_prompt_updated_at)}</span>
+                <span>更新于 {formatUpdatedAt(promptState?.extraction_prompt_updated_at)}</span>
               </div>
             </div>
-            {promptState.extraction_prompt_status === 'fallback' && promptState.extraction_prompt_error && (
+            {promptState?.extraction_prompt_status === 'fallback' && promptState.extraction_prompt_error && (
               <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs leading-5 text-amber-800">
                 自动生成服务暂不可用，当前使用安全模板：{promptState.extraction_prompt_error}
               </div>
@@ -254,7 +270,7 @@ export function ChannelKnowledgePromptSettings() {
           <>
             {error && <div role="alert" className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700">{error}</div>}
             <div className="rounded-lg border border-dashed border-border px-3 py-6 text-center text-sm text-muted-foreground">
-              {loading ? '正在加载频道...' : '请选择一个频道'}
+              {loading ? '正在加载频道模板...' : '请选择一个频道模板'}
             </div>
           </>
         )}
