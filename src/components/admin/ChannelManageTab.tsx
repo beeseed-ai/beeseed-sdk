@@ -10,6 +10,7 @@ import {
   normalizeChannelTemplateScheduledTasks,
   type ChannelTemplateScheduledTask,
 } from './channelTemplateSchedule.js'
+import { ChannelKnowledgePromptSettings } from './ChannelKnowledgePromptSettings.js'
 
 interface AgentTemplateOption {
   id: string
@@ -483,6 +484,8 @@ export function ChannelManageTab() {
               {applying ? '同步中...' : '同步到已有用户'}
             </button>
           </div>
+
+          <ChannelKnowledgePromptSettings />
 
           <div className="grid gap-6 lg:grid-cols-[280px_minmax(0,1fr)]">
             <div className="overflow-hidden rounded-xl border border-border bg-white shadow-sm">
