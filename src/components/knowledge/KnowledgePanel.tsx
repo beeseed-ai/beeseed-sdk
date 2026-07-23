@@ -98,9 +98,9 @@ export function KnowledgePanel({ channels, channelId, onChannelChange }: Knowled
   const selectedChannel = availableChannels.find((channel) => channel.id === selectedChannelId)
 
   return (
-    <div className="flex h-full overflow-hidden bg-[#fafafa]">
-      <div className="flex-1 overflow-y-auto">
-        <div className="mx-auto max-w-6xl space-y-4 p-4 sm:space-y-6 sm:p-8">
+    <div className="flex h-full min-h-0 overflow-hidden bg-[#fafafa]">
+      <div className="min-h-0 min-w-0 flex-1 overflow-y-auto lg:overflow-hidden">
+        <div className="mx-auto flex min-h-full max-w-6xl flex-col gap-4 p-4 sm:gap-6 sm:p-8 lg:h-full lg:min-h-0">
           <div className="flex flex-wrap items-end justify-between gap-4">
             <div>
               <h1 className="text-xl font-medium text-[#181d26]">知识库</h1>
@@ -127,7 +127,7 @@ export function KnowledgePanel({ channels, channelId, onChannelChange }: Knowled
               请先选择一个可访问频道。
             </div>
           ) : (
-            <section className="flex min-h-[620px] flex-col overflow-hidden rounded-xl border border-border bg-white shadow-sm">
+            <section className="flex min-h-[620px] flex-col overflow-hidden rounded-xl border border-border bg-white shadow-sm lg:min-h-0 lg:flex-1">
               <div className="flex shrink-0 flex-wrap items-center justify-between gap-3 border-b border-border px-3 py-3 sm:px-5 sm:py-4">
                 <h2 className="text-sm font-medium text-[#181d26]">频道知识</h2>
                 <span className="text-xs text-muted-foreground">{selectedChannel?.name || '当前频道'} · {visibleSourceCount} 个来源</span>
@@ -162,7 +162,7 @@ export function KnowledgePanel({ channels, channelId, onChannelChange }: Knowled
                     onDelete={(source) => void deleteSource(source.id)}
                   />
                 </aside>
-                <main className="relative min-h-[420px] overflow-hidden bg-[#f8f8fa]">
+                <main className="relative min-h-[420px] overflow-hidden bg-[#f8f8fa] lg:min-h-0">
                   {loading ? (
                     <div className="flex h-full items-center justify-center gap-2 text-sm text-muted-foreground">
                       <Loader2 className="h-4 w-4 animate-spin" />
