@@ -31,6 +31,7 @@
     "build": "tsup",
     "dev": "vite",
     "prepare": "npm run build",
+    "test": "vitest run --root .",
     "typecheck": "tsc --noEmit"
   },
   "peerDependencies": {
@@ -67,6 +68,7 @@
     "tsup": "^8.5.0",
     "typescript": "~6.0.2",
     "vite": "^8.0.10",
+    "vitest": "^4.1.10",
     "ws": "^8.20.0"
   }
 }

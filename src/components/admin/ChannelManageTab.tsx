@@ -6,6 +6,10 @@ import { useBeeSeedContext } from '../../provider/BeeSeedProvider.js'
 import { Button } from '../ui/button.js'
 import { Input } from '../ui/input.js'
 import { Badge } from '../ui/badge.js'
+import {
+  normalizeChannelTemplateScheduledTasks,
+  type ChannelTemplateScheduledTask,
+} from './channelTemplateSchedule.js'
 
 interface AgentTemplateOption {
   id: string
@@ -36,18 +40,6 @@ interface ChannelTemplate {
     members_can_delete_own?: boolean
   }
   scheduled_tasks?: ChannelTemplateScheduledTask[]
-}
-
-interface ChannelTemplateScheduledTask {
-  id?: string
-  title: string
-  description?: string
-  assigned_agent_id?: string
-  cron_expr: string
-  timezone?: string
-  enabled?: boolean
-  overlap_policy?: 'skip' | 'queue' | 'parallel'
-  catch_up_policy?: 'none' | 'latest' | 'all'
 }
 
 interface ChannelSettingsResponse {
@@ -133,7 +125,11 @@ function normalizeTemplates(templates: ChannelTemplate[] | undefined): ChannelTe
     welcome_message: template.welcome_message ?? '',
     quick_questions: normalizeQuickQuestions(template.quick_questions),
     storage: template.storage,
-    scheduled_tasks: normalizeScheduledTasks(template.scheduled_tasks, template.agents?.[0] || 'assistant'),
+    scheduled_tasks: normalizeChannelTemplateScheduledTasks(
+      template.scheduled_tasks,
+      template.agents?.[0] || 'assistant',
+      createTemplateId,
+    ),
   }))
 }
 
@@ -147,20 +143,6 @@ function normalizeQuickQuestions(questions: string[] | undefined): string[] {
     items.push(clean)
   }
   return items
-}
-
-function normalizeScheduledTasks(tasks: ChannelTemplateScheduledTask[] | undefined, defaultAgentId: string): ChannelTemplateScheduledTask[] {
-  return (tasks ?? []).map((task) => ({
-    id: task.id || createTemplateId(),
-    title: task.title?.trim() || '定时任务',
-    description: task.description ?? '',
-    assigned_agent_id: task.assigned_agent_id || defaultAgentId,
-    cron_expr: task.cron_expr?.trim() || '0 9 * * 1-5',
-    timezone: task.timezone?.trim() || 'Asia/Shanghai',
-    enabled: task.enabled !== false,
-    overlap_policy: task.overlap_policy || 'skip',
-    catch_up_policy: task.catch_up_policy || 'latest',
-  }))
 }
 
 function agentLabel(agentId: string, agents: AgentTemplateOption[]) {
@@ -436,6 +418,9 @@ export function ChannelManageTab() {
           enabled: task.enabled !== false,
           overlap_policy: task.overlap_policy || 'skip',
           catch_up_policy: task.catch_up_policy || 'latest',
+          delivery_mode: task.delivery_mode,
+          shared_execution_key: task.shared_execution_key?.trim() || undefined,
+          content_policy: task.content_policy,
         })),
       }))
       const savedSettings = await api.patch('admin/settings/channels', {
