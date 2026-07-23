@@ -89,7 +89,7 @@ type SigmaData = {
 const ACTIVE_SOURCE_STATUSES = new Set(['pending', 'processing'])
 const SUPPORTED_KNOWLEDGE_UPLOAD_EXTENSIONS = new Set([
   '.txt', '.md', '.markdown', '.json', '.jsonl', '.csv', '.tsv', '.yaml', '.yml',
-  '.html', '.htm', '.xml', '.log', '.pdf', '.docx', '.docm', '.xlsx', '.xlsm',
+  '.html', '.htm', '.xml', '.log', '.pdf', '.docx', '.docm', '.xlsx', '.xlsm', '.pptx', '.pptm',
   '.png', '.jpg', '.jpeg', '.webp', '.gif', '.bmp',
 ])
 const SUPPORTED_KNOWLEDGE_UPLOAD_ACCEPT = Array.from(SUPPORTED_KNOWLEDGE_UPLOAD_EXTENSIONS).join(',')
@@ -98,8 +98,11 @@ const SUPPORTED_OFFICE_UPLOAD_MIME_PARTS = [
   'wordprocessingml.template',
   'spreadsheetml.sheet',
   'spreadsheetml.template',
+  'presentationml.presentation',
+  'presentationml.template',
   'ms-word.document.macroenabled.12',
   'ms-excel.sheet.macroenabled.12',
+  'ms-powerpoint.presentation.macroenabled.12',
 ]
 const SOURCE_COLORS: Record<string, string> = {
   file_upload: '#0891b2',

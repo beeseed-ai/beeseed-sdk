@@ -604,6 +604,12 @@ export interface KnowledgeSource {
   processing_stage?: string
   processing_progress?: number
   processing_message?: string
+  review_status?: 'candidate' | 'published' | 'rejected' | 'quarantined'
+  content_hash?: string
+  extraction_metadata?: Record<string, unknown>
+  reviewed_by?: string
+  reviewed_at?: string
+  rejection_reason?: string
   tags: string[]
   created_by?: string
   created_at: string
