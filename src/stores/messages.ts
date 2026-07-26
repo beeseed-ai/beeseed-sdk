@@ -41,8 +41,6 @@ function isPersistedAgentLoopEvent(m: Message): boolean {
 function getAskUserStatus(meta: Record<string, unknown>): 'pending' | 'answered' | 'expired' {
   if (meta.ask_user_status === 'answered') return 'answered'
   if (meta.ask_user_status === 'expired') return 'expired'
-  const expiresAt = typeof meta.expires_at === 'string' ? Date.parse(meta.expires_at) : NaN
-  if (Number.isFinite(expiresAt) && expiresAt <= Date.now()) return 'expired'
   return 'pending'
 }
 

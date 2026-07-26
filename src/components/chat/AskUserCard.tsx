@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect, useMemo } from 'react'
+import { useState, useCallback, useMemo } from 'react'
 import type { AskUserQuestion, AskUserData } from '../../core/types.js'
 import { cn } from '../../lib/cn.js'
 import { SingleSelect } from './ask-user/SingleSelect.js'
@@ -71,10 +71,8 @@ export function AskUserCard({ data, currentUserId, onSubmit, className }: Props)
     () => (Array.isArray(data.questions) ? data.questions.map((question) => normalizeQuestionForDisplay(question, data)) : []),
     [data],
   )
-  const expiresAtMs = data.expiresAt ? Date.parse(data.expiresAt) : NaN
-  const [now, setNow] = useState(() => Date.now())
   const answered = data.status === 'answered'
-  const expired = data.status === 'expired' || (Number.isFinite(expiresAtMs) && expiresAtMs <= now)
+  const expired = data.status === 'expired'
   const targetUserIds = data.targetUserIds || (data.targetUserId ? [data.targetUserId] : [])
   const isSingleTarget = !data.visibility || data.visibility === 'target_user'
   const isTargetUser = data.visibility === 'all_members' || (currentUserId ? targetUserIds.includes(currentUserId) : false) || (isSingleTarget && targetUserIds.length === 0)
@@ -105,13 +103,6 @@ export function AskUserCard({ data, currentUserId, onSubmit, className }: Props)
     if (readOnly) return
     onSubmit(answers)
   }, [answers, onSubmit, readOnly])
-
-  useEffect(() => {
-    if (answered || expired || !Number.isFinite(expiresAtMs)) return
-    const delay = Math.max(0, expiresAtMs - Date.now() + 250)
-    const timer = window.setTimeout(() => setNow(Date.now()), delay)
-    return () => window.clearTimeout(timer)
-  }, [answered, expired, expiresAtMs])
 
   const canSubmit = questions.every((q) => {
     if (q.required === false) return true
