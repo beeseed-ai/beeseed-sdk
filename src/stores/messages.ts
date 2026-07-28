@@ -1244,10 +1244,13 @@ export interface MessagesState {
   loadingOlderChannels: Set<string>
   hasOlderMessages: Map<string, boolean>
   olderMessageCursors: Map<string, number>
+  loadingAgentRunDetails: Set<string>
+  loadedAgentRunDetails: Set<string>
   loadingChannel: string | null
 
   fetchMessages: (channelId: string) => Promise<void>
   loadOlderMessages: (channelId: string) => Promise<void>
+  loadAgentRunDetails: (channelId: string, agentId: string, runId: string) => Promise<void>
   fetchMembers: (channelId: string) => Promise<void>
   handleEvent: (event: WSEvent) => void
   addOptimisticMessage: (channelId: string, content: string, metadata?: Record<string, unknown>) => void
@@ -1298,6 +1301,10 @@ function shouldIgnoreStaleLiveAgentEvent(
 }
 
 export function createMessagesStore(config: MessagesStoreConfig) {
+  const messageRequests = new Map<string, Promise<void>>()
+  const memberRequests = new Map<string, Promise<void>>()
+  const agentRunDetailRequests = new Map<string, Promise<void>>()
+
   return createStore<MessagesState>()((set, get) => ({
     messages: new Map(),
     streams: new Map(),
@@ -1307,54 +1314,67 @@ export function createMessagesStore(config: MessagesStoreConfig) {
     loadingOlderChannels: new Set(),
     hasOlderMessages: new Map(),
     olderMessageCursors: new Map(),
+    loadingAgentRunDetails: new Set(),
+    loadedAgentRunDetails: new Set(),
     loadingChannel: null,
 
-    fetchMessages: async (channelId) => {
-      set({ loadingChannel: channelId })
-      try {
-        const page = await fetchMessagePage(config.api, channelId, { limit: String(MESSAGE_PAGE_SIZE) })
-        const msgs = page.messages
-        const userId = config.getCurrentUserId()
-        const parsed = msgs
-          .map((m) => parseMessage(m, userId))
-          .filter((m): m is ChatMessage => m !== null)
-        const map = new Map(get().messages)
-        map.set(channelId, parsed)
-        const loops = new Map(get().agentLoops)
-        for (const key of loops.keys()) {
-          if (key.startsWith(`${channelId}:`)) {
-            loops.delete(key)
-          }
-        }
-        for (const [key, loop] of buildAgentLoopsFromMessages(channelId, msgs)) {
-          loops.set(key, loop)
-        }
-        const olderMap = new Map(get().hasOlderMessages)
-        olderMap.set(channelId, page.hasOlder ?? displayMessageCount(msgs) >= MESSAGE_PAGE_SIZE)
-        const cursorMap = new Map(get().olderMessageCursors)
-        if (page.nextBefore) {
-          cursorMap.set(channelId, page.nextBefore)
-        } else {
-          cursorMap.delete(channelId)
-        }
-        set({ messages: map, agentLoops: loops, hasOlderMessages: olderMap, olderMessageCursors: cursorMap, loadingChannel: null })
+    fetchMessages: (channelId) => {
+      const activeRequest = messageRequests.get(channelId)
+      if (activeRequest) return activeRequest
 
-        const runIds = visibleRunIdsFromMessages(msgs)
-        if (runIds.length === 0) return
+      if (!get().messages.has(channelId)) set({ loadingChannel: channelId })
+      const request = (async () => {
         try {
-          const localAgentData = await config.api.get('local-agent/runs', {
-            searchParams: { channel_id: channelId, run_ids: runIds.join(',') },
-          }).json<{ runs?: LocalAgentRunWire[] }>()
-          const localAgentRuns = Array.isArray(localAgentData.runs) ? localAgentData.runs : []
-          if (localAgentRuns.length === 0) return
-          const hydratedLoops = applyLocalAgentRunsToLoops(channelId, get().agentLoops, localAgentRuns)
-          set({ agentLoops: hydratedLoops })
+          const page = await fetchMessagePage(config.api, channelId, { limit: String(MESSAGE_PAGE_SIZE) })
+          const msgs = page.messages
+          const userId = config.getCurrentUserId()
+          const parsed = msgs
+            .map((m) => parseMessage(m, userId))
+            .filter((m): m is ChatMessage => m !== null)
+          const map = new Map(get().messages)
+          map.set(channelId, parsed)
+          const loops = new Map(get().agentLoops)
+          for (const key of loops.keys()) {
+            if (key.startsWith(`${channelId}:`)) {
+              loops.delete(key)
+            }
+          }
+          for (const [key, loop] of buildAgentLoopsFromMessages(channelId, msgs)) {
+            loops.set(key, loop)
+          }
+          const olderMap = new Map(get().hasOlderMessages)
+          olderMap.set(channelId, page.hasOlder ?? displayMessageCount(msgs) >= MESSAGE_PAGE_SIZE)
+          const cursorMap = new Map(get().olderMessageCursors)
+          if (page.nextBefore) {
+            cursorMap.set(channelId, page.nextBefore)
+          } else {
+            cursorMap.delete(channelId)
+          }
+          set({ messages: map, agentLoops: loops, hasOlderMessages: olderMap, olderMessageCursors: cursorMap })
+
+          const runIds = visibleRunIdsFromMessages(msgs)
+          if (runIds.length === 0) return
+          try {
+            const localAgentData = await config.api.get('local-agent/runs', {
+              searchParams: { channel_id: channelId, run_ids: runIds.join(',') },
+            }).json<{ runs?: LocalAgentRunWire[] }>()
+            const localAgentRuns = Array.isArray(localAgentData.runs) ? localAgentData.runs : []
+            if (localAgentRuns.length === 0) return
+            const hydratedLoops = applyLocalAgentRunsToLoops(channelId, get().agentLoops, localAgentRuns)
+            set({ agentLoops: hydratedLoops })
+          } catch {
+            // local agent history is supplementary; keep message history visible.
+          }
         } catch {
-          // local agent history is supplementary; keep message history visible.
+          // keep cached channel data visible when background refresh fails.
+        } finally {
+          if (get().loadingChannel === channelId) set({ loadingChannel: null })
         }
-      } catch {
-        set({ loadingChannel: null })
-      }
+      })().finally(() => {
+        messageRequests.delete(channelId)
+      })
+      messageRequests.set(channelId, request)
+      return request
     },
 
     loadOlderMessages: async (channelId) => {
@@ -1421,20 +1441,66 @@ export function createMessagesStore(config: MessagesStoreConfig) {
       }
     },
 
-    fetchMembers: async (channelId) => {
-      try {
-        const raw = await config.api.get(`channels/${channelId}/members`).json<ChannelMemberInfo[]>()
-        const data = raw
-          .map((m) => ({
-            ...m,
-            display_name: m.display_name || m.nickname || m.agent_id || m.user_id || 'unknown',
-          }))
-        const map = new Map(get().members)
-        map.set(channelId, data)
-        set({ members: map })
-      } catch {
-        // ignore
-      }
+    loadAgentRunDetails: (channelId, agentId, runId) => {
+      const key = agentLoopStoreKey(channelId, agentId, runId)
+      if (get().loadedAgentRunDetails.has(key)) return Promise.resolve()
+      const activeRequest = agentRunDetailRequests.get(key)
+      if (activeRequest) return activeRequest
+
+      const loading = new Set(get().loadingAgentRunDetails)
+      loading.add(key)
+      set({ loadingAgentRunDetails: loading })
+      const request = (async () => {
+        try {
+          const messages = await config.api.get(`channels/${channelId}/messages`, {
+            searchParams: { run_id: runId },
+          }).json<Message[]>()
+          const hydrated = buildAgentLoopsFromMessages(channelId, messages)
+          const fullLoop = hydrated.get(key) ?? [...hydrated.values()].find((loop) => loop.runId === runId)
+          if (fullLoop) {
+            const loops = new Map(get().agentLoops)
+            loops.set(key, fullLoop)
+            set({ agentLoops: loops })
+          }
+          const loaded = new Set(get().loadedAgentRunDetails)
+          loaded.add(key)
+          set({ loadedAgentRunDetails: loaded })
+        } catch {
+          // keep the compact timeline summary and allow a later retry.
+        } finally {
+          const nextLoading = new Set(get().loadingAgentRunDetails)
+          nextLoading.delete(key)
+          set({ loadingAgentRunDetails: nextLoading })
+        }
+      })().finally(() => {
+        agentRunDetailRequests.delete(key)
+      })
+      agentRunDetailRequests.set(key, request)
+      return request
+    },
+
+    fetchMembers: (channelId) => {
+      const activeRequest = memberRequests.get(channelId)
+      if (activeRequest) return activeRequest
+      const request = (async () => {
+        try {
+          const raw = await config.api.get(`channels/${channelId}/members`).json<ChannelMemberInfo[]>()
+          const data = raw
+            .map((m) => ({
+              ...m,
+              display_name: m.display_name || m.nickname || m.agent_id || m.user_id || 'unknown',
+            }))
+          const map = new Map(get().members)
+          map.set(channelId, data)
+          set({ members: map })
+        } catch {
+          // ignore
+        }
+      })().finally(() => {
+        memberRequests.delete(channelId)
+      })
+      memberRequests.set(channelId, request)
+      return request
     },
 
     addOptimisticMessage: (channelId, content, metadata) => {
@@ -2321,6 +2387,9 @@ export function createMessagesStore(config: MessagesStoreConfig) {
       typingStatus: new Map(),
       loadingOlderChannels: new Set(),
       hasOlderMessages: new Map(),
+      olderMessageCursors: new Map(),
+      loadingAgentRunDetails: new Set(),
+      loadedAgentRunDetails: new Set(),
       loadingChannel: null,
     }),
   }))

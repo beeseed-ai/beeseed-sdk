@@ -6,15 +6,17 @@ import { latestPendingAskUserForUser, pendingAskUserKey, readAckBeforePendingAsk
 
 interface UseChatOptions {
   markRead?: boolean
+  sync?: boolean
 }
 
 export function useChat(channelId: string | null, options?: UseChatOptions) {
   const { authStore, channelsStore, messagesStore, ws } = useBeeSeedContext()
   const state = useStore(messagesStore)
   const markRead = options?.markRead === true
+  const sync = options?.sync !== false
 
   useEffect(() => {
-    if (!channelId) return
+    if (!channelId || !sync) return
     let cancelled = false
     const s = messagesStore.getState()
     void s.fetchMessages(channelId).then(() => {
@@ -25,7 +27,7 @@ export function useChat(channelId: string | null, options?: UseChatOptions) {
     return () => {
       cancelled = true
     }
-  }, [channelId, channelsStore, messagesStore, ws])
+  }, [channelId, channelsStore, messagesStore, sync, ws])
 
   const channelMessages = channelId ? state.getMessages(channelId) : []
   const latestMsgId = latestMessageId(channelMessages)
@@ -122,6 +124,11 @@ export function useChat(channelId: string | null, options?: UseChatOptions) {
     return messagesStore.getState().loadOlderMessages(channelId)
   }, [channelId, messagesStore])
 
+  const loadAgentRunDetails = useCallback((agentId: string, runId: string) => {
+    if (!channelId || !agentId || !runId) return Promise.resolve()
+    return messagesStore.getState().loadAgentRunDetails(channelId, agentId, runId)
+  }, [channelId, messagesStore])
+
   const streams = channelId ? state.getStreams(channelId) : []
   const agentLoops = channelId ? state.getAgentLoops(channelId) : []
   const typings = channelId ? state.getTypings(channelId) : []
@@ -144,6 +151,7 @@ export function useChat(channelId: string | null, options?: UseChatOptions) {
     loading: state.loadingChannel === channelId,
     hasOlderMessages: channelId ? state.hasOlder(channelId) : false,
     loadingOlderMessages: channelId ? state.isLoadingOlder(channelId) : false,
+    loadingAgentRunDetails: state.loadingAgentRunDetails,
     send,
     sendWithQuote,
     submitAnswer,
@@ -151,6 +159,7 @@ export function useChat(channelId: string | null, options?: UseChatOptions) {
     ack,
     refreshMembers,
     loadOlderMessages,
+    loadAgentRunDetails,
   }
 }
 

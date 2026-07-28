@@ -13,6 +13,13 @@ import { AgentTodoRail } from './AgentTodoRail.js'
 
 const CHAT_MAX_WIDTH = 820
 
+type AgentConfigSkillResult = {
+  agent: SkillShortcutAgent
+  cfg: Record<string, unknown> | null
+}
+
+const agentConfigSkillRequests = new WeakMap<object, Map<string, Promise<AgentConfigSkillResult[]>>>()
+
 interface Props {
   channelId: string
   className?: string
@@ -38,6 +45,8 @@ export function ChatChannel({ channelId, className, header }: Props) {
     hasOlderMessages,
     loadingOlderMessages,
     loadOlderMessages,
+    loadingAgentRunDetails,
+    loadAgentRunDetails,
   } = useChat(channelId, { markRead: true })
   const { composerInsertText, consumeComposerInsert, openWorkflowRun } = useDetailPanel()
   const [quotedMessage, setQuotedMessage] = useState<ChatMessage | null>(null)
@@ -56,13 +65,26 @@ export function ChatChannel({ channelId, className, header }: Props) {
     let cancelled = false
     setConfigSkillOptions([])
     const agents = members.map(agentShortcut).filter((agent): agent is SkillShortcutAgent => Boolean(agent))
-    if (!channelId || agents.length === 0) return
+    if (!channelId || loading || agents.length === 0) return
 
     const loadAgentConfigSkills = async () => {
-      const agentConfigs = await Promise.all(agents.map(async (agent) => {
-        const cfg = await api.get(`channels/${channelId}/agents/${encodeURIComponent(agent.agent_id)}/config`).json<Record<string, unknown>>().catch(() => null)
-        return { agent, cfg }
-      }))
+      let apiRequests = agentConfigSkillRequests.get(api)
+      if (!apiRequests) {
+        apiRequests = new Map()
+        agentConfigSkillRequests.set(api, apiRequests)
+      }
+      const requestKey = `${channelId}:${agents.map((agent) => agent.agent_id).sort().join(',')}`
+      let request = apiRequests.get(requestKey)
+      if (!request) {
+        request = Promise.all(agents.map(async (agent) => {
+          const cfg = await api.get(`channels/${channelId}/agents/${encodeURIComponent(agent.agent_id)}/config`).json<Record<string, unknown>>().catch(() => null)
+          return { agent, cfg }
+        })).finally(() => {
+          apiRequests?.delete(requestKey)
+        })
+        apiRequests.set(requestKey, request)
+      }
+      const agentConfigs = await request
       if (cancelled) return
 
       const byName = new Map<string, SkillShortcutOption>()
@@ -91,7 +113,7 @@ export function ChatChannel({ channelId, className, header }: Props) {
     return () => {
       cancelled = true
     }
-  }, [api, channelId, members])
+  }, [api, channelId, loading, members])
 
   const skillOptions = useMemo(
     () => mergeSkillOptions(memberSkillOptions, configSkillOptions),
@@ -150,6 +172,8 @@ export function ChatChannel({ channelId, className, header }: Props) {
               hasOlder={hasOlderMessages}
               loadingOlder={loadingOlderMessages}
               onLoadOlder={loadOlderMessages}
+              loadingAgentRunDetails={loadingAgentRunDetails}
+              onLoadAgentRunDetails={loadAgentRunDetails}
               welcomeTitle={welcomeTitle}
               welcomeFallbackTitle={branding.title}
               welcomeMessage={welcomeMessage}

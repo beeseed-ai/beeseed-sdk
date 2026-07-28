@@ -61,6 +61,17 @@ export interface TasksStoreConfig {
 }
 
 export function createTasksStore(config: TasksStoreConfig) {
+  const readRequests = new Map<string, Promise<void>>()
+  const coalesceRead = (key: string, load: () => Promise<void>) => {
+    const activeRequest = readRequests.get(key)
+    if (activeRequest) return activeRequest
+    const request = load().finally(() => {
+      readRequests.delete(key)
+    })
+    readRequests.set(key, request)
+    return request
+  }
+
   return createStore<TasksState>()((set, get) => ({
     projects: [],
     tasks: [],
@@ -71,24 +82,24 @@ export function createTasksStore(config: TasksStoreConfig) {
     schedulesLoading: false,
     metricsLoading: false,
 
-    fetchProjects: async (channelId) => {
+    fetchProjects: (channelId) => coalesceRead(`projects:${channelId}`, async () => {
       if (config.useMock) { set({ projects: MOCK_PROJECTS }); return }
       try {
         const data = await config.api.get(`channels/${channelId}/projects`).json<{ projects: Project[] }>()
         set({ projects: data.projects })
       } catch { /* */ }
-    },
+    }),
 
-    fetchTasks: async (channelId) => {
+    fetchTasks: (channelId) => coalesceRead(`tasks:${channelId}`, async () => {
       set({ loading: true })
       if (config.useMock) { set({ tasks: MOCK_TASKS, loading: false }); return }
       try {
         const data = await config.api.get(`channels/${channelId}/tasks`).json<{ tasks: Task[] }>()
         set({ tasks: data.tasks, loading: false })
       } catch { set({ loading: false }) }
-    },
+    }),
 
-    fetchMetrics: async (channelId) => {
+    fetchMetrics: (channelId) => coalesceRead(`metrics:${channelId}`, async () => {
       set({ metricsLoading: true })
       if (config.useMock) {
         set({ metrics: createMockMetrics(get().tasks, get().scheduledTasks), metricsLoading: false })
@@ -98,7 +109,7 @@ export function createTasksStore(config: TasksStoreConfig) {
         const metrics = await config.api.get(`channels/${channelId}/task-metrics`).json<TaskSchedulerMetrics>()
         set({ metrics, metricsLoading: false })
       } catch { set({ metricsLoading: false }) }
-    },
+    }),
 
     createTask: async (channelId, data) => {
       if (config.useMock) {
@@ -163,14 +174,14 @@ export function createTasksStore(config: TasksStoreConfig) {
       } catch { /* */ }
     },
 
-    fetchScheduledTasks: async (channelId) => {
+    fetchScheduledTasks: (channelId) => coalesceRead(`scheduled:${channelId}`, async () => {
       set({ schedulesLoading: true })
       if (config.useMock) { set({ scheduledTasks: MOCK_TASK_SCHEDULES, schedulesLoading: false }); return }
       try {
         const data = await config.api.get(`channels/${channelId}/scheduled-tasks`).json<{ scheduled_tasks: TaskSchedule[] }>()
         set({ scheduledTasks: data.scheduled_tasks || [], schedulesLoading: false })
       } catch { set({ schedulesLoading: false }) }
-    },
+    }),
 
     createScheduledTask: async (channelId, data) => {
       if (config.useMock) {
@@ -242,17 +253,20 @@ export function createTasksStore(config: TasksStoreConfig) {
       } catch { /* */ }
     },
 
-    fetchCalendar: async (channelId, range) => {
-      if (config.useMock) { set({ calendarEvents: MOCK_CALENDAR_EVENTS }); return }
-      try {
-        const params = new URLSearchParams()
-        if (range?.from) params.set('from', range.from)
-        if (range?.to) params.set('to', range.to)
-        const suffix = params.toString() ? `?${params.toString()}` : ''
-        const data = await config.api.get(`channels/${channelId}/calendar${suffix}`).json<{ events: CalendarEvent[] }>()
-        set({ calendarEvents: data.events || [] })
-      } catch { /* */ }
-    },
+    fetchCalendar: (channelId, range) => coalesceRead(
+      `calendar:${channelId}:${range?.from ?? ''}:${range?.to ?? ''}`,
+      async () => {
+        if (config.useMock) { set({ calendarEvents: MOCK_CALENDAR_EVENTS }); return }
+        try {
+          const params = new URLSearchParams()
+          if (range?.from) params.set('from', range.from)
+          if (range?.to) params.set('to', range.to)
+          const suffix = params.toString() ? `?${params.toString()}` : ''
+          const data = await config.api.get(`channels/${channelId}/calendar${suffix}`).json<{ events: CalendarEvent[] }>()
+          set({ calendarEvents: data.events || [] })
+        } catch { /* */ }
+      },
+    ),
 
     getComments: async (channelId, taskId) => {
       if (config.useMock) return MOCK_COMMENTS.filter((c) => c.task_id === taskId)

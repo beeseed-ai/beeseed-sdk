@@ -15,6 +15,8 @@ interface Props {
   showTerminal?: boolean
   displayError?: string
   terminalAction?: ReactNode
+  processLoading?: boolean
+  onProcessOpen?: () => void
   className?: string
 }
 
@@ -477,6 +479,8 @@ export function AgentRunTranscript({
   showTerminal = true,
   displayError,
   terminalAction,
+  processLoading = false,
+  onProcessOpen,
   className,
 }: Props) {
   const isRunning = loop.status === 'running'
@@ -499,7 +503,7 @@ export function AgentRunTranscript({
   const processLabel = processStatusLabel(loop, observedEndAt(loop, finalMessage, orderedEvents), terminalError)
   const processSummary = processStatusSummary(loop, orderedEvents, finalAnswer, terminalError)
 
-  const processContent = orderedEvents ? orderedEvents.map((item) => renderEventItem(item, loop, finalAnswer)) : loop.turns.map((turn, index) => {
+  const renderProcessContent = () => orderedEvents ? orderedEvents.map((item) => renderEventItem(item, loop, finalAnswer)) : loop.turns.map((turn, index) => {
     const visibleContent = showContent === 'none'
       ? ''
       : showContent === 'intermediate' && turn.turnNumber === finalTurnNumber
@@ -557,7 +561,10 @@ export function AgentRunTranscript({
             type="button"
             aria-expanded={processOpen}
             title={processSummary ? `${processLabel} · ${processSummary}` : processLabel}
-            onClick={() => setProcessOpen((open) => !open)}
+            onClick={() => setProcessOpen((open) => {
+              if (!open) onProcessOpen?.()
+              return !open
+            })}
             className="mb-1 flex min-h-8 w-full min-w-0 items-center gap-2 rounded-md border border-[#dddddd] bg-white px-2.5 py-1.5 text-left text-xs transition-colors hover:bg-[#f8fafc]"
           >
             <ChevronRight className={cn('size-3 shrink-0 text-[#777169] transition-transform', processOpen && 'rotate-90')} />
@@ -572,10 +579,11 @@ export function AgentRunTranscript({
                 {processSummary}
               </span>
             )}
+            {processLoading && <span className="shrink-0 text-[#777169]">加载完整记录中...</span>}
           </button>
-          {processOpen && <div className="ml-5 border-l border-[#dddddd] pl-2 pt-1">{processContent}</div>}
+          {processOpen && <div className="ml-5 border-l border-[#dddddd] pl-2 pt-1">{renderProcessContent()}</div>}
         </>
-      ) : processContent}
+      ) : renderProcessContent()}
 
       {showTerminal && hasFinalAnswer ? (
         <AssistantText channelId={loop.channelId} content={finalAnswer} final />

@@ -55,6 +55,8 @@ interface Props {
   hasOlder?: boolean
   loadingOlder?: boolean
   onLoadOlder?: () => Promise<void> | void
+  loadingAgentRunDetails?: ReadonlySet<string>
+  onLoadAgentRunDetails?: (agentId: string, runId: string) => Promise<void> | void
   welcomeTitle?: string
   welcomeFallbackTitle?: string
   welcomeMessage?: string
@@ -284,13 +286,15 @@ function buildTimelineGroups(messages: ChatMessage[], loops: AgentLoopState[]): 
   return groups
 }
 
-function AgentLoopBlock({ loop, members, finalMessage, events, showTerminal = true, onStop }: {
+function AgentLoopBlock({ loop, members, finalMessage, events, showTerminal = true, onStop, detailsLoading, onLoadDetails }: {
   loop: AgentLoopState
   members?: ChannelMemberInfo[]
   finalMessage?: ChatMessage
   events?: AgentLoopEventItem[]
   showTerminal?: boolean
   onStop?: (agentId: string, reason?: string, runId?: string) => void
+  detailsLoading?: boolean
+  onLoadDetails?: () => Promise<void> | void
 }) {
   const [stopOpen, setStopOpen] = useState(false)
   const [stopReason, setStopReason] = useState('')
@@ -347,7 +351,14 @@ function AgentLoopBlock({ loop, members, finalMessage, events, showTerminal = tr
             </DialogContent>
           </Dialog>
         )}
-        <AgentRunTranscript loop={loop} finalMessage={finalMessage} events={events} showTerminal={showTerminal} />
+        <AgentRunTranscript
+          loop={loop}
+          finalMessage={finalMessage}
+          events={events}
+          showTerminal={showTerminal}
+          processLoading={detailsLoading}
+          onProcessOpen={onLoadDetails}
+        />
       </div>
     </div>
   )
@@ -373,6 +384,8 @@ export function MessageList({
   hasOlder = false,
   loadingOlder = false,
   onLoadOlder,
+  loadingAgentRunDetails,
+  onLoadAgentRunDetails,
   welcomeTitle,
   welcomeFallbackTitle,
   welcomeMessage,
@@ -575,6 +588,10 @@ export function MessageList({
                     events={group.events}
                     showTerminal={!!group.finalMessage || (isLastLoopGroup && !hasSeparateFinalMessage)}
                     onStop={onStopAgent}
+                    detailsLoading={group.loop.runId ? loadingAgentRunDetails?.has(`${group.loop.channelId}:${group.loop.agentId}:${group.loop.runId}`) : false}
+                    onLoadDetails={group.loop.runId && onLoadAgentRunDetails
+                      ? () => onLoadAgentRunDetails(group.loop.agentId, group.loop.runId!)
+                      : undefined}
                   />
                 )
               }
