@@ -14,6 +14,7 @@ export interface ChannelsState {
   getChannelByExternalRef: (externalRef: string) => Promise<ExternalChannelResponse | null>
   createChannelByExternalRef: (input: ExternalChannelCreateInput) => Promise<ExternalChannelResponse | null>
   deleteChannel: (channelId: string) => Promise<{ error: string | null }>
+  leaveChannelMembership: (channelId: string) => Promise<{ error: string | null }>
   requestJoin: (channelId: string) => Promise<{ error: string | null }>
   inviteUsers: (channelId: string, targets: string[]) => Promise<{ error: string | null }>
   updateUnread: (channelId: string, count: number) => void
@@ -108,6 +109,24 @@ export function createChannelsStore(config: ChannelsStoreConfig) {
         return { error: null }
       } catch (err) {
         return { error: err instanceof Error ? err.message : '删除频道失败' }
+      }
+    },
+
+    leaveChannelMembership: async (channelId) => {
+      if (!channelId) return { error: '频道不存在' }
+      try {
+        await config.api.delete(`channels/${encodeURIComponent(channelId)}/membership`)
+        const nextChannels = get().channels.filter((channel) => channel.id !== channelId)
+        const current = get().currentChannelId
+        const nextCurrent = current === channelId ? (nextChannels[0]?.id ?? null) : current
+        try {
+          if (nextCurrent) sessionStorage.setItem('beeseed_current_channel', nextCurrent)
+          else sessionStorage.removeItem('beeseed_current_channel')
+        } catch {}
+        set({ channels: nextChannels, currentChannelId: nextCurrent })
+        return { error: null }
+      } catch (err) {
+        return { error: err instanceof Error ? err.message : '退出频道失败' }
       }
     },
 

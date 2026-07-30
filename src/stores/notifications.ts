@@ -24,12 +24,16 @@ export interface NotificationsStoreConfig {
 }
 
 export function createNotificationsStore(config: NotificationsStoreConfig) {
+  let latestRefresh = 0
+  const pendingWsNotifications = new Map<number, AppNotification>()
+
   return createStore<NotificationsState>()((set, get) => ({
     notifications: [],
     unreadCount: 0,
     loading: false,
 
     refresh: async () => {
+      const refreshID = ++latestRefresh
       set({ loading: true })
       if (config.useMock) {
         set({ notifications: MOCK_NOTIFICATIONS, unreadCount: MOCK_NOTIFICATIONS.filter((n) => !n.is_read).length, loading: false })
@@ -37,9 +41,21 @@ export function createNotificationsStore(config: NotificationsStoreConfig) {
       }
       try {
         const data = await config.api.get('notifications').json<{ notifications: AppNotification[] }>()
-        const list = data.notifications || []
+        if (refreshID !== latestRefresh) return
+        let list = data.notifications || []
+        const fetchedIDs = new Set(list.map((notification) => notification.id))
+        fetchedIDs.forEach((id) => pendingWsNotifications.delete(id))
+        const pending = [...pendingWsNotifications.values()]
+        if (pending.length > 0) {
+          list = [...pending, ...list].sort((left, right) => {
+            const createdAtDiff = Date.parse(right.created_at) - Date.parse(left.created_at)
+            return Number.isNaN(createdAtDiff) || createdAtDiff === 0 ? right.id - left.id : createdAtDiff
+          })
+        }
         set({ notifications: list, unreadCount: list.filter((n) => !n.is_read).length, loading: false })
-      } catch { set({ loading: false }) }
+      } catch {
+        if (refreshID === latestRefresh) set({ loading: false })
+      }
     },
 
     markRead: async (id) => {
@@ -73,6 +89,7 @@ export function createNotificationsStore(config: NotificationsStoreConfig) {
       }
       try {
         await config.api.delete('notifications')
+        pendingWsNotifications.clear()
         set({ notifications: [], unreadCount: 0 })
         return { error: null }
       } catch (err) {
@@ -103,12 +120,17 @@ export function createNotificationsStore(config: NotificationsStoreConfig) {
     },
 
     handleWsNotification: (n) => {
+      pendingWsNotifications.set(n.id, n)
       const existing = get().notifications
       const withoutDuplicate = existing.filter((item) => item.id !== n.id)
       set({ notifications: [n, ...withoutDuplicate], unreadCount: withoutDuplicate.filter((item) => !item.is_read).length + (n.is_read ? 0 : 1) })
     },
 
-    reset: () => set({ notifications: [], unreadCount: 0, loading: false }),
+    reset: () => {
+      latestRefresh += 1
+      pendingWsNotifications.clear()
+      set({ notifications: [], unreadCount: 0, loading: false })
+    },
   }))
 }
 
