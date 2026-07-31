@@ -10,7 +10,7 @@ export interface ChannelTemplateScheduledTask {
   catch_up_policy?: 'none' | 'latest' | 'all'
   delivery_mode?: 'shared_broadcast'
   shared_execution_key?: string
-  content_policy?: 'inline_markdown_required'
+  content_policy?: 'inline_markdown_required' | 'inline_markdown_sources_required'
 }
 
 export function normalizeChannelTemplateScheduledTasks(
@@ -33,9 +33,10 @@ export function normalizeChannelTemplateScheduledTasks(
       catch_up_policy: task.catch_up_policy || 'latest',
       delivery_mode: sharedBroadcast ? 'shared_broadcast' : undefined,
       shared_execution_key: sharedBroadcast ? sharedExecutionKey : undefined,
-      content_policy: sharedBroadcast && task.content_policy === 'inline_markdown_required'
-        ? 'inline_markdown_required'
-        : undefined,
+      content_policy: sharedBroadcast && (
+        task.content_policy === 'inline_markdown_required'
+        || task.content_policy === 'inline_markdown_sources_required'
+      ) ? task.content_policy : undefined,
     }
   })
 }

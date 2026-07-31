@@ -33,4 +33,16 @@ describe('normalizeChannelTemplateScheduledTasks', () => {
     expect(task.shared_execution_key).toBeUndefined()
     expect(task.content_policy).toBeUndefined()
   })
+
+  it('保留要求来源链接的共享 Markdown 策略', () => {
+    const [task] = normalizeChannelTemplateScheduledTasks([{
+      title: '每日新闻',
+      cron_expr: '0 7 * * *',
+      delivery_mode: 'shared_broadcast',
+      shared_execution_key: 'earseek-daily-news',
+      content_policy: 'inline_markdown_sources_required',
+    }], 'assistant', () => 'generated')
+
+    expect(task.content_policy).toBe('inline_markdown_sources_required')
+  })
 })
