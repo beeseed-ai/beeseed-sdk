@@ -1523,6 +1523,51 @@ export function createMessagesStore(config: MessagesStoreConfig) {
       const userId = config.getCurrentUserId()
 
       switch (event.type) {
+        case 'messages_cleared': {
+          const messages = new Map(state.messages)
+          messages.set(event.channel_id, [])
+
+          const streams = new Map(state.streams)
+          for (const key of streams.keys()) {
+            if (key.startsWith(`${event.channel_id}:`)) streams.delete(key)
+          }
+
+          const agentLoops = new Map(state.agentLoops)
+          for (const key of agentLoops.keys()) {
+            if (key.startsWith(`${event.channel_id}:`)) agentLoops.delete(key)
+          }
+
+          const typingStatus = new Map(state.typingStatus)
+          clearTypingForChannel(typingStatus, event.channel_id)
+
+          const hasOlderMessages = new Map(state.hasOlderMessages)
+          hasOlderMessages.set(event.channel_id, false)
+          const olderMessageCursors = new Map(state.olderMessageCursors)
+          olderMessageCursors.delete(event.channel_id)
+
+          const loadingAgentRunDetails = new Set(state.loadingAgentRunDetails)
+          const loadedAgentRunDetails = new Set(state.loadedAgentRunDetails)
+          for (const key of loadingAgentRunDetails) {
+            if (key.startsWith(`${event.channel_id}:`)) loadingAgentRunDetails.delete(key)
+          }
+          for (const key of loadedAgentRunDetails) {
+            if (key.startsWith(`${event.channel_id}:`)) loadedAgentRunDetails.delete(key)
+          }
+
+          set({
+            messages,
+            streams,
+            agentLoops,
+            typingStatus,
+            hasOlderMessages,
+            olderMessageCursors,
+            loadingAgentRunDetails,
+            loadedAgentRunDetails,
+            loadingChannel: state.loadingChannel === event.channel_id ? null : state.loadingChannel,
+          })
+          break
+        }
+
         case 'message': {
           maybeEmitStorageMutationFromMessage(event.channel_id, event.message)
           const parsed = parseMessage(event.message, userId)

@@ -1001,6 +1001,7 @@ export type AgentLoopWireFields = { seq?: number; event_id?: string; tool_call_i
 export type WSEvent =
   | { type: 'auth_ok'; user: User; channels: ChannelWithMeta[] }
   | { type: 'message'; channel_id: string; message: Message }
+  | { type: 'messages_cleared'; channel_id: string; deleted_count: number }
   | ({ type: 'chunk'; channel_id: string; agent_id: string; run_id?: string; content: string; turn?: number } & AgentLoopWireFields)
   | ({ type: 'message_end'; channel_id: string; agent_id: string; run_id?: string; turn?: number; message: Message } & AgentLoopWireFields)
   | ({ type: 'thinking'; channel_id: string; agent_id: string; run_id?: string; content: string } & AgentLoopWireFields)

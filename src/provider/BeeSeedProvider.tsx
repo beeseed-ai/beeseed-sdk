@@ -137,7 +137,7 @@ function createBeeSeedContext(
     }
     messagesStore.getState().handleEvent(event)
 
-    if (event.type === 'message' || event.type === 'message_end') {
+    if (event.type === 'message' || event.type === 'message_end' || event.type === 'messages_cleared') {
       void channelsStore.getState().fetchChannels()
     }
     if (event.type === 'channels_updated') {
