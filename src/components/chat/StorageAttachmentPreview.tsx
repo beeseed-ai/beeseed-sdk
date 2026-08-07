@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { Archive, Code2, Download, ExternalLink, File, FileAudio, FileImage, FileSpreadsheet, FileText, FileVideo, Presentation, X } from 'lucide-react'
+import { Archive, Code2, Download, ExternalLink, File, FileAudio, FileImage, FileSpreadsheet, FileText, FileVideo, Presentation, RotateCw, X } from 'lucide-react'
 import { cn } from '../../lib/cn.js'
 import { storageAttachmentDownloadPayload, storagePresignDownloadPayload, storagePreviewPresignPayload } from '../../lib/storage-presign.js'
 import { fileNameFromStorageRef, keyFromStorageRef } from '../../lib/storage-ref.js'
@@ -245,6 +245,96 @@ function officeOnlinePreviewURL(fileURL: string) {
   return `https://view.officeapps.live.com/op/embed.aspx?src=${encodeURIComponent(absoluteURL)}`
 }
 
+const OFFICE_PREVIEW_GUIDANCE_DELAY_MS = 30_000
+
+function PresentationPreview({
+  url,
+  name,
+  attempt,
+  downloading,
+  onReload,
+  onDownload,
+}: {
+  url: string
+  name: string
+  attempt: number
+  downloading: boolean
+  onReload: () => void
+  onDownload: () => void
+}) {
+  const [showGuidance, setShowGuidance] = useState(false)
+  const officeUrl = officeOnlinePreviewURL(url)
+
+  useEffect(() => {
+    setShowGuidance(false)
+    const timeoutId = window.setTimeout(() => setShowGuidance(true), OFFICE_PREVIEW_GUIDANCE_DELAY_MS)
+    return () => window.clearTimeout(timeoutId)
+  }, [attempt, url])
+
+  return (
+    <div className="space-y-3">
+      <div className="flex flex-wrap items-center gap-2 rounded border border-[#e5e5e5] bg-white px-3 py-2 text-xs text-[#5f6b7a]">
+        <Presentation className="h-4 w-4 shrink-0 text-[#254fad]" />
+        <span className="min-w-0 flex-1 truncate">正在使用 Office 在线预览演示文稿。</span>
+        <button
+          type="button"
+          onClick={onReload}
+          className="inline-flex h-7 items-center gap-1 rounded-md border border-[#d8dde6] px-2 font-medium text-[#333840] hover:bg-[#f8fafc]"
+        >
+          <RotateCw className="h-3.5 w-3.5" />
+          重新加载预览
+        </button>
+        <button
+          type="button"
+          onClick={() => window.open(officeUrl, '_blank', 'noopener,noreferrer')}
+          className="inline-flex h-7 items-center gap-1 rounded-md border border-[#d8dde6] px-2 font-medium text-[#333840] hover:bg-[#f8fafc]"
+        >
+          <ExternalLink className="h-3.5 w-3.5" />
+          新窗口打开
+        </button>
+      </div>
+      {showGuidance && (
+        <div role="status" className="flex flex-wrap items-center gap-2 rounded-md border border-[#d8dde6] bg-white px-3 py-2 text-xs text-[#41454d]">
+          <span className="min-w-0 flex-1">如果预览仍为空白，可能是 Office 在线预览暂时未完成。可重新加载预览或下载原文件。</span>
+          <button
+            type="button"
+            onClick={onReload}
+            className="inline-flex h-8 items-center gap-1.5 rounded-md border border-[#9297a0] bg-white px-3 font-medium text-[#181d26] hover:bg-[#f8fafc]"
+          >
+            <RotateCw className="h-3.5 w-3.5" />
+            重新加载
+          </button>
+          <button
+            type="button"
+            onClick={onDownload}
+            disabled={downloading}
+            className="inline-flex h-8 items-center gap-1.5 rounded-md bg-[#181d26] px-3 font-medium text-white hover:bg-[#0d1218] disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            <Download className="h-3.5 w-3.5" />
+            {downloading ? '正在创建链接...' : '下载原文件'}
+          </button>
+        </div>
+      )}
+      <iframe
+        key={attempt}
+        src={officeUrl}
+        title={name}
+        className="h-[70vh] w-full rounded border border-[#e5e5e5] bg-white"
+        allowFullScreen
+      />
+      <button
+        type="button"
+        onClick={onDownload}
+        disabled={downloading}
+        className="inline-flex min-h-9 items-center gap-2 rounded-md bg-[#181d26] px-3 text-sm font-medium text-white hover:bg-[#0d1218] disabled:cursor-not-allowed disabled:opacity-50"
+      >
+        <Download className="h-4 w-4" />
+        {downloading ? '正在创建链接...' : '下载原文件'}
+      </button>
+    </div>
+  )
+}
+
 export function StorageFileIcon({ refText, className }: { refText: string; className?: string }) {
   const Icon = storageFileIconForKind(storageFileKindForRef(refText))
   return <Icon className={className} />
@@ -266,6 +356,7 @@ export function StoragePreviewDialog({ channelId, refText, onClose }: { channelI
   const [loading, setLoading] = useState(true)
   const [downloading, setDownloading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [presentationAttempt, setPresentationAttempt] = useState(0)
 
   useEffect(() => {
     let cancelled = false
@@ -304,7 +395,14 @@ export function StoragePreviewDialog({ channelId, refText, onClose }: { channelI
       })
 
     return () => { cancelled = true }
-  }, [api, config.useMockData, ext, kind, refText, channelId])
+  }, [api, config.useMockData, ext, kind, refText, channelId, presentationAttempt])
+
+  const reloadPresentation = () => {
+    setUrl(null)
+    setLoading(true)
+    setError(null)
+    setPresentationAttempt((attempt) => attempt + 1)
+  }
 
   const download = async () => {
     if (config.useMockData || downloading) return
@@ -365,6 +463,27 @@ export function StoragePreviewDialog({ channelId, refText, onClose }: { channelI
               <Icon className="h-9 w-9 text-[#9aa1aa]" />
               <div className="text-sm font-medium text-[#333840]">无法预览此文件</div>
               <div className="max-w-sm text-xs text-[#777169]">{error}</div>
+              {kind === 'presentation' && !config.useMockData && (
+                <div className="mt-2 flex flex-wrap items-center justify-center gap-2">
+                  <button
+                    type="button"
+                    onClick={reloadPresentation}
+                    className="inline-flex h-8 items-center gap-1.5 rounded-md border border-[#9297a0] bg-white px-3 text-xs font-medium text-[#181d26] hover:bg-[#f8fafc]"
+                  >
+                    <RotateCw className="h-3.5 w-3.5" />
+                    重新加载预览
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => void download()}
+                    disabled={downloading}
+                    className="inline-flex h-8 items-center gap-1.5 rounded-md bg-[#181d26] px-3 text-xs font-medium text-white hover:bg-[#0d1218] disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    <Download className="h-3.5 w-3.5" />
+                    {downloading ? '正在创建链接...' : '下载原文件'}
+                  </button>
+                </div>
+              )}
             </div>
           ) : kind === 'image' && url ? (
             <img src={url} alt={name} className="mx-auto max-h-[70vh] max-w-full rounded bg-white object-contain" />
@@ -378,35 +497,14 @@ export function StoragePreviewDialog({ channelId, refText, onClose }: { channelI
               className="h-[70vh] w-full rounded border border-[#e5e5e5] bg-white"
             />
           ) : kind === 'presentation' && url ? (
-            <div className="space-y-3">
-              <div className="flex items-center gap-2 rounded border border-[#e5e5e5] bg-white px-3 py-2 text-xs text-[#5f6b7a]">
-                <Presentation className="h-4 w-4 text-[#254fad]" />
-                <span className="min-w-0 flex-1 truncate">正在使用 Office 在线预览演示文稿。</span>
-                <button
-                  type="button"
-                  onClick={() => window.open(officeOnlinePreviewURL(url), '_blank', 'noopener,noreferrer')}
-                  className="inline-flex h-7 items-center gap-1 rounded-md border border-[#d8dde6] px-2 font-medium text-[#333840] hover:bg-[#f8fafc]"
-                >
-                  <ExternalLink className="h-3.5 w-3.5" />
-                  新窗口打开
-                </button>
-              </div>
-              <iframe
-                src={officeOnlinePreviewURL(url)}
-                title={name}
-                className="h-[70vh] w-full rounded border border-[#e5e5e5] bg-white"
-                allowFullScreen
-              />
-              <button
-                type="button"
-                onClick={() => void download()}
-                disabled={downloading}
-                className="inline-flex min-h-9 items-center gap-2 rounded-md bg-[#181d26] px-3 text-sm font-medium text-white hover:bg-[#2a303a] disabled:cursor-not-allowed disabled:opacity-50"
-              >
-                <Download className="h-4 w-4" />
-                {downloading ? '正在创建链接...' : '下载原文件'}
-              </button>
-            </div>
+            <PresentationPreview
+              url={url}
+              name={name}
+              attempt={presentationAttempt}
+              downloading={downloading}
+              onReload={reloadPresentation}
+              onDownload={() => void download()}
+            />
           ) : kind === 'audio' && url ? (
             <div className="flex h-48 items-center justify-center">
               <audio controls src={url} className="w-full max-w-xl" />
