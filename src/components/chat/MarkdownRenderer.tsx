@@ -1,10 +1,16 @@
-import { memo, useMemo, type ReactNode } from 'react'
+import { memo, useContext, useMemo, type ReactNode } from 'react'
 import Markdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import remarkBreaks from 'remark-breaks'
 import { isLikelyFilePath } from '../../lib/file-path-utils.js'
 import { cn } from '../../lib/cn.js'
 import { StorageRefChip, isLikelyStoragePathRef, storageInlineRefMatches, storageRefFromKey } from '../../lib/storage-ref.js'
+import {
+  markdownImageContext,
+  markdownImageRendererContext,
+  type MarkdownImageContext,
+  type MarkdownImageRenderer,
+} from './MarkdownImageRendering.js'
 
 const MENTION_RE = /@([一-鿿\w][一-鿿\w\-]*)/g
 const INLINE_CODE_CLASS = 'px-1.5 py-0.5 rounded bg-[#e8f5f8] text-[#0f5267] text-[0.9em] font-mono'
@@ -98,6 +104,8 @@ interface MarkdownRendererProps {
   onFileClick?: (path: string) => void
   onStorageRefClick?: (key: string) => void
   storageRefAvailable?: (refText: string) => boolean
+  imageContext?: MarkdownImageContext
+  renderImage?: MarkdownImageRenderer
 }
 
 export const MarkdownRenderer = memo(function MarkdownRenderer({
@@ -106,7 +114,13 @@ export const MarkdownRenderer = memo(function MarkdownRenderer({
   onMentionClick,
   onFileClick,
   onStorageRefClick,
+  imageContext,
+  renderImage,
 }: MarkdownRendererProps) {
+  const contextualImageRenderer = useContext(markdownImageRendererContext)
+  const contextualImageContext = useContext(markdownImageContext)
+  const imageRenderer = renderImage ?? contextualImageRenderer
+  const resolvedImageContext = imageContext ?? contextualImageContext
   const processed = useMemo(() => {
     return content
       .replace(/\*\*([''""〈-】〔-〟《》【】（）「」『』、。])/g, '**‍$1')
@@ -176,6 +190,16 @@ export const MarkdownRenderer = memo(function MarkdownRenderer({
                 {props.children}
               </a>
             )
+          },
+          img(props: { src?: string; alt?: string; title?: string }) {
+            const defaultImage = <img src={props.src} alt={props.alt ?? ''} title={props.title} />
+            return imageRenderer?.({
+              src: props.src,
+              alt: props.alt,
+              title: props.title,
+              context: resolvedImageContext,
+              defaultImage,
+            }) ?? defaultImage
           },
           ul(props: { children?: ReactNode }) {
             return <ul className="my-1 ml-4 list-disc space-y-0.5">{props.children}</ul>

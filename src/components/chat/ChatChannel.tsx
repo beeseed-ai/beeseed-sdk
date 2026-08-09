@@ -10,6 +10,7 @@ import { useBeeSeedContext } from '../../provider/BeeSeedProvider.js'
 import { MessageList } from './MessageList.js'
 import { MessageInput } from './MessageInput.js'
 import { AgentTodoRail } from './AgentTodoRail.js'
+import { markdownImageRendererContext, type MarkdownImageRenderer } from './MarkdownImageRendering.js'
 
 const CHAT_MAX_WIDTH = 820
 
@@ -24,9 +25,10 @@ interface Props {
   channelId: string
   className?: string
   header?: React.ReactNode
+  renderMessageImage?: MarkdownImageRenderer
 }
 
-export function ChatChannel({ channelId, className, header }: Props) {
+export function ChatChannel({ channelId, className, header, renderMessageImage }: Props) {
   const { user } = useAuth()
   const { api } = useBeeSeedContext()
   const { branding } = useAppConfig()
@@ -156,30 +158,32 @@ export function ChatChannel({ channelId, className, header }: Props) {
               <span className="text-sm text-[#777169]">加载消息中...</span>
             </div>
           ) : (
-            <MessageList
-              channelId={channelId}
-              messages={messages}
-              streams={streams}
-              agentLoops={agentLoops}
-              members={members}
-              typings={typings}
-              onQuote={setQuotedMessage}
-              currentUserId={user?.id}
-              onSubmitAnswer={submitAnswer}
-              onStopAgent={stopAgent}
-              onOpenWorkflowRun={openWorkflowRun}
-              onReviseArtifact={handleReviseArtifact}
-              hasOlder={hasOlderMessages}
-              loadingOlder={loadingOlderMessages}
-              onLoadOlder={loadOlderMessages}
-              loadingAgentRunDetails={loadingAgentRunDetails}
-              onLoadAgentRunDetails={loadAgentRunDetails}
-              welcomeTitle={welcomeTitle}
-              welcomeFallbackTitle={branding.title}
-              welcomeMessage={welcomeMessage}
-              quickQuestions={quickQuestions}
-              onQuickQuestion={(question) => handleSend(question, { source: 'quick_question' })}
-            />
+            <markdownImageRendererContext.Provider value={renderMessageImage}>
+              <MessageList
+                channelId={channelId}
+                messages={messages}
+                streams={streams}
+                agentLoops={agentLoops}
+                members={members}
+                typings={typings}
+                onQuote={setQuotedMessage}
+                currentUserId={user?.id}
+                onSubmitAnswer={submitAnswer}
+                onStopAgent={stopAgent}
+                onOpenWorkflowRun={openWorkflowRun}
+                onReviseArtifact={handleReviseArtifact}
+                hasOlder={hasOlderMessages}
+                loadingOlder={loadingOlderMessages}
+                onLoadOlder={loadOlderMessages}
+                loadingAgentRunDetails={loadingAgentRunDetails}
+                onLoadAgentRunDetails={loadAgentRunDetails}
+                welcomeTitle={welcomeTitle}
+                welcomeFallbackTitle={branding.title}
+                welcomeMessage={welcomeMessage}
+                quickQuestions={quickQuestions}
+                onQuickQuestion={(question) => handleSend(question, { source: 'quick_question' })}
+              />
+            </markdownImageRendererContext.Provider>
           )}
 
           {/* Input area — centered at max-width */}

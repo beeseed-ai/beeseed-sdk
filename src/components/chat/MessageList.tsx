@@ -11,6 +11,7 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { stripStorageReferenceBlock } from '../../lib/storage-ref.js'
 import { formatChatTimestamp } from '../../lib/format.js'
 import { latestPendingAskUserForUser, pendingAskUserKey } from '../../lib/ask-user-action.js'
+import { markdownImageContext } from './MarkdownImageRendering.js'
 
 const CHAT_MAX_WIDTH = 820
 const DEFAULT_WELCOME_MESSAGE = '你身边的智能助手，可以为你答疑解惑、尽情创作，快来点击以下任一功能体验吧～'
@@ -580,36 +581,48 @@ export function MessageList({
                   && !!group.loop.finalContent
                   && !group.finalMessage
                 return (
-                  <AgentLoopBlock
+                  <markdownImageContext.Provider
                     key={`loop-${group.key}-${i}`}
-                    loop={group.loop}
-                    members={members}
-                    finalMessage={group.finalMessage}
-                    events={group.events}
-                    showTerminal={!!group.finalMessage || (isLastLoopGroup && !hasSeparateFinalMessage)}
-                    onStop={onStopAgent}
-                    detailsLoading={group.loop.runId ? loadingAgentRunDetails?.has(`${group.loop.channelId}:${group.loop.agentId}:${group.loop.runId}`) : false}
-                    onLoadDetails={group.loop.runId && onLoadAgentRunDetails
-                      ? () => onLoadAgentRunDetails(group.loop.agentId, group.loop.runId!)
-                      : undefined}
-                  />
+                    value={{
+                      messageId: group.finalMessage?.msgId,
+                      messageTimestamp: group.finalMessage?.timestamp ?? group.loop.completedAt ?? group.loop.startedAt,
+                      senderId: group.finalMessage?.senderId ?? group.loop.agentId,
+                    }}
+                  >
+                    <AgentLoopBlock
+                      loop={group.loop}
+                      members={members}
+                      finalMessage={group.finalMessage}
+                      events={group.events}
+                      showTerminal={!!group.finalMessage || (isLastLoopGroup && !hasSeparateFinalMessage)}
+                      onStop={onStopAgent}
+                      detailsLoading={group.loop.runId ? loadingAgentRunDetails?.has(`${group.loop.channelId}:${group.loop.agentId}:${group.loop.runId}`) : false}
+                      onLoadDetails={group.loop.runId && onLoadAgentRunDetails
+                        ? () => onLoadAgentRunDetails(group.loop.agentId, group.loop.runId!)
+                        : undefined}
+                    />
+                  </markdownImageContext.Provider>
                 )
               }
               const item = group.message
               return (
-                <MessageBubble
+                <markdownImageContext.Provider
                   key={item.msgId ?? `m-${i}`}
-                  message={item}
-                  isOwn={item.role === 'user'}
-                  channelId={channelId}
-                  currentUserId={currentUserId}
-                  onQuote={onQuote}
-                  onMentionClick={onMentionClick}
-                  onScrollToMessage={handleScrollToMessage}
-                  onSubmitAnswer={onSubmitAnswer}
-                  onOpenWorkflowRun={onOpenWorkflowRun}
-                  onReviseArtifact={onReviseArtifact}
-                />
+                  value={{ messageId: item.msgId, messageTimestamp: item.timestamp, senderId: item.senderId }}
+                >
+                  <MessageBubble
+                    message={item}
+                    isOwn={item.role === 'user'}
+                    channelId={channelId}
+                    currentUserId={currentUserId}
+                    onQuote={onQuote}
+                    onMentionClick={onMentionClick}
+                    onScrollToMessage={handleScrollToMessage}
+                    onSubmitAnswer={onSubmitAnswer}
+                    onOpenWorkflowRun={onOpenWorkflowRun}
+                    onReviseArtifact={onReviseArtifact}
+                  />
+                </markdownImageContext.Provider>
               )
             })}
           </div>
@@ -624,15 +637,20 @@ export function MessageList({
           ))
           const agent = members?.find(m => m.agent_id === activeStream.agentId)
           return (
-            <div key={`stream-${activeStream.agentId}-${activeStream.runId || activeStream.agentLoop?.runId || 'legacy'}`} className="px-4 pb-3 mx-auto" style={{ maxWidth: CHAT_MAX_WIDTH }}>
-              <StreamRenderer
-                stream={activeStream}
-                agentLoop={activeLoop}
-                agentAvatarUrl={agent?.avatar_url}
-                agentDisplayName={agent?.display_name}
-                onStop={onStopAgent}
-              />
-            </div>
+            <markdownImageContext.Provider
+              key={`stream-${activeStream.agentId}-${activeStream.runId || activeStream.agentLoop?.runId || 'legacy'}`}
+              value={{ messageTimestamp: activeLoop?.startedAt, senderId: activeStream.agentId }}
+            >
+              <div className="px-4 pb-3 mx-auto" style={{ maxWidth: CHAT_MAX_WIDTH }}>
+                <StreamRenderer
+                  stream={activeStream}
+                  agentLoop={activeLoop}
+                  agentAvatarUrl={agent?.avatar_url}
+                  agentDisplayName={agent?.display_name}
+                  onStop={onStopAgent}
+                />
+              </div>
+            </markdownImageContext.Provider>
           )
         })}
 
