@@ -41,6 +41,7 @@ interface AgentIdentityForm {
 
 interface AgentConfigForm {
   role?: string
+  runtime?: AgentRuntime
   provider?: string
   model?: string
   model_tier?: ModelTierName | ''
@@ -52,6 +53,8 @@ interface AgentConfigForm {
   identity?: Partial<AgentIdentityForm>
   [key: string]: unknown
 }
+
+type AgentRuntime = 'worker' | 'reasonix'
 
 interface SkillSummary {
   name: string
@@ -124,6 +127,10 @@ const AVATAR_PRESETS = [
 
 function normalizeModelTier(value: unknown): ModelTierName | '' {
   return value === 'fast' || value === 'thinking' || value === 'pro' ? value : ''
+}
+
+function normalizeAgentRuntime(value: unknown): AgentRuntime {
+  return value === 'reasonix' ? 'reasonix' : 'worker'
 }
 
 function avatarPresetUrl(preset: string | undefined) {
@@ -389,7 +396,12 @@ export function DetailPanel({ channelId, members = [], tasks = [], files = [], o
         personality: identity.personality || '',
         content: identity.content || '',
       })
-      setAgentConfig(cfg ? { ...cfg, model_tier: normalizeModelTier(cfg.model_tier), skills: cfg.skills ?? [] } : null)
+      setAgentConfig(cfg ? {
+        ...cfg,
+        runtime: normalizeAgentRuntime(cfg.runtime),
+        model_tier: normalizeModelTier(cfg.model_tier),
+        skills: cfg.skills ?? [],
+      } : null)
     } catch {
       setAgentIdentity({ name: member.display_name || member.agent_id, personality: '', content: '' })
       setAgentConfig(null)
@@ -549,6 +561,13 @@ export function DetailPanel({ channelId, members = [], tasks = [], files = [], o
 
   function updateAgentModelTier(modelTier: ModelTierName | '') {
     setAgentConfig((current) => ({ ...(current ?? { role: selectedAgent?.agent_id, skills: [] }), model_tier: modelTier }))
+  }
+
+  function updateAgentRuntime(runtime: AgentRuntime) {
+    setAgentConfig((current) => ({
+      ...(current ?? { role: selectedAgent?.agent_id, skills: [] }),
+      runtime,
+    }))
   }
 
   function updateAgentAvatarPreset(avatarPreset: string) {
@@ -972,6 +991,36 @@ export function DetailPanel({ channelId, members = [], tasks = [], files = [], o
                 </div>
                 {canEditAgents ? (
                   <>
+                <fieldset>
+                  <legend className="mb-1.5 block text-xs font-medium text-muted-foreground">运行方式</legend>
+                  <div className="grid grid-cols-2 gap-2" role="radiogroup" aria-label="Agent 运行方式">
+                    {([
+                      { value: 'worker' as const, label: 'Worker Agent', description: '在 Worker 内运行' },
+                      { value: 'reasonix' as const, label: 'ReasonIX Agent', description: '在独立 Docker 中运行' },
+                    ]).map((option) => {
+                      const selected = normalizeAgentRuntime(agentConfig?.runtime) === option.value
+                      return (
+                        <button
+                          key={option.value}
+                          type="button"
+                          role="radio"
+                          aria-checked={selected}
+                          onClick={() => updateAgentRuntime(option.value)}
+                          className={cn(
+                            'rounded-lg border bg-background p-3 text-left transition-colors',
+                            selected
+                              ? 'border-[#181d26] ring-2 ring-[#181d26]/10'
+                              : 'border-border hover:bg-muted',
+                          )}
+                        >
+                          <span className="block text-sm font-medium text-foreground">{option.label}</span>
+                          <span className="mt-1 block text-xs leading-5 text-muted-foreground">{option.description}</span>
+                        </button>
+                      )
+                    })}
+                  </div>
+                  <p className="mt-1.5 text-xs text-muted-foreground">保存后，该 Agent 的后续消息只使用所选运行方式。</p>
+                </fieldset>
                 <div>
                   <label className="mb-2 block text-xs font-medium text-muted-foreground">头像</label>
                   <div className="flex flex-wrap gap-2">
