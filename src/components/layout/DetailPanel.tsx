@@ -159,6 +159,29 @@ function objectValue(value: unknown): Record<string, unknown> {
   return {}
 }
 
+function agentSkillSummaries(member: ChannelMemberInfo): SkillSummary[] {
+  const skills = objectValue(member.ext_info).skills
+  if (!Array.isArray(skills)) return []
+  return skills.flatMap((value) => {
+    const item = objectValue(value)
+    const name = typeof item.name === 'string' ? item.name.trim() : ''
+    if (!name) return []
+    return [{
+      name,
+      display_name: typeof item.display_name === 'string' ? item.display_name.trim() : undefined,
+      icon_url: typeof item.icon_url === 'string' ? item.icon_url.trim() : undefined,
+      category: typeof item.category === 'string' ? item.category.trim() : undefined,
+      description: typeof item.description === 'string' ? item.description.trim() : undefined,
+    }]
+  })
+}
+
+function agentTemplateSkillNames(member: ChannelMemberInfo): Set<string> | null {
+  const skills = objectValue(member.ext_info).template_skills
+  if (!Array.isArray(skills)) return null
+  return new Set(skills.flatMap((value) => typeof value === 'string' && value.trim() ? [value.trim()] : []))
+}
+
 function isLocalAgentMember(member: ChannelMemberInfo) {
   const extInfo = objectValue(member.ext_info)
   return member.member_type === 'agent' && (
@@ -263,6 +286,7 @@ export function DetailPanel({ channelId, members = [], tasks = [], files = [], o
   const channelFiles = storageObjects.length > 0 || storageDirectories.length > 0 ? storageObjects : files
   const currentMember = user ? users.find((m) => m.user_id === user.id) : null
   const canEditAgents = currentMember?.role === 'owner' || currentMember?.role === 'coordinator'
+  const canRemoveAgentSkills = currentMember?.role === 'owner'
   const canManageAgentMembers = currentMember?.role === 'owner'
   const canManageUserMembers = currentMember?.role === 'owner' || currentMember?.role === 'admin'
   const canInviteUsers = currentMember?.role === 'owner' || currentMember?.role === 'admin'
@@ -278,6 +302,7 @@ export function DetailPanel({ channelId, members = [], tasks = [], files = [], o
       return [agent.id, agent.name, agent.role, agent.version].some((value) => (value ?? '').toLowerCase().includes(query))
     }), [agentQuery, availableAgents, channelAgentIDs])
   const selectedTask = selectedTaskId ? channelTasks.find((task) => task.id === selectedTaskId) || null : null
+  const selectedAgentTemplateSkills = useMemo(() => selectedAgent ? agentTemplateSkillNames(selectedAgent) : null, [selectedAgent])
   const now = Date.now()
   const activeTasks = useMemo(() => channelTasks.filter((task) => task.status !== 'done' && task.status !== 'failed'), [channelTasks])
   const focusTaskItems = useMemo(() => activeTasks
@@ -380,9 +405,10 @@ export function DetailPanel({ channelId, members = [], tasks = [], files = [], o
     setAgentSettingsOpen(true)
     setAgentSettingsLoading(true)
     try {
-      const [identity, cfg] = await Promise.all([
+      const [identity, cfg, skills] = await Promise.all([
         api.get(`channels/${channelId}/agents/${member.agent_id}/identity`).json<AgentIdentityForm>(),
         api.get(`channels/${channelId}/agents/${member.agent_id}/config`).json<AgentConfigForm>().catch(() => null),
+        api.get('admin/skills').json<SkillSummary[]>().catch(() => agentSkillSummaries(member)),
       ])
       setAgentIdentity({
         name: identity.name || member.display_name || member.agent_id,
@@ -390,6 +416,7 @@ export function DetailPanel({ channelId, members = [], tasks = [], files = [], o
         content: identity.content || '',
       })
       setAgentConfig(cfg ? { ...cfg, model_tier: normalizeModelTier(cfg.model_tier), skills: cfg.skills ?? [] } : null)
+      setAvailableSkills(skills ?? [])
     } catch {
       setAgentIdentity({ name: member.display_name || member.agent_id, personality: '', content: '' })
       setAgentConfig(null)
@@ -526,7 +553,8 @@ export function DetailPanel({ channelId, members = [], tasks = [], files = [], o
       const data = await api.get('admin/skills').json<SkillSummary[]>()
       setAvailableSkills(data ?? [])
     } catch {
-      setAvailableSkills([])
+      // Keep the channel member summaries so configured skills continue to use
+      // their localized names even when this user cannot open the full catalog.
     }
   }
 
@@ -1035,13 +1063,16 @@ export function DetailPanel({ channelId, members = [], tasks = [], files = [], o
                     <div className="flex flex-wrap gap-2">
                       {(agentConfig?.skills ?? []).map((skill) => {
                         const meta = availableSkills.find((item) => item.name === skill)
+                        const isTemplateSkill = !selectedAgentTemplateSkills || selectedAgentTemplateSkills.has(skill)
                         return (
                           <span key={skill} className="inline-flex items-center gap-1.5 rounded-md border border-border bg-background px-2.5 py-1 text-xs">
                             <SkillIcon name={skill} iconUrl={meta?.icon_url} className="size-5 rounded" />
-                            <span className="font-mono">{meta?.display_name || skill}</span>
-                            <button type="button" onClick={() => removeAgentSkill(skill)} className="text-muted-foreground hover:text-destructive" title="移除技能">
-                              <Trash2 className="h-3 w-3" />
-                            </button>
+                            <span>{meta?.display_name || skill}</span>
+                            {canRemoveAgentSkills && !isTemplateSkill && (
+                              <button type="button" onClick={() => removeAgentSkill(skill)} className="text-muted-foreground hover:text-destructive" title="移除技能">
+                                <Trash2 className="h-3 w-3" />
+                              </button>
+                            )}
                           </span>
                         )
                       })}
