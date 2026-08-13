@@ -139,6 +139,7 @@ export interface ChannelRuntimeSettings {
   welcome_title?: string
   welcome_message?: string
   quick_questions?: string[]
+  skill_menu_order?: string[]
 }
 
 // ── Channel Member ──

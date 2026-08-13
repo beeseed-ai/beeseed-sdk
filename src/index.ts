@@ -117,6 +117,7 @@ export { DropdownMenu, DropdownItem } from './components/ui/index.js'
 
 // Utilities
 export { cn } from './lib/cn.js'
+export { normalizeSkillMenuOrder, orderSkillMenuItems } from './lib/skill-menu-order.js'
 export { formatTime, formatBytes } from './lib/format.js'
 export { isLikelyFilePath } from './lib/file-path-utils.js'
 export { parseMessage } from './stores/messages.js'

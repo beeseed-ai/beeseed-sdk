@@ -11,6 +11,7 @@ import { MessageList } from './MessageList.js'
 import { MessageInput } from './MessageInput.js'
 import { AgentTodoRail } from './AgentTodoRail.js'
 import { markdownImageRendererContext, type MarkdownImageRenderer } from './MarkdownImageRendering.js'
+import { normalizeSkillMenuOrder, orderSkillMenuItems } from '../../lib/skill-menu-order.js'
 
 const CHAT_MAX_WIDTH = 820
 
@@ -118,8 +119,11 @@ export function ChatChannel({ channelId, className, header, renderMessageImage }
   }, [api, channelId, loading, members])
 
   const skillOptions = useMemo(
-    () => mergeSkillOptions(memberSkillOptions, configSkillOptions),
-    [memberSkillOptions, configSkillOptions],
+    () => orderSkillMenuItems(
+      mergeSkillOptions(memberSkillOptions, configSkillOptions),
+      channelSettings.skill_menu_order,
+    ),
+    [memberSkillOptions, configSkillOptions, channelSettings.skill_menu_order],
   )
 
   const handleSend = useCallback((content: string, metadata?: Record<string, unknown>) => {
@@ -340,6 +344,7 @@ function parseChannelRuntimeSettings(settings: string | undefined): ChannelRunti
       quick_questions: Array.isArray(parsed.quick_questions)
         ? parsed.quick_questions.map((item) => typeof item === 'string' ? item.trim() : '').filter(Boolean)
         : undefined,
+      skill_menu_order: normalizeSkillMenuOrder(parsed.skill_menu_order),
     }
   } catch {
     return {}

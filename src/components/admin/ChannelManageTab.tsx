@@ -6,6 +6,12 @@ import { useBeeSeedContext } from '../../provider/BeeSeedProvider.js'
 import { Button } from '../ui/button.js'
 import { Input } from '../ui/input.js'
 import { Badge } from '../ui/badge.js'
+import { SkillIcon } from '../skills/SkillIcon.js'
+import { normalizeSkillMenuOrder } from '../../lib/skill-menu-order.js'
+import {
+  buildChannelTemplateSkillMenu,
+  type ChannelSkillCatalogItem,
+} from './channelSkillMenu.js'
 import {
   normalizeChannelTemplateScheduledTasks,
   type ChannelTemplateScheduledTask,
@@ -19,6 +25,12 @@ interface AgentTemplateOption {
   version?: string
   avatar_url?: string
   avatar_preset?: string
+  skills?: string[]
+}
+
+interface SkillSummary extends ChannelSkillCatalogItem {
+  category?: string
+  version?: string
 }
 
 interface ChannelTemplate {
@@ -46,6 +58,7 @@ interface ChannelTemplate {
   welcome_title?: string
   welcome_message?: string
   quick_questions?: string[]
+  skill_menu_order?: string[]
   storage?: {
     enabled?: boolean
     visibility?: string
@@ -138,6 +151,7 @@ function normalizeTemplates(templates: ChannelTemplate[] | undefined): ChannelTe
     welcome_title: template.welcome_title ?? '',
     welcome_message: template.welcome_message ?? '',
     quick_questions: normalizeQuickQuestions(template.quick_questions),
+    skill_menu_order: normalizeSkillMenuOrder(template.skill_menu_order),
     storage: template.storage,
     scheduled_tasks: normalizeChannelTemplateScheduledTasks(
       template.scheduled_tasks,
@@ -196,6 +210,8 @@ export function ChannelManageTab() {
   const [policy, setPolicy] = useState(DEFAULT_POLICY)
   const [templates, setTemplates] = useState<ChannelTemplate[]>([])
   const [availableAgents, setAvailableAgents] = useState<AgentTemplateOption[]>([])
+  const [availableSkills, setAvailableSkills] = useState<SkillSummary[]>([])
+  const [agentSkillsLoaded, setAgentSkillsLoaded] = useState(false)
   const [availableKnowledgeBases, setAvailableKnowledgeBases] = useState<KnowledgeBase[]>([])
   const [selectedIndex, setSelectedIndex] = useState(0)
   const [loading, setLoading] = useState(true)
@@ -213,12 +229,27 @@ export function ChannelManageTab() {
     () => (selectedTemplate?.knowledge ?? []).filter((knowledgeId) => selectableKnowledgeIds.has(knowledgeId)),
     [selectableKnowledgeIds, selectedTemplate],
   )
+  const selectedSkillMenu = useMemo(
+    () => selectedTemplate
+      ? buildChannelTemplateSkillMenu(
+          selectedTemplate.agents,
+          selectedTemplate.skill_menu_order,
+          availableAgents,
+          availableSkills,
+        )
+      : [],
+    [availableAgents, availableSkills, selectedTemplate],
+  )
 
   const loadSettings = useCallback(async () => {
     setLoading(true)
     setError('')
     try {
-      const data = await api.get('admin/settings/channels').json<ChannelSettingsResponse>()
+      const [data, agentTemplates, skillCatalog] = await Promise.all([
+        api.get('admin/settings/channels').json<ChannelSettingsResponse>(),
+        api.get('admin/agent-templates').json<AgentTemplateOption[]>().catch(() => null),
+        api.get('admin/skills').json<SkillSummary[]>().catch(() => null),
+      ])
       setPolicy({
         mode: data.mode || DEFAULT_POLICY.mode,
         default_agent_ids: data.default_agent_ids ?? DEFAULT_POLICY.default_agent_ids,
@@ -228,7 +259,9 @@ export function ChannelManageTab() {
       })
       const nextTemplates = normalizeTemplates(data.channel_templates)
       setTemplates(nextTemplates)
-      setAvailableAgents(data.available_agents ?? [])
+      setAvailableAgents(agentTemplates ?? data.available_agents ?? [])
+      setAvailableSkills(skillCatalog ?? [])
+      setAgentSkillsLoaded(agentTemplates !== null)
       setSelectedIndex((current) => Math.min(current, Math.max(0, nextTemplates.length - 1)))
       setDirty(false)
       setApplyResult(null)
@@ -241,6 +274,8 @@ export function ChannelManageTab() {
       setError('频道模板加载失败')
       setTemplates([])
       setAvailableAgents([])
+      setAvailableSkills([])
+      setAgentSkillsLoaded(false)
       setAvailableKnowledgeBases([])
     } finally {
       setLoading(false)
@@ -319,6 +354,16 @@ export function ChannelManageTab() {
     if (!selectedTemplate) return
     const agents = toggleItem(selectedTemplate.agents, agentId)
     updateTemplate({ agents: agents.length > 0 ? agents : ['assistant'] })
+  }
+
+  function moveTemplateSkill(index: number, direction: -1 | 1) {
+    if (!selectedTemplate) return
+    const targetIndex = index + direction
+    if (targetIndex < 0 || targetIndex >= selectedSkillMenu.length) return
+    const next = selectedSkillMenu.map((skill) => skill.name)
+    const [item] = next.splice(index, 1)
+    next.splice(targetIndex, 0, item)
+    updateTemplate({ skill_menu_order: next })
   }
 
   function toggleKnowledgeBase(knowledgeId: string) {
@@ -421,6 +466,14 @@ export function ChannelManageTab() {
         welcome_title: template.welcome_title?.trim() || '',
         welcome_message: template.welcome_message?.trim() || '',
         quick_questions: normalizeQuickQuestions(template.quick_questions),
+        skill_menu_order: agentSkillsLoaded
+          ? buildChannelTemplateSkillMenu(
+              template.agents,
+              template.skill_menu_order,
+              availableAgents,
+              availableSkills,
+            ).map((skill) => skill.name)
+          : normalizeSkillMenuOrder(template.skill_menu_order),
         scheduled_tasks: (template.scheduled_tasks ?? []).map((task) => ({
           ...task,
           id: task.id || createTemplateId(),
@@ -452,7 +505,6 @@ export function ChannelManageTab() {
         default_channel_type: savedSettings.default_channel_type || policy.default_channel_type,
       })
       setTemplates(nextTemplates)
-      setAvailableAgents(savedSettings.available_agents ?? availableAgents)
       setSelectedIndex((current) => Math.min(current, Math.max(0, nextTemplates.length - 1)))
       setDirty(false)
       setSaved(true)
@@ -727,6 +779,61 @@ export function ChannelManageTab() {
                           )
                         })}
                       </div>
+                    </div>
+
+                    <div className="space-y-3 rounded-lg border border-border bg-[#fafafa] p-3">
+                      <div className="flex items-center justify-between gap-3">
+                        <div>
+                          <div className="text-sm font-medium text-[#181d26]">技能菜单顺序</div>
+                          <div className="mt-0.5 text-xs text-muted-foreground">合并所选 Agent 的技能；同一技能只显示一次。</div>
+                        </div>
+                        <Badge variant="secondary" className="shrink-0 text-[10px] font-normal">{selectedSkillMenu.length}</Badge>
+                      </div>
+                      {!agentSkillsLoaded ? (
+                        <div className="rounded-md border border-dashed border-border bg-white px-3 py-2 text-xs text-muted-foreground">
+                          技能信息加载失败，当前顺序不会被覆盖。
+                        </div>
+                      ) : selectedSkillMenu.length === 0 ? (
+                        <div className="rounded-md border border-dashed border-border bg-white px-3 py-2 text-xs text-muted-foreground">
+                          当前 Agent 暂无技能
+                        </div>
+                      ) : (
+                        <div className="space-y-2">
+                          {selectedSkillMenu.map((skill, index) => (
+                            <div key={skill.name} className="flex items-center gap-3 rounded-md border border-border bg-white px-3 py-2">
+                              <SkillIcon name={skill.name} iconUrl={skill.icon_url} className="size-8 rounded-lg border border-border bg-white" />
+                              <div className="min-w-0 flex-1">
+                                <div className="truncate text-sm font-medium text-[#181d26]">{skill.display_name || skill.name}</div>
+                                <div className="mt-0.5 truncate text-xs text-muted-foreground">
+                                  {skill.agents.map((agent) => agent.name || agent.role || agent.id).join('、')}
+                                </div>
+                              </div>
+                              <div className="flex shrink-0 items-center gap-0.5">
+                                <button
+                                  type="button"
+                                  onClick={() => moveTemplateSkill(index, -1)}
+                                  disabled={index === 0}
+                                  className="inline-flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-[#181d26] disabled:pointer-events-none disabled:opacity-35"
+                                  title="上移技能"
+                                  aria-label={`上移技能 ${skill.display_name || skill.name}`}
+                                >
+                                  <ArrowUp className="h-3.5 w-3.5" />
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => moveTemplateSkill(index, 1)}
+                                  disabled={index === selectedSkillMenu.length - 1}
+                                  className="inline-flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-[#181d26] disabled:pointer-events-none disabled:opacity-35"
+                                  title="下移技能"
+                                  aria-label={`下移技能 ${skill.display_name || skill.name}`}
+                                >
+                                  <ArrowDown className="h-3.5 w-3.5" />
+                                </button>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      )}
                     </div>
 
                     <div className="space-y-3 rounded-lg border border-border bg-[#fafafa] p-3">

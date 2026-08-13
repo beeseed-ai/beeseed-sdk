@@ -183,14 +183,6 @@ export function MessageInput({
           .filter(Boolean)
           .some((value) => String(value).toLowerCase().includes(query))
       })
-      .sort((a, b) => {
-        if (a.name === 'ppt-master' && b.name !== 'ppt-master') return -1
-        if (b.name === 'ppt-master' && a.name !== 'ppt-master') return 1
-        const aAssociated = (a.agents?.length ?? 0) > 0 ? 0 : 1
-        const bAssociated = (b.agents?.length ?? 0) > 0 ? 0 : 1
-        if (aAssociated !== bAssociated) return aAssociated - bAssociated
-        return skillDisplayName(a).localeCompare(skillDisplayName(b), 'zh-CN')
-      })
   }, [skillOptions, skillQuery])
   const normalizedQuickQuestions = useMemo(() => (
     quickQuestions
