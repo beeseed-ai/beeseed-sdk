@@ -211,7 +211,15 @@ function findAgentLoopByRun(
   return undefined
 }
 
-function localAgentRunSummary(event: { type: 'local_agent.run.succeeded' | 'local_agent.run.failed'; output?: unknown; error?: unknown }): string {
+function localAgentRunSummary(event: { type: 'local_agent.run.succeeded' | 'local_agent.run.failed' | 'local_agent.run.cancelled'; output?: unknown; error?: unknown }): string {
+	if (event.type === 'local_agent.run.cancelled') {
+		const err = event.error
+		if (err && typeof err === 'object' && !Array.isArray(err)) {
+			const message = (err as Record<string, unknown>).message
+			if (typeof message === 'string' && message.trim() !== '') return message
+		}
+		return '技能任务已取消。'
+	}
   if (event.type === 'local_agent.run.failed') {
     const err = event.error
     if (err && typeof err === 'object' && !Array.isArray(err)) {
@@ -322,6 +330,7 @@ function localAgentEventSummary(event: LocalAgentRunEventWire): string {
       })
     case 'local_agent.run.succeeded':
     case 'local_agent.run.failed':
+		case 'local_agent.run.cancelled':
       return localAgentRunSummary({
         type: event.type,
         output: event.output,
@@ -338,7 +347,7 @@ function timestampFromWire(value: unknown, fallback = Date.now()): number {
   return Number.isFinite(timestamp) ? timestamp : fallback
 }
 
-function applyLocalAgentRunsToLoops(
+export function applyLocalAgentRunsToLoops(
   channelId: string,
   loops: Map<string, AgentLoopState>,
   runs: LocalAgentRunWire[],
@@ -373,10 +382,10 @@ function applyLocalAgentRunsToLoops(
       loop = updateLoopTurn(loop, turnNumber, (turn) => ({
         ...turn,
         progress: summary,
-        completedAt: event.type === 'local_agent.run.succeeded' || event.type === 'local_agent.run.failed'
+		completedAt: event.type === 'local_agent.run.succeeded' || event.type === 'local_agent.run.failed' || event.type === 'local_agent.run.cancelled'
           ? timestamp
           : turn.completedAt,
-        status: event.type === 'local_agent.run.succeeded' || event.type === 'local_agent.run.failed'
+		status: event.type === 'local_agent.run.succeeded' || event.type === 'local_agent.run.failed' || event.type === 'local_agent.run.cancelled'
           ? 'completed'
           : turn.status,
       }))
@@ -396,6 +405,10 @@ function applyLocalAgentRunsToLoops(
       ? localAgentRunSummary({ type: 'local_agent.run.failed', error: run.error })
       : run.status === 'succeeded'
         ? localAgentRunSummary({ type: 'local_agent.run.succeeded', output: run.output })
+		: run.status === 'cancelled'
+			? localAgentRunSummary({ type: 'local_agent.run.cancelled', error: run.error })
+			: run.status === 'expired'
+				? '技能任务已过期。'
         : ''
     if (terminalSummary) {
       loop = updateLoopTurn(loop, 1, (turn) => ({
@@ -411,11 +424,13 @@ function applyLocalAgentRunsToLoops(
       completedAt: completedAt || loop.completedAt,
       status: run.status === 'succeeded'
         ? 'completed'
-        : run.status === 'failed'
+		: run.status === 'cancelled'
+			? 'stopped'
+			: run.status === 'failed' || run.status === 'expired'
           ? 'error'
           : loop.status,
       finalContent: run.status === 'succeeded' && terminalSummary ? terminalSummary : loop.finalContent,
-      error: run.status === 'failed' && terminalSummary ? terminalSummary : loop.error,
+		error: (run.status === 'failed' || run.status === 'expired' || run.status === 'cancelled') && terminalSummary ? terminalSummary : loop.error,
     })
   }
   return next
@@ -804,6 +819,7 @@ function buildAgentLoopsFromMessages(channelId: string, messages: Message[]): Ma
           && storedEvent !== 'agent_ask_user_expired'
           && storedEvent !== 'local_agent.run.succeeded'
           && storedEvent !== 'local_agent.run.failed'
+			&& storedEvent !== 'local_agent.run.cancelled'
         ) {
           loop = appendLoopEvent(loop, {
             id: storedEventId,
@@ -953,6 +969,21 @@ function buildAgentLoopsFromMessages(channelId: string, messages: Message[]): Ma
         completedAt: timestamp,
       }
     }
+	if (meta.event === 'local_agent.run.cancelled') {
+		const cancelledTurn = {
+			...turn,
+			status: 'completed' as const,
+			progress: message.content || turn.progress,
+			completedAt: timestamp,
+		}
+		nextLoop = {
+			...nextLoop,
+			turns: nextLoop.turns.map((t) => t.turnNumber === turnNumber ? cancelledTurn : t),
+			status: 'stopped',
+			error: message.content || '技能任务已取消。',
+			completedAt: timestamp,
+		}
+	}
     if (meta.event === 'agent_done') {
       const doneTurn = {
         ...turn,
@@ -2277,7 +2308,8 @@ export function createMessagesStore(config: MessagesStoreConfig) {
         }
 
         case 'local_agent.run.succeeded':
-        case 'local_agent.run.failed': {
+        case 'local_agent.run.failed':
+        case 'local_agent.run.cancelled': {
           const loops = new Map(state.agentLoops)
           const target = findAgentLoopByRun(loops, event.channel_id, event.run_id, event.agent_id)
           if (!target) break
@@ -2301,9 +2333,9 @@ export function createMessagesStore(config: MessagesStoreConfig) {
           })
           loops.set(target.key, {
             ...updated,
-            status: event.type === 'local_agent.run.succeeded' ? 'completed' : 'error',
+			status: event.type === 'local_agent.run.succeeded' ? 'completed' : event.type === 'local_agent.run.cancelled' ? 'stopped' : 'error',
             finalContent: event.type === 'local_agent.run.succeeded' ? summary : updated.finalContent,
-            error: event.type === 'local_agent.run.failed' ? summary : undefined,
+			error: event.type === 'local_agent.run.succeeded' ? undefined : summary,
             completedAt: Date.now(),
           })
           set({ agentLoops: loops })
