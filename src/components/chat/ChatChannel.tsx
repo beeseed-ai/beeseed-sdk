@@ -10,6 +10,7 @@ import { useBeeSeedContext } from '../../provider/BeeSeedProvider.js'
 import { MessageList } from './MessageList.js'
 import { MessageInput } from './MessageInput.js'
 import { AgentTodoRail } from './AgentTodoRail.js'
+import { ReasonixPublicationStatus } from './ReasonixPublicationStatus.js'
 import { markdownImageRendererContext, type MarkdownImageRenderer } from './MarkdownImageRendering.js'
 import { normalizeSkillMenuOrder, orderSkillMenuItems } from '../../lib/skill-menu-order.js'
 
@@ -63,6 +64,10 @@ export function ChatChannel({ channelId, className, header, renderMessageImage }
   const welcomeMessage = channelSettings.welcome_message || branding.welcomeMessage
   const quickQuestions = channelSettings.quick_questions ?? []
   const memberSkillOptions = useMemo(() => buildSkillOptionsFromMembers(members), [members])
+  const agentIds = useMemo(
+    () => members.filter((member) => member.member_type === 'agent' && member.agent_id).map((member) => member.agent_id!),
+    [members],
+  )
 
   useEffect(() => {
     let cancelled = false
@@ -147,6 +152,7 @@ export function ChatChannel({ channelId, className, header, renderMessageImage }
   return (
     <div className={cn('flex h-full flex-col bg-[#fafafa]', className)}>
       {header}
+      <ReasonixPublicationStatus channelId={channelId} agentIds={agentIds} />
 
       <div className="relative flex min-h-0 flex-1 overflow-hidden">
         <AgentTodoRail

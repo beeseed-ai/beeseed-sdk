@@ -69,7 +69,7 @@ function createBeeSeedContext(
   const api = createApiClient({ workerUrl: config.workerUrl, getToken })
   const channelsStore = createChannelsStore({ api })
 
-  let wsSendRef: (cmd: unknown) => void = () => {}
+  let wsSendRef: (cmd: unknown) => boolean = () => false
 
   const messagesStore = createMessagesStore({
     api,
@@ -134,6 +134,7 @@ function createBeeSeedContext(
     if (event.type === 'auth_ok') {
       channelsStore.getState().setChannels(event.channels ?? [])
       void notificationsStore.getState().refresh()
+      messagesStore.getState().flushPendingAskUserAnswers()
     }
     messagesStore.getState().handleEvent(event)
 

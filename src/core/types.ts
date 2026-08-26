@@ -168,6 +168,7 @@ export interface ChannelMemberInfo extends ChannelMember {
 export interface Message {
   id: number
   channel_id: string
+  agent_session_id?: string
   sender_type: 'user' | 'agent' | 'system'
   sender_user_id?: string
   sender_agent_id?: string
@@ -291,9 +292,11 @@ export interface AskUserQuestion {
 
 export interface AskUserData {
   questions: AskUserQuestion[]
-  status: 'pending' | 'answered' | 'expired'
+  status: 'pending' | 'queued' | 'answered' | 'expired' | 'failed'
   answers?: Record<string, unknown>
+  submissionError?: string
   askId?: string
+  agentSessionId?: string
   targetUserId?: string
   targetUserIds?: string[]
   visibility?: 'target_user' | 'target_users' | 'mentioned_users' | 'channel_admins' | 'all_members'
@@ -1002,6 +1005,8 @@ export type AgentLoopWireFields = { seq?: number; event_id?: string; tool_call_i
 export type WSEvent =
   | { type: 'auth_ok'; user: User; channels: ChannelWithMeta[] }
   | { type: 'message'; channel_id: string; message: Message }
+  | { type: 'ask_user_answer_ack'; channel_id: string; agent_session_id?: string; ask_id: string; answers: Record<string, unknown> }
+  | { type: 'ask_user_answer_rejected'; channel_id?: string; agent_session_id?: string; ask_id: string; error: string; error_code?: string; retryable?: boolean }
   | { type: 'messages_cleared'; channel_id: string; deleted_count: number }
   | ({ type: 'chunk'; channel_id: string; agent_id: string; run_id?: string; content: string; turn?: number } & AgentLoopWireFields)
   | ({ type: 'message_end'; channel_id: string; agent_id: string; run_id?: string; turn?: number; message: Message } & AgentLoopWireFields)
@@ -1016,6 +1021,7 @@ export type WSEvent =
   | ({ type: 'agent_turn_start'; channel_id: string; agent_id: string; run_id?: string; turn: number } & AgentLoopWireFields)
   | ({ type: 'agent_thinking'; channel_id: string; agent_id: string; run_id?: string; turn: number; content?: string } & AgentLoopWireFields)
   | ({ type: 'agent_progress'; channel_id: string; agent_id: string; run_id?: string; turn: number; summary: string } & AgentLoopWireFields)
+  | { type: 'agent_run_status'; channel_id: string; agent_id: string; agent_session_id?: string; run_id: string; status: string; reason?: string }
   | ({ type: 'agent_todo_snapshot'; channel_id: string; agent_id: string; run_id?: string; turn?: number; todo?: AgentTodoItem; todos: AgentTodoItem[] } & AgentLoopWireFields)
   | ({ type: 'agent_todo_updated'; channel_id: string; agent_id: string; run_id?: string; turn?: number; todo?: AgentTodoItem; todos?: AgentTodoItem[] } & AgentLoopWireFields)
   | ({ type: 'agent_waiting_user'; channel_id: string; agent_id: string; run_id?: string; turn: number; summary: string } & AgentLoopWireFields)
@@ -1045,7 +1051,7 @@ export type WSCommand =
 	| { type: 'join_channel'; channel_id: string }
 	| { type: 'leave_channel'; channel_id: string }
 	| { type: 'read_ack'; channel_id: string; msg_id: number; reading?: true }
-	| { type: 'ask_user_answer'; channel_id: string; ask_id: string; answers: Record<string, unknown> }
+	| { type: 'ask_user_answer'; channel_id: string; agent_session_id?: string; ask_id: string; answers: Record<string, unknown> }
 	| { type: 'stop_agent'; channel_id: string; agent_id: string; run_id?: string; reason?: string }
 
 // ── Auth ──

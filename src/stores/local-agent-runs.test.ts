@@ -11,7 +11,13 @@ function runningLoop(runId: string): AgentLoopState {
     status: 'running',
     currentTurn: 1,
     startedAt: Date.parse('2026-08-17T00:00:00.000Z'),
-    turns: [{ turnNumber: 1, status: 'running', startedAt: Date.parse('2026-08-17T00:00:00.000Z') }],
+    turns: [{
+      turnNumber: 1,
+      status: 'active',
+      startedAt: Date.parse('2026-08-17T00:00:00.000Z'),
+      toolCalls: [],
+      skillUses: [],
+    }],
   }
 }
 

@@ -15,3 +15,4 @@ export { MentionMenu, getFilteredCount, getFilteredMember } from './MentionMenu.
 export { AgentLoopTimeline } from './AgentLoopTimeline.js'
 export { AgentRunTranscript } from './AgentRunTranscript.js'
 export { AgentTodoRail } from './AgentTodoRail.js'
+export { ReasonixPublicationStatus } from './ReasonixPublicationStatus.js'

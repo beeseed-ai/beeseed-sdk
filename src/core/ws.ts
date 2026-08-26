@@ -77,13 +77,17 @@ export class WSClient {
     }
   }
 
-  send(command: WSCommand) {
+  send(command: WSCommand): boolean {
     const cmd = command as Record<string, unknown>
     const cmdType = cmd.type as string
     const cmdChannel = (cmd.channel_id as string) || ''
     if (this.ws?.readyState === WebSocket.OPEN) {
       this.ws.send(JSON.stringify(command))
+      return true
     } else {
+      // Ask User answers have their own persistent outbox. Keeping a second
+      // in-memory copy here would send the same answer twice after reconnect.
+      if (cmdType === 'ask_user_answer') return false
       if (cmdType === 'join_channel' || cmdType === 'leave_channel') {
         this.queue = this.queue.filter(q => {
           const qt = (q as Record<string, unknown>).type
@@ -92,6 +96,7 @@ export class WSClient {
         })
       }
       if (this.queue.length < 50) this.queue.push(command)
+      return false
     }
   }
 

@@ -90,6 +90,32 @@ interface ApplyTemplatesResponse {
   failed: number
 }
 
+interface AdminRuntimeChannel {
+  id: string
+  name?: string
+  settings: string
+  reasonixMemoryLimitMB?: number
+}
+
+function channelReasonixMemoryLimit(settings: string | undefined): number {
+  try {
+    const parsed = JSON.parse(settings || '{}') as { reasonix_runtime?: { memory_limit_mb?: unknown } }
+    const value = Number(parsed.reasonix_runtime?.memory_limit_mb)
+    return Number.isInteger(value) && value >= 100 && value <= 1024 ? value : 100
+  } catch {
+    return 100
+  }
+}
+
+function isChannelScopedReasonixRuntime(settings: string | undefined): boolean {
+  try {
+    const parsed = JSON.parse(settings || '{}') as { reasonix_runtime?: { workspace_scope?: unknown } }
+    return parsed.reasonix_runtime?.workspace_scope === 'channel'
+  } catch {
+    return false
+  }
+}
+
 const DEFAULT_POLICY: Omit<ChannelSettingsResponse, 'channel_templates' | 'available_agents'> = {
   mode: 'all_users',
   default_agent_ids: ['assistant'],
@@ -221,6 +247,8 @@ export function ChannelManageTab() {
   const [applying, setApplying] = useState(false)
   const [applyResult, setApplyResult] = useState<ApplyTemplatesResponse | null>(null)
   const [error, setError] = useState('')
+	const [runtimeChannels, setRuntimeChannels] = useState<AdminRuntimeChannel[]>([])
+	const [savingRuntimeChannel, setSavingRuntimeChannel] = useState('')
 
   const selectedTemplate = templates[selectedIndex] ?? null
   const selectedAgents = selectedTemplate?.agents ?? []
@@ -245,10 +273,11 @@ export function ChannelManageTab() {
     setLoading(true)
     setError('')
     try {
-      const [data, agentTemplates, skillCatalog] = await Promise.all([
+      const [data, agentTemplates, skillCatalog, channelItems] = await Promise.all([
         api.get('admin/settings/channels').json<ChannelSettingsResponse>(),
         api.get('admin/agent-templates').json<AgentTemplateOption[]>().catch(() => null),
         api.get('admin/skills').json<SkillSummary[]>().catch(() => null),
+		api.get('admin/channels').json<AdminRuntimeChannel[]>().catch(() => []),
       ])
       setPolicy({
         mode: data.mode || DEFAULT_POLICY.mode,
@@ -262,6 +291,10 @@ export function ChannelManageTab() {
       setAvailableAgents(agentTemplates ?? data.available_agents ?? [])
       setAvailableSkills(skillCatalog ?? [])
       setAgentSkillsLoaded(agentTemplates !== null)
+		setRuntimeChannels(channelItems.filter((channel) => isChannelScopedReasonixRuntime(channel.settings)).map((channel) => ({
+		  ...channel,
+		  reasonixMemoryLimitMB: channelReasonixMemoryLimit(channel.settings),
+		})))
       setSelectedIndex((current) => Math.min(current, Math.max(0, nextTemplates.length - 1)))
       setDirty(false)
       setApplyResult(null)
@@ -281,6 +314,28 @@ export function ChannelManageTab() {
       setLoading(false)
     }
   }, [api])
+
+	async function saveChannelMemory(channel: AdminRuntimeChannel) {
+		const value = Number(channel.reasonixMemoryLimitMB)
+		if (!Number.isInteger(value) || value < 100 || value > 1024) {
+			setError('ReasonIX 内存必须是 100–1024 之间的整数 MiB')
+			return
+		}
+		setSavingRuntimeChannel(channel.id)
+		setError('')
+		try {
+			const updated = await api.patch(`admin/channels/${channel.id}`, {
+				json: { reasonix_memory_limit_mb: value },
+			}).json<AdminRuntimeChannel>()
+			setRuntimeChannels((current) => current.map((item) => item.id === channel.id
+				? { ...item, settings: updated.settings, reasonixMemoryLimitMB: channelReasonixMemoryLimit(updated.settings) }
+				: item))
+		} catch (err) {
+			setError(err instanceof Error ? err.message : '频道 ReasonIX 内存保存失败')
+		} finally {
+			setSavingRuntimeChannel('')
+		}
+	}
 
   useEffect(() => {
     void loadSettings()
@@ -549,6 +604,34 @@ export function ChannelManageTab() {
               {applying ? '同步中...' : '同步到已有用户'}
             </button>
           </div>
+
+		  <div className="rounded-xl border border-border bg-white p-5">
+			<div className="text-sm font-medium text-[#181d26]">频道 ReasonIX 内存</div>
+			<div className="mt-1 text-xs text-muted-foreground">每个频道独立 Docker；允许 100–1024 MiB。修改在下次自然启动时生效。</div>
+			<div className="mt-4 divide-y divide-border">
+			  {runtimeChannels.map((channel) => (
+				<div key={channel.id} className="flex items-center gap-3 py-3">
+				  <div className="min-w-0 flex-1 truncate text-sm text-[#181d26]">{channel.name || '未命名频道'}</div>
+				  <Input
+					type="number"
+					min={100}
+					max={1024}
+					step={1}
+					value={channel.reasonixMemoryLimitMB ?? 100}
+					onChange={(event) => setRuntimeChannels((current) => current.map((item) => item.id === channel.id
+					  ? { ...item, reasonixMemoryLimitMB: Number(event.target.value) }
+					  : item))}
+					className="w-28"
+				  />
+				  <span className="text-xs text-muted-foreground">MiB</span>
+				  <Button type="button" variant="outline" size="sm" disabled={savingRuntimeChannel === channel.id} onClick={() => void saveChannelMemory(channel)}>
+					{savingRuntimeChannel === channel.id ? '保存中' : '保存'}
+				  </Button>
+				</div>
+			  ))}
+			  {runtimeChannels.length === 0 && <div className="py-4 text-xs text-muted-foreground">暂无频道</div>}
+			</div>
+		  </div>
 
           <ChannelKnowledgePromptSettings />
 

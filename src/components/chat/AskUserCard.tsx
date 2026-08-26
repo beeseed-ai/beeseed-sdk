@@ -72,11 +72,13 @@ export function AskUserCard({ data, currentUserId, onSubmit, className }: Props)
     [data],
   )
   const answered = data.status === 'answered'
+  const queued = data.status === 'queued'
+  const failed = data.status === 'failed'
   const expired = data.status === 'expired'
   const targetUserIds = data.targetUserIds || (data.targetUserId ? [data.targetUserId] : [])
   const isSingleTarget = !data.visibility || data.visibility === 'target_user'
   const isTargetUser = data.visibility === 'all_members' || (currentUserId ? targetUserIds.includes(currentUserId) : false) || (isSingleTarget && targetUserIds.length === 0)
-  const readOnly = answered || expired || !isTargetUser
+  const readOnly = answered || queued || failed || expired || !isTargetUser
   const audienceLabel =
     data.visibility === 'all_members' ? '全员可回答' :
     data.visibility === 'channel_admins' ? '管理员可回答' :
@@ -119,7 +121,7 @@ export function AskUserCard({ data, currentUserId, onSubmit, className }: Props)
   const titleStyle = questionDescription ? questionMetaStyle : questionPromptStyle
 
   const renderQuestion = (q: AskUserQuestion) => {
-    const val = answered ? (data.answers?.[q.id] ?? answers[q.id]) : answers[q.id]
+    const val = answered || queued || failed ? (data.answers?.[q.id] ?? answers[q.id]) : answers[q.id]
     switch (q.type) {
       case 'single_select':
         return <SingleSelect key={q.id} question={q} value={val as string | null} onChange={(v) => setAnswer(q.id, v)} disabled={readOnly} />
@@ -145,7 +147,7 @@ export function AskUserCard({ data, currentUserId, onSubmit, className }: Props)
             <span className="text-white text-xs font-bold">?</span>
           </div>
           <span className="text-sm font-medium">
-            {answered ? '已回答' : expired ? '已超时' : !isTargetUser ? '等待回答' : '请回答'}
+            {answered ? '已回答' : queued ? '等待提交' : failed ? '提交失败' : expired ? '已超时' : !isTargetUser ? '等待回答' : '请回答'}
           </span>
           <span className="text-xs text-muted-foreground">{audienceLabel}</span>
           {questions.length > 1 && (
@@ -186,7 +188,13 @@ export function AskUserCard({ data, currentUserId, onSubmit, className }: Props)
           {expired && (
             <div className="text-xs text-muted-foreground text-center">回答时间已过，Agent 已停止等待。</div>
           )}
-          {!answered && !expired && isTargetUser && (
+          {queued && (
+            <div className="text-xs text-muted-foreground text-center">答案已安全保存，将在连接恢复后自动提交。</div>
+          )}
+          {failed && (
+            <div className="text-xs text-red-600 text-center">{data.submissionError || '答案提交失败。'}</div>
+          )}
+          {!answered && !queued && !failed && !expired && isTargetUser && (
             <button
               onClick={handleSubmit}
               disabled={!canSubmit}

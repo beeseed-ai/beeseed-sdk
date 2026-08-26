@@ -11,6 +11,114 @@ const AGENT_LOOP_STALE_MESSAGE = '长时间没有收到 Agent 进度，任务可
 const MESSAGE_PAGE_SIZE = 30
 const STORAGE_MUTATION_EVENT = 'beeseed:storage-mutated'
 const STORAGE_MUTATION_TOOLS = new Set(['storage_write', 'storage_delete'])
+const ASK_USER_ANSWER_OUTBOX_KEY = 'beeseed_ask_user_answer_outbox_v1'
+
+export interface AskUserAnswerOutboxEntry {
+  userId: string
+  channelId: string
+  askId: string
+  agentSessionId?: string
+  answers: Record<string, unknown>
+  status: 'queued' | 'failed'
+  error?: string
+  createdAt: number
+}
+
+function askUserAnswerOutboxEntryKey(entry: Pick<AskUserAnswerOutboxEntry, 'userId' | 'channelId' | 'askId'>): string {
+  return `${entry.userId}:${entry.channelId}:${entry.askId}`
+}
+
+function browserStorage(): Storage | undefined {
+  try {
+    return typeof globalThis.localStorage === 'undefined' ? undefined : globalThis.localStorage
+  } catch {
+    return undefined
+  }
+}
+
+export function readAskUserAnswerOutbox(): Map<string, AskUserAnswerOutboxEntry> {
+  const storage = browserStorage()
+  if (!storage) return new Map()
+  try {
+    const raw = JSON.parse(storage.getItem(ASK_USER_ANSWER_OUTBOX_KEY) || '[]') as unknown
+    if (!Array.isArray(raw)) return new Map()
+    const entries = raw.flatMap((value): AskUserAnswerOutboxEntry[] => {
+      if (!value || typeof value !== 'object' || Array.isArray(value)) return []
+      const item = value as Record<string, unknown>
+      if (typeof item.userId !== 'string' || typeof item.channelId !== 'string' || typeof item.askId !== 'string') return []
+      if (!item.answers || typeof item.answers !== 'object' || Array.isArray(item.answers)) return []
+      if (item.status !== 'queued' && item.status !== 'failed') return []
+      return [{
+        userId: item.userId,
+        channelId: item.channelId,
+        askId: item.askId,
+        agentSessionId: typeof item.agentSessionId === 'string' ? item.agentSessionId : undefined,
+        answers: item.answers as Record<string, unknown>,
+        status: item.status,
+        error: typeof item.error === 'string' ? item.error : undefined,
+        createdAt: typeof item.createdAt === 'number' ? item.createdAt : Date.now(),
+      }]
+    })
+    return new Map(entries.map((entry) => [askUserAnswerOutboxEntryKey(entry), entry]))
+  } catch {
+    return new Map()
+  }
+}
+
+function persistAskUserAnswerOutbox(outbox: Map<string, AskUserAnswerOutboxEntry>): boolean {
+  const storage = browserStorage()
+  if (!storage) return false
+  try {
+    if (outbox.size === 0) storage.removeItem(ASK_USER_ANSWER_OUTBOX_KEY)
+    else storage.setItem(ASK_USER_ANSWER_OUTBOX_KEY, JSON.stringify([...outbox.values()]))
+    return true
+  } catch {
+    return false
+  }
+}
+
+function findAskUserAnswerOutboxEntry(
+  outbox: Map<string, AskUserAnswerOutboxEntry>,
+  userId: string | undefined,
+  channelId: string,
+  askId: string,
+): [string, AskUserAnswerOutboxEntry] | undefined {
+  if (!userId) return undefined
+  const key = askUserAnswerOutboxEntryKey({ userId, channelId, askId })
+  const entry = outbox.get(key)
+  return entry ? [key, entry] : undefined
+}
+
+function overlayAskUserAnswerOutbox(
+  message: ChatMessage,
+  channelId: string,
+  userId: string | undefined,
+  outbox: Map<string, AskUserAnswerOutboxEntry>,
+): ChatMessage {
+  const askId = message.askUserData?.askId
+  if (!askId || !message.askUserData) return message
+  const found = findAskUserAnswerOutboxEntry(outbox, userId, channelId, askId)
+  if (!found) return message
+  const [key, entry] = found
+  if (message.askUserData.status === 'answered') {
+    outbox.delete(key)
+    return message
+  }
+  if (message.askUserData.status === 'expired') {
+    const failed = { ...entry, status: 'failed' as const, error: '该提问已过期，答案未被接受。' }
+    outbox.set(key, failed)
+    return { ...message, askUserData: { ...message.askUserData, status: 'failed', answers: failed.answers, submissionError: failed.error } }
+  }
+  return {
+    ...message,
+    askUserData: {
+      ...message.askUserData,
+      status: entry.status,
+      answers: entry.answers,
+      submissionError: entry.error,
+    },
+  }
+}
 
 function isStorageMutationTool(name: unknown, success: unknown) {
   return typeof name === 'string' && STORAGE_MUTATION_TOOLS.has(name) && success !== false
@@ -560,6 +668,7 @@ export function parseMessage(m: Message, myUserId?: string): ChatMessage | null 
           status: getAskUserStatus(meta),
           answers: meta.answers as Record<string, unknown> | undefined,
           askId: (meta._ask_id as string) || undefined,
+          agentSessionId: m.agent_session_id || undefined,
           targetUserId: (meta.target_user_id as string) || undefined,
           targetUserIds: Array.isArray(meta.target_user_ids) ? meta.target_user_ids as string[] : undefined,
           visibility: (meta.visibility as 'target_user' | 'target_users' | 'mentioned_users' | 'channel_admins' | 'all_members') || undefined,
@@ -1268,6 +1377,7 @@ function clearTypingForChannel(typing: Map<string, string>, channelId: string, a
 
 export interface MessagesState {
   messages: Map<string, ChatMessage[]>
+  askUserAnswerOutbox: Map<string, AskUserAnswerOutboxEntry>
   streams: Map<string, StreamState>
   agentLoops: Map<string, AgentLoopState>
   members: Map<string, ChannelMemberInfo[]>
@@ -1286,6 +1396,7 @@ export interface MessagesState {
   handleEvent: (event: WSEvent) => void
   addOptimisticMessage: (channelId: string, content: string, metadata?: Record<string, unknown>) => void
   submitAskUserAnswer: (channelId: string, askId: string, answers: Record<string, unknown>) => void
+  flushPendingAskUserAnswers: () => void
   getMessages: (channelId: string) => ChatMessage[]
   getStream: (channelId: string) => StreamState | undefined
   getStreams: (channelId: string) => StreamState[]
@@ -1303,7 +1414,7 @@ export interface MessagesStoreConfig {
   api: KyInstance
   getCurrentChannelId: () => string | null
   getCurrentUserId: () => string | undefined
-  sendWsCommand: (cmd: unknown) => void
+  sendWsCommand: (cmd: unknown) => boolean | void
 }
 
 function latestUserMessageAt(messages: ChatMessage[] | undefined): number {
@@ -1335,9 +1446,11 @@ export function createMessagesStore(config: MessagesStoreConfig) {
   const messageRequests = new Map<string, Promise<void>>()
   const memberRequests = new Map<string, Promise<void>>()
   const agentRunDetailRequests = new Map<string, Promise<void>>()
+  const initialAskUserAnswerOutbox = readAskUserAnswerOutbox()
 
   return createStore<MessagesState>()((set, get) => ({
     messages: new Map(),
+    askUserAnswerOutbox: initialAskUserAnswerOutbox,
     streams: new Map(),
     agentLoops: new Map(),
     members: new Map(),
@@ -1359,9 +1472,12 @@ export function createMessagesStore(config: MessagesStoreConfig) {
           const page = await fetchMessagePage(config.api, channelId, { limit: String(MESSAGE_PAGE_SIZE) })
           const msgs = page.messages
           const userId = config.getCurrentUserId()
+          const outbox = new Map(get().askUserAnswerOutbox)
           const parsed = msgs
             .map((m) => parseMessage(m, userId))
             .filter((m): m is ChatMessage => m !== null)
+            .map((message) => overlayAskUserAnswerOutbox(message, channelId, userId, outbox))
+          persistAskUserAnswerOutbox(outbox)
           const map = new Map(get().messages)
           map.set(channelId, parsed)
           const loops = new Map(get().agentLoops)
@@ -1381,7 +1497,7 @@ export function createMessagesStore(config: MessagesStoreConfig) {
           } else {
             cursorMap.delete(channelId)
           }
-          set({ messages: map, agentLoops: loops, hasOlderMessages: olderMap, olderMessageCursors: cursorMap })
+          set({ messages: map, askUserAnswerOutbox: outbox, agentLoops: loops, hasOlderMessages: olderMap, olderMessageCursors: cursorMap })
 
           const runIds = visibleRunIdsFromMessages(msgs)
           if (runIds.length === 0) return
@@ -1430,9 +1546,12 @@ export function createMessagesStore(config: MessagesStoreConfig) {
         })
         const msgs = page.messages
         const userId = config.getCurrentUserId()
+        const outbox = new Map(get().askUserAnswerOutbox)
         const parsed = msgs
           .map((m) => parseMessage(m, userId))
           .filter((m): m is ChatMessage => m !== null)
+          .map((message) => overlayAskUserAnswerOutbox(message, channelId, userId, outbox))
+        persistAskUserAnswerOutbox(outbox)
         const map = new Map(get().messages)
         map.set(channelId, mergeMessages(map.get(channelId) ?? [], parsed))
         const loops = new Map(get().agentLoops)
@@ -1449,7 +1568,7 @@ export function createMessagesStore(config: MessagesStoreConfig) {
         } else {
           cursorMap.delete(channelId)
         }
-        set({ messages: map, agentLoops: loops, hasOlderMessages: olderMap, olderMessageCursors: cursorMap })
+        set({ messages: map, askUserAnswerOutbox: outbox, agentLoops: loops, hasOlderMessages: olderMap, olderMessageCursors: cursorMap })
 
         const runIds = visibleRunIdsFromMessages(msgs)
         if (runIds.length > 0) {
@@ -1576,6 +1695,12 @@ export function createMessagesStore(config: MessagesStoreConfig) {
           const olderMessageCursors = new Map(state.olderMessageCursors)
           olderMessageCursors.delete(event.channel_id)
 
+          const askUserAnswerOutbox = new Map(state.askUserAnswerOutbox)
+          for (const [key, entry] of askUserAnswerOutbox) {
+            if (entry.channelId === event.channel_id && (!userId || entry.userId === userId)) askUserAnswerOutbox.delete(key)
+          }
+          persistAskUserAnswerOutbox(askUserAnswerOutbox)
+
           const loadingAgentRunDetails = new Set(state.loadingAgentRunDetails)
           const loadedAgentRunDetails = new Set(state.loadedAgentRunDetails)
           for (const key of loadingAgentRunDetails) {
@@ -1592,6 +1717,7 @@ export function createMessagesStore(config: MessagesStoreConfig) {
             typingStatus,
             hasOlderMessages,
             olderMessageCursors,
+            askUserAnswerOutbox,
             loadingAgentRunDetails,
             loadedAgentRunDetails,
             loadingChannel: state.loadingChannel === event.channel_id ? null : state.loadingChannel,
@@ -1599,17 +1725,67 @@ export function createMessagesStore(config: MessagesStoreConfig) {
           break
         }
 
+        case 'ask_user_answer_ack': {
+          const outbox = new Map(state.askUserAnswerOutbox)
+          const found = findAskUserAnswerOutboxEntry(outbox, userId, event.channel_id, event.ask_id)
+          if (found) outbox.delete(found[0])
+          persistAskUserAnswerOutbox(outbox)
+
+          const messages = new Map(state.messages)
+          const channelMessages = messages.get(event.channel_id)
+          if (channelMessages) {
+            messages.set(event.channel_id, channelMessages.map((message) => (
+              message.askUserData?.askId === event.ask_id
+                ? { ...message, askUserData: { ...message.askUserData, status: 'answered' as const, answers: event.answers, submissionError: undefined } }
+                : message
+            )))
+          }
+          set({ messages, askUserAnswerOutbox: outbox })
+          break
+        }
+
+        case 'ask_user_answer_rejected': {
+          if (!event.channel_id) break
+          const outbox = new Map(state.askUserAnswerOutbox)
+          const found = findAskUserAnswerOutboxEntry(outbox, userId, event.channel_id, event.ask_id)
+          if (!found) break
+          const [key, current] = found
+          if (event.retryable) {
+            // Keep the durable answer queued. It will be retried after the next
+            // authenticated reconnect instead of being reported as accepted.
+            break
+          }
+          const failed = { ...current, status: 'failed' as const, error: event.error || '答案提交失败。' }
+          outbox.set(key, failed)
+          persistAskUserAnswerOutbox(outbox)
+
+          const messages = new Map(state.messages)
+          const channelMessages = messages.get(event.channel_id)
+          if (channelMessages) {
+            messages.set(event.channel_id, channelMessages.map((message) => (
+              message.askUserData?.askId === event.ask_id
+                ? { ...message, askUserData: { ...message.askUserData, status: 'failed' as const, answers: failed.answers, submissionError: failed.error } }
+                : message
+            )))
+          }
+          set({ messages, askUserAnswerOutbox: outbox })
+          break
+        }
+
         case 'message': {
           maybeEmitStorageMutationFromMessage(event.channel_id, event.message)
-          const parsed = parseMessage(event.message, userId)
+          const outbox = new Map(state.askUserAnswerOutbox)
+          const rawParsed = parseMessage(event.message, userId)
+          const parsed = rawParsed ? overlayAskUserAnswerOutbox(rawParsed, event.channel_id, userId, outbox) : null
           if (!parsed) break
+          persistAskUserAnswerOutbox(outbox)
           const map = new Map(state.messages)
           let msgs = [...(map.get(event.channel_id) || [])]
           const existingIdx = msgs.findIndex((m) => m.msgId === parsed.msgId)
           if (existingIdx >= 0) {
             msgs[existingIdx] = parsed
             map.set(event.channel_id, msgs)
-            set({ messages: map })
+            set({ messages: map, askUserAnswerOutbox: outbox })
             break
           }
           const optIdx = parsed.role === 'user'
@@ -1621,7 +1797,7 @@ export function createMessagesStore(config: MessagesStoreConfig) {
             msgs.push(parsed)
           }
           map.set(event.channel_id, msgs)
-          set({ messages: map })
+          set({ messages: map, askUserAnswerOutbox: outbox })
 
           if (parsed.senderType === 'agent' && parsed.senderId) {
             const streams = new Map(get().streams)
@@ -2112,6 +2288,17 @@ export function createMessagesStore(config: MessagesStoreConfig) {
           break
         }
 
+        case 'agent_run_status': {
+          const typing = new Map(state.typingStatus)
+          if (['queued', 'starting', 'running', 'waiting_tool'].includes(event.status)) {
+            typing.set(typingKey(event.channel_id, event.agent_id), `${event.agent_id} 正在思考...`)
+          } else {
+            clearTypingForChannel(typing, event.channel_id, event.agent_id)
+          }
+          set({ typingStatus: typing })
+          break
+        }
+
         case 'agent_todo_snapshot':
         case 'agent_todo_updated': {
           if (shouldIgnoreStaleLiveAgentEvent(state, event)) break
@@ -2382,25 +2569,64 @@ export function createMessagesStore(config: MessagesStoreConfig) {
     },
 
     submitAskUserAnswer: (channelId, askId, answers) => {
-      config.sendWsCommand({
-        type: 'ask_user_answer',
-        channel_id: channelId,
-        ask_id: askId,
-        answers,
-      })
+      const askMessage = get().messages.get(channelId)
+        ?.find((message) => message.askUserData?.askId === askId)
+      if (!askMessage?.askUserData || askMessage.askUserData.status !== 'pending') return
 
-      // Mark message as answered locally
+      const userId = config.getCurrentUserId()
+      const agentSessionId = askMessage.askUserData.agentSessionId
+      const entry: AskUserAnswerOutboxEntry = {
+        userId: userId || '',
+        channelId,
+        askId,
+        agentSessionId,
+        answers,
+        status: 'queued',
+        createdAt: Date.now(),
+      }
+      const outbox = new Map(get().askUserAnswerOutbox)
+      outbox.set(askUserAnswerOutboxEntryKey(entry), entry)
+      if (!userId || !persistAskUserAnswerOutbox(outbox)) {
+        entry.status = 'failed'
+        entry.error = !userId ? '无法确认当前用户，答案未提交。' : '无法在本机安全保存答案，答案未提交。'
+        outbox.set(askUserAnswerOutboxEntryKey(entry), entry)
+      }
+
       const map = new Map(get().messages)
       const msgs = map.get(channelId)
       if (msgs) {
         const updated = msgs.map((m) => {
           if (m.askUserData?.askId === askId) {
-            return { ...m, askUserData: { ...m.askUserData, status: 'answered' as const, answers } }
+            return {
+              ...m,
+              askUserData: {
+                ...m.askUserData,
+                status: entry.status,
+                answers,
+                submissionError: entry.error,
+              },
+            }
           }
           return m
         })
         map.set(channelId, updated)
-        set({ messages: map })
+        set({ messages: map, askUserAnswerOutbox: outbox })
+      }
+      if (entry.status === 'queued') get().flushPendingAskUserAnswers()
+    },
+
+    flushPendingAskUserAnswers: () => {
+      const userId = config.getCurrentUserId()
+      if (!userId) return
+      for (const entry of get().askUserAnswerOutbox.values()) {
+        if (entry.userId !== userId || entry.status !== 'queued') continue
+        config.sendWsCommand({
+          type: 'ask_user_answer',
+          channel_id: entry.channelId,
+          ...(entry.agentSessionId ? { agent_session_id: entry.agentSessionId } : {}),
+          ask_id: entry.askId,
+          answers: entry.answers,
+        })
       }
     },
 
