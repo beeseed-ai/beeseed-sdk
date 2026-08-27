@@ -1300,6 +1300,7 @@ const TASK_STATUS_META: Record<Task['status'], { label: string; icon: typeof Cir
   done: { label: '已完成', icon: CheckCircle2, badge: 'success' },
   failed: { label: '失败', icon: AlertTriangle, badge: 'destructive' },
   blocked: { label: '阻塞', icon: AlertTriangle, badge: 'warning' },
+  skipped: { label: '已跳过', icon: Circle, badge: 'outline' },
 }
 
 const TASK_TYPE_META = {

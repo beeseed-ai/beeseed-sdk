@@ -10,6 +10,7 @@ const STATUS_CONFIG = {
   done: { icon: CheckCircle2, color: 'text-green-500', label: '已完成', variant: 'success' as const },
   failed: { icon: AlertTriangle, color: 'text-red-500', label: '失败', variant: 'destructive' as const },
   blocked: { icon: Ban, color: 'text-amber-500', label: '阻塞', variant: 'warning' as const },
+  skipped: { icon: Circle, color: 'text-muted-foreground', label: '已跳过', variant: 'outline' as const },
 }
 
 const TASK_TYPE_CONFIG = {

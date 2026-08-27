@@ -1,6 +1,6 @@
 import { createStore } from 'zustand/vanilla'
 import type { KyInstance } from 'ky'
-import type { ChannelWithMeta, ChannelMember, ExternalChannelCreateInput, ExternalChannelResponse } from '../core/types.js'
+import type { ChannelWithMeta, ChannelMember, ExternalChannelCreateInput, ExternalChannelResponse, ReasonixChannelRuntimePublication } from '../core/types.js'
 
 export interface ChannelsState {
   channels: ChannelWithMeta[]
@@ -10,7 +10,7 @@ export interface ChannelsState {
   fetchChannels: () => Promise<void>
   setCurrentChannel: (channelId: string | null) => void
   setChannels: (channels: ChannelWithMeta[]) => void
-  createChannel: (input: { name: string; purpose?: string; agent_ids?: string[] }) => Promise<{ channel: ChannelWithMeta; members: ChannelMember[] } | null>
+  createChannel: (input: { name: string; purpose?: string; agent_ids: string[] }) => Promise<{ channel: ChannelWithMeta; members: ChannelMember[]; publication?: ReasonixChannelRuntimePublication | null } | null>
   getChannelByExternalRef: (externalRef: string) => Promise<ExternalChannelResponse | null>
   createChannelByExternalRef: (input: ExternalChannelCreateInput) => Promise<ExternalChannelResponse | null>
   deleteChannel: (channelId: string) => Promise<{ error: string | null }>
@@ -19,6 +19,7 @@ export interface ChannelsState {
   inviteUsers: (channelId: string, targets: string[]) => Promise<{ error: string | null }>
   updateUnread: (channelId: string, count: number) => void
   markRead: (channelId: string) => void
+  updateReasonixPublication: (channelId: string, publication: ReasonixChannelRuntimePublication) => void
   reset: () => void
 }
 
@@ -56,14 +57,17 @@ export function createChannelsStore(config: ChannelsStoreConfig) {
     setChannels: (channels) => set({ channels }),
 
     createChannel: async (input) => {
+      if (!input.agent_ids.length) return null
       try {
         const data = await config.api.post('channels', {
           json: input,
-        }).json<{ channel?: ChannelWithMeta; members: ChannelMember[] }>()
+        }).json<{ channel?: ChannelWithMeta; members: ChannelMember[]; publication?: ReasonixChannelRuntimePublication | null }>()
         const channel = data.channel
         if (!channel) return null
-        set({ channels: [channel, ...get().channels] })
-        return { channel: channel, members: data.members }
+        const publication = data.publication
+        const nextChannel = publication ? channelWithPublication(channel, publication) : channel
+        set({ channels: [nextChannel, ...get().channels] })
+        return { channel: nextChannel, members: data.members, publication }
       } catch {
         return null
       }
@@ -176,11 +180,31 @@ export function createChannelsStore(config: ChannelsStoreConfig) {
       get().updateUnread(channelId, 0)
     },
 
+    updateReasonixPublication: (channelId, publication) => {
+      set({
+        channels: get().channels.map((channel) => (
+          channel.id === channelId ? channelWithPublication(channel, publication) : channel
+        )),
+      })
+    },
+
     reset: () => set({ channels: [], currentChannelId: null, loading: false }),
   }))
 }
 
 export type ChannelsStore = ReturnType<typeof createChannelsStore>
+
+function channelWithPublication(channel: ChannelWithMeta, publication: ReasonixChannelRuntimePublication): ChannelWithMeta {
+  return {
+    ...channel,
+    publication_status: publication.status,
+    desired_revision: publication.desired_revision,
+    active_revision: publication.active_revision ?? null,
+    effective_revision: publication.effective_revision ?? null,
+    publication_error_code: publication.last_error_code,
+    publication_error_detail: publication.last_error_detail,
+  }
+}
 
 function normalizeInviteTargets(targets: string[]) {
   const emails: string[] = []

@@ -102,6 +102,29 @@ export interface Channel {
   deleted_at?: string | null
   deleted_by?: string | null
   delete_reason?: string | null
+  lifecycle_state?: 'active' | 'disabled' | 'recycle_bin'
+  lifecycle_reason?: string
+  lifecycle_changed_at?: string | null
+  recycle_purge_after?: string | null
+}
+
+export type ReasonixPublicationStatus = 'pending' | 'publishing' | 'active' | 'failed'
+
+export interface ReasonixChannelRuntimePublication {
+  app_id: string
+  channel_id: string
+  desired_revision: number
+  active_revision?: number | null
+  effective_revision?: number | null
+  effective_snapshot_digest?: string
+  status: ReasonixPublicationStatus
+  update_pending?: boolean
+  effective_agents?: Array<{ agent_id: string; skill_ids: string[] }>
+  requested_by?: string
+  requested_at?: string
+  last_error_code?: string
+  last_error_detail?: string
+  updated_at?: string
 }
 
 export interface ChannelWithMeta extends Channel {
@@ -111,6 +134,12 @@ export interface ChannelWithMeta extends Channel {
   unread_count: number
   owner_name?: string
   owner_email?: string
+  publication_status?: ReasonixPublicationStatus | ''
+  desired_revision?: number
+  active_revision?: number | null
+  effective_revision?: number | null
+  publication_error_code?: string
+  publication_error_detail?: string
 }
 
 export type ChannelObservedState = 'active' | 'archived' | 'deleted'
@@ -133,6 +162,7 @@ export interface ExternalChannelResponse {
   metadata: Record<string, unknown>
   observed_state: ChannelObservedState
   created: boolean
+  publication?: ReasonixChannelRuntimePublication | null
 }
 
 export interface ChannelRuntimeSettings {
@@ -459,7 +489,7 @@ export interface Task {
   project_id?: string
   title: string
   description?: string
-  status: 'pending' | 'in_progress' | 'done' | 'failed' | 'blocked'
+  status: 'pending' | 'in_progress' | 'done' | 'failed' | 'blocked' | 'skipped'
   assigned_type?: 'user' | 'agent'
   assigned_user_id?: string
   assigned_agent_id?: string
@@ -475,7 +505,7 @@ export interface Task {
   verified_by?: string
   verified_at?: string
   agent_completed_at?: string
-  scheduler_state?: 'manual' | 'template' | 'waiting_time' | 'pending_deps' | 'ready' | 'dispatched' | 'awaiting_verify' | 'verified' | 'failed' | 'cancelled'
+  scheduler_state?: 'manual' | 'template' | 'waiting_time' | 'pending_deps' | 'ready' | 'dispatched' | 'awaiting_verify' | 'verified' | 'failed' | 'cancelled' | 'skipped'
   scheduled_start_at?: string
   deadline_at?: string
   dispatched_at?: string
@@ -1035,6 +1065,7 @@ export type WSEvent =
   // UI events
   | { type: 'routing_info'; channel_id: string; routing_info: { routing_method: string; target_agent_ids: string[]; reason: string } }
   | { type: 'channels_updated'; channel_id?: string }
+  | { type: 'reasonix_channel_publication_changed'; channel_id: string; publication: ReasonixChannelRuntimePublication }
   | { type: 'notification'; notification: AppNotification }
   | { type: 'kicked'; reason?: string }
   | { type: 'typing'; channel_id: string; agent_id?: string; run_id?: string }

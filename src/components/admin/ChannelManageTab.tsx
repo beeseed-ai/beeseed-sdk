@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { ArrowDown, ArrowUp, BookOpen, Clock3, MessageSquare, Plus, RefreshCw, Save, Trash2 } from 'lucide-react'
+import { ArrowDown, ArrowUp, BookOpen, Clock3, MessageSquare, Plus, RefreshCw, RotateCcw, Save, Trash2 } from 'lucide-react'
 import type { KnowledgeBase } from '../../core/types.js'
 import { cn } from '../../lib/cn.js'
 import { useBeeSeedContext } from '../../provider/BeeSeedProvider.js'
@@ -95,6 +95,43 @@ interface AdminRuntimeChannel {
   name?: string
   settings: string
   reasonixMemoryLimitMB?: number
+  lifecycle_state?: 'active' | 'disabled' | 'recycle_bin'
+  lifecycle_reason?: string
+  publication_status?: 'pending' | 'publishing' | 'active' | 'failed' | ''
+  desired_revision?: number
+  active_revision?: number | null
+  effective_revision?: number | null
+  publication_error_detail?: string
+}
+
+interface RuntimeSnapshotSummary {
+  revision: number
+  snapshot_digest: string
+  memory_limit_mb: number
+  agent_count: number
+  created_at: string
+  is_active: boolean
+  is_effective: boolean
+}
+
+interface AdminChannelMember {
+  member_type: 'user' | 'agent'
+  user_id?: string
+  agent_id?: string
+  display_name?: string
+  role?: string
+  ext_info?: Record<string, unknown> | string
+}
+
+interface AdminChannelDetail {
+  members: AdminChannelMember[]
+}
+
+function memberExtInfo(member: AdminChannelMember): Record<string, unknown> {
+  if (typeof member.ext_info === 'string') {
+    try { return JSON.parse(member.ext_info) as Record<string, unknown> } catch { return {} }
+  }
+  return member.ext_info ?? {}
 }
 
 function channelReasonixMemoryLimit(settings: string | undefined): number {
@@ -249,6 +286,14 @@ export function ChannelManageTab() {
   const [error, setError] = useState('')
 	const [runtimeChannels, setRuntimeChannels] = useState<AdminRuntimeChannel[]>([])
 	const [savingRuntimeChannel, setSavingRuntimeChannel] = useState('')
+	const [changingLifecycleChannel, setChangingLifecycleChannel] = useState('')
+	const [runtimeSnapshots, setRuntimeSnapshots] = useState<Record<string, RuntimeSnapshotSummary[]>>({})
+	const [rollbackRevisions, setRollbackRevisions] = useState<Record<string, number>>({})
+	const [rollingBackChannel, setRollingBackChannel] = useState('')
+	const [runtimeChannelDetails, setRuntimeChannelDetails] = useState<Record<string, AdminChannelDetail>>({})
+	const [selectedNewOwners, setSelectedNewOwners] = useState<Record<string, string>>({})
+	const [restoringTemplateAgent, setRestoringTemplateAgent] = useState('')
+	const [transferringOwnerChannel, setTransferringOwnerChannel] = useState('')
 
   const selectedTemplate = templates[selectedIndex] ?? null
   const selectedAgents = selectedTemplate?.agents ?? []
@@ -334,6 +379,90 @@ export function ChannelManageTab() {
 			setError(err instanceof Error ? err.message : '频道 ReasonIX 内存保存失败')
 		} finally {
 			setSavingRuntimeChannel('')
+		}
+	}
+
+	async function toggleChannelLifecycle(channel: AdminRuntimeChannel) {
+		if (channel.lifecycle_state === 'recycle_bin') return
+		setChangingLifecycleChannel(channel.id)
+		setError('')
+		try {
+			const action = channel.lifecycle_state === 'disabled' ? 'enable' : 'disable'
+			await api.post(`admin/channels/${channel.id}/${action}`, {
+				json: action === 'disable' ? { reason: 'app_admin_disabled' } : undefined,
+			})
+			await loadSettings()
+		} catch (err) {
+			setError(err instanceof Error ? err.message : '频道状态修改失败')
+		} finally {
+			setChangingLifecycleChannel('')
+		}
+	}
+
+	async function loadRuntimeSnapshots(channel: AdminRuntimeChannel) {
+		setError('')
+		try {
+			const snapshots = await api.get(`admin/channels/${channel.id}/runtime-snapshots`).json<RuntimeSnapshotSummary[]>()
+			setRuntimeSnapshots((current) => ({ ...current, [channel.id]: snapshots }))
+			const candidate = snapshots.find((snapshot) => !snapshot.is_active)
+			if (candidate) setRollbackRevisions((current) => ({ ...current, [channel.id]: candidate.revision }))
+		} catch (err) {
+			setError(err instanceof Error ? err.message : '历史快照加载失败')
+		}
+	}
+
+	async function rollbackRuntimeSnapshot(channel: AdminRuntimeChannel) {
+		const revision = rollbackRevisions[channel.id]
+		if (!revision) return
+		setRollingBackChannel(channel.id)
+		setError('')
+		try {
+			await api.post(`admin/channels/${channel.id}/runtime-snapshots/${revision}/rollback`)
+			await Promise.all([loadSettings(), loadRuntimeSnapshots(channel)])
+		} catch (err) {
+			setError(err instanceof Error ? err.message : '历史快照回滚失败')
+		} finally {
+			setRollingBackChannel('')
+		}
+	}
+
+	async function loadRuntimeChannelDetail(channel: AdminRuntimeChannel) {
+		setError('')
+		try {
+			const detail = await api.get(`admin/channels/${channel.id}`).json<AdminChannelDetail>()
+			setRuntimeChannelDetails((current) => ({ ...current, [channel.id]: detail }))
+			const candidate = detail.members.find((member) => member.member_type === 'user' && member.role !== 'owner' && member.user_id)
+			if (candidate?.user_id) setSelectedNewOwners((current) => ({ ...current, [channel.id]: candidate.user_id! }))
+		} catch (err) {
+			setError(err instanceof Error ? err.message : '频道配置加载失败')
+		}
+	}
+
+	async function restoreTemplateAgent(channel: AdminRuntimeChannel, agentId: string) {
+		setRestoringTemplateAgent(`${channel.id}:${agentId}`)
+		setError('')
+		try {
+			await api.post(`admin/channels/${channel.id}/members/agents/${encodeURIComponent(agentId)}/restore-template`)
+			await Promise.all([loadSettings(), loadRuntimeChannelDetail(channel)])
+		} catch (err) {
+			setError(err instanceof Error ? err.message : '恢复模板设置失败')
+		} finally {
+			setRestoringTemplateAgent('')
+		}
+	}
+
+	async function transferChannelOwner(channel: AdminRuntimeChannel) {
+		const newOwnerUserId = selectedNewOwners[channel.id]
+		if (!newOwnerUserId) return
+		setTransferringOwnerChannel(channel.id)
+		setError('')
+		try {
+			await api.post(`admin/channels/${channel.id}/transfer-owner`, { json: { new_owner_user_id: newOwnerUserId } })
+			await Promise.all([loadSettings(), loadRuntimeChannelDetail(channel)])
+		} catch (err) {
+			setError(err instanceof Error ? err.message : '频道所有权转交失败')
+		} finally {
+			setTransferringOwnerChannel('')
 		}
 	}
 
@@ -499,6 +628,11 @@ export function ChannelManageTab() {
     setSaving(true)
     setError('')
     try {
+      const emptyAgentTemplate = templates.find((template) => template.agents.length === 0)
+      if (emptyAgentTemplate) {
+        setError(`模板「${emptyAgentTemplate.name || '未命名模板'}」必须至少包含一个 Agent`)
+        return
+      }
       const invalidJoinTemplate = templates.find((template) => template.type === 'join' && !template.channel_id?.trim())
       if (invalidJoinTemplate) {
         setError(`模板「${invalidJoinTemplate.name || '未命名模板'}」需要填写目标频道 ID`)
@@ -610,7 +744,18 @@ export function ChannelManageTab() {
 			<div className="mt-1 text-xs text-muted-foreground">每个频道独立 Docker；允许 100–1024 MiB。修改在下次自然启动时生效。</div>
 			<div className="mt-4 divide-y divide-border">
 			  {runtimeChannels.map((channel) => (
-				<div key={channel.id} className="flex items-center gap-3 py-3">
+				<div key={channel.id} className="flex flex-wrap items-center gap-3 py-3">
+				  <div className="flex max-w-[260px] flex-col gap-1 text-[11px] text-muted-foreground">
+					<div className="flex flex-wrap items-center gap-1">
+					  <Badge variant="outline">{channel.lifecycle_state === 'disabled' ? '已禁用' : channel.lifecycle_state === 'recycle_bin' ? '回收站' : '启用中'}</Badge>
+					  {channel.publication_status && <Badge variant={channel.publication_status === 'failed' ? 'destructive' : 'outline'}>{channel.publication_status}</Badge>}
+					  {(channel.desired_revision ?? 0) > 0 && <span>D{channel.desired_revision}</span>}
+					  {channel.active_revision && <span>A{channel.active_revision}</span>}
+					  {channel.effective_revision && <span>E{channel.effective_revision}</span>}
+					  {channel.active_revision && channel.effective_revision && channel.active_revision !== channel.effective_revision && <span className="text-amber-700">更新待重启</span>}
+					</div>
+					{channel.publication_error_detail && <div className="truncate text-destructive" title={channel.publication_error_detail}>{channel.publication_error_detail}</div>}
+				  </div>
 				  <div className="min-w-0 flex-1 truncate text-sm text-[#181d26]">{channel.name || '未命名频道'}</div>
 				  <Input
 					type="number"
@@ -627,6 +772,72 @@ export function ChannelManageTab() {
 				  <Button type="button" variant="outline" size="sm" disabled={savingRuntimeChannel === channel.id} onClick={() => void saveChannelMemory(channel)}>
 					{savingRuntimeChannel === channel.id ? '保存中' : '保存'}
 				  </Button>
+				  <Button type="button" variant="outline" size="sm" disabled={changingLifecycleChannel === channel.id || channel.lifecycle_state === 'recycle_bin'} onClick={() => void toggleChannelLifecycle(channel)}>
+					{changingLifecycleChannel === channel.id ? '处理中...' : channel.lifecycle_state === 'disabled' ? '启用' : '禁用'}
+				  </Button>
+				  {!runtimeSnapshots[channel.id] ? (
+					<Button type="button" variant="outline" size="sm" onClick={() => void loadRuntimeSnapshots(channel)}>
+					  <RotateCcw className="mr-1.5 h-3.5 w-3.5" />历史版本
+					</Button>
+				  ) : (
+					<>
+					  <select
+						value={rollbackRevisions[channel.id] ?? ''}
+						onChange={(event) => setRollbackRevisions((current) => ({ ...current, [channel.id]: Number(event.target.value) }))}
+						className="h-9 rounded-lg border border-border bg-white px-2 text-xs text-[#181d26]"
+					  >
+						<option value="">选择历史 revision</option>
+						{runtimeSnapshots[channel.id].map((snapshot) => (
+						  <option key={snapshot.revision} value={snapshot.revision} disabled={snapshot.is_active}>
+							R{snapshot.revision} · {snapshot.agent_count} Agent · {snapshot.memory_limit_mb} MiB{snapshot.is_active ? '（当前）' : snapshot.is_effective ? '（运行中）' : ''}
+						  </option>
+						))}
+					  </select>
+					  <Button type="button" variant="outline" size="sm" disabled={!rollbackRevisions[channel.id] || rollingBackChannel === channel.id} onClick={() => void rollbackRuntimeSnapshot(channel)}>
+						{rollingBackChannel === channel.id ? '回滚中...' : '回滚'}
+					  </Button>
+					</>
+				  )}
+				  <Button type="button" variant="outline" size="sm" onClick={() => void loadRuntimeChannelDetail(channel)}>
+					频道配置
+				  </Button>
+				  {runtimeChannelDetails[channel.id] && (
+					<>
+					  {runtimeChannelDetails[channel.id].members
+						.filter((member) => member.member_type === 'agent' && member.agent_id && memberExtInfo(member).template_managed === false)
+						.map((member) => (
+						  <Button
+							key={member.agent_id}
+							type="button"
+							variant="outline"
+							size="sm"
+							disabled={restoringTemplateAgent === `${channel.id}:${member.agent_id}`}
+							onClick={() => void restoreTemplateAgent(channel, member.agent_id!)}
+						  >
+							恢复 {member.display_name || member.agent_id} 模板设置
+						  </Button>
+						))}
+					  <select
+						value={selectedNewOwners[channel.id] ?? ''}
+						onChange={(event) => setSelectedNewOwners((current) => ({ ...current, [channel.id]: event.target.value }))}
+						className="h-9 max-w-40 rounded-lg border border-border bg-white px-2 text-xs text-[#181d26]"
+					  >
+						<option value="">选择新所有者</option>
+						{runtimeChannelDetails[channel.id].members
+						  .filter((member) => member.member_type === 'user' && member.role !== 'owner' && member.user_id)
+						  .map((member) => <option key={member.user_id} value={member.user_id}>{member.display_name || member.user_id}</option>)}
+					  </select>
+					  <Button
+						type="button"
+						variant="outline"
+						size="sm"
+						disabled={!selectedNewOwners[channel.id] || transferringOwnerChannel === channel.id}
+						onClick={() => void transferChannelOwner(channel)}
+					  >
+						{transferringOwnerChannel === channel.id ? '转交中…' : '转交所有权'}
+					  </Button>
+					</>
+				  )}
 				</div>
 			  ))}
 			  {runtimeChannels.length === 0 && <div className="py-4 text-xs text-muted-foreground">暂无频道</div>}

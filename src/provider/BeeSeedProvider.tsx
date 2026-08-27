@@ -144,6 +144,9 @@ function createBeeSeedContext(
     if (event.type === 'channels_updated') {
       void channelsStore.getState().fetchChannels()
     }
+    if (event.type === 'reasonix_channel_publication_changed') {
+      channelsStore.getState().updateReasonixPublication(event.channel_id, event.publication)
+    }
     if (event.type === 'notification') {
       notificationsStore.getState().handleWsNotification(event.notification)
     }

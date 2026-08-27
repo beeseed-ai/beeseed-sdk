@@ -22,6 +22,7 @@ const STATUS_LABEL: Record<Task['status'], string> = {
   done: '已完成',
   failed: '失败',
   blocked: '阻塞',
+  skipped: '已跳过',
 }
 
 export function TaskDetailSheet({ channelId, task, members, channelName, open, onClose, onTaskChanged }: Props) {

@@ -89,6 +89,10 @@ export function CreateChannelDialog({ open, onOpenChange }: Props) {
     setCreating(true)
     const available = new Set(agentOptions.map((agent) => agent.id))
     const agentIDs = selectedAgentIDs.filter((id) => available.has(id))
+    if (agentIDs.length === 0) {
+      setError('必须至少选择一个 Agent')
+      return
+    }
     const result = await createChannel({ name: name.trim(), purpose: purpose.trim() || undefined, agent_ids: agentIDs })
     setCreating(false)
     if (result) {
@@ -214,7 +218,7 @@ export function CreateChannelDialog({ open, onOpenChange }: Props) {
                 <Button variant="outline" type="button" onClick={() => onOpenChange(false)}>
                   取消
                 </Button>
-                <Button disabled={creating || policyStatus === 'loading' || !policy || !name.trim() || policy.can_create === false || (agentOptions.length > 0 && selectedAgentIDs.length === 0)}>
+                <Button disabled={creating || policyStatus === 'loading' || !policy || !name.trim() || policy.can_create === false || agentOptions.length === 0 || selectedAgentIDs.length === 0}>
                   {creating ? '创建中...' : '创建'}
                 </Button>
               </DialogFooter>
