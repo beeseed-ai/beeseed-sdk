@@ -33,3 +33,43 @@ describe('MarkdownRenderer message image extension', () => {
     expect(html).toContain('专属图片')
   })
 })
+
+describe('MarkdownRenderer storage references', () => {
+  it('renders an existing cloud file as a clickable chip', () => {
+    const html = renderToStaticMarkup(
+      <MarkdownRenderer
+        content="`storage://notes/task.md`"
+        storageRefAvailable={(refText) => refText === 'storage://notes/task.md'}
+      />,
+    )
+
+    expect(html).toContain('<button')
+    expect(html).toContain('title="notes/task.md"')
+    expect(html).toContain('task.md')
+  })
+
+  it('keeps a missing workspace path as ordinary text', () => {
+    const html = renderToStaticMarkup(
+      <MarkdownRenderer
+        content="Temporary file workspace/task.md"
+        storageRefAvailable={() => false}
+      />,
+    )
+
+    expect(html).not.toContain('<button')
+    expect(html).toContain('workspace/task.md')
+  })
+
+  it('keeps a missing cloud-file link as non-clickable content', () => {
+    const html = renderToStaticMarkup(
+      <MarkdownRenderer
+        content="[task.md](workspace/task.md)"
+        storageRefAvailable={() => false}
+      />,
+    )
+
+    expect(html).not.toContain('<button')
+    expect(html).not.toContain('<a')
+    expect(html).toContain('task.md')
+  })
+})

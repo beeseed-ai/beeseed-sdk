@@ -19,12 +19,13 @@ function processInlineTokens(
   children: ReactNode,
   onMentionClick?: (name: string) => void,
   onStorageRefClick?: (key: string) => void,
+  storageRefAvailable?: (refText: string) => boolean,
 ): ReactNode {
-  if (typeof children === 'string') return splitInlineTokens(children, onMentionClick, onStorageRefClick)
+  if (typeof children === 'string') return splitInlineTokens(children, onMentionClick, onStorageRefClick, storageRefAvailable)
   if (Array.isArray(children)) {
     return children.map((child, i) => {
       if (typeof child === 'string') {
-        const result = splitInlineTokens(child, onMentionClick, onStorageRefClick)
+        const result = splitInlineTokens(child, onMentionClick, onStorageRefClick, storageRefAvailable)
         if (Array.isArray(result)) {
           return result.map((el, j) =>
             typeof el === 'string' ? el : <span key={`${i}-${j}`}>{el}</span>,
@@ -42,6 +43,7 @@ function splitInlineTokens(
   text: string,
   onMentionClick?: (name: string) => void,
   onStorageRefClick?: (key: string) => void,
+  storageRefAvailable?: (refText: string) => boolean,
 ): ReactNode {
   const storageParts: ReactNode[] = []
   let lastIndex = 0
@@ -49,9 +51,13 @@ function splitInlineTokens(
   for (const storageMatch of storageInlineRefMatches(text)) {
     const idx = storageMatch.index
     if (idx > lastIndex) storageParts.push(text.slice(lastIndex, idx))
-    storageParts.push(
-      <StorageRefChip key={`storage-${idx}`} refText={storageMatch.refText} onClick={onStorageRefClick} />,
-    )
+    if (!storageRefAvailable || storageRefAvailable(storageMatch.refText)) {
+      storageParts.push(
+        <StorageRefChip key={`storage-${idx}`} refText={storageMatch.refText} onClick={onStorageRefClick} />,
+      )
+    } else {
+      storageParts.push(storageMatch.rawText)
+    }
     lastIndex = idx + storageMatch.length
   }
   if (storageParts.length === 0) {
@@ -114,6 +120,7 @@ export const MarkdownRenderer = memo(function MarkdownRenderer({
   onMentionClick,
   onFileClick,
   onStorageRefClick,
+  storageRefAvailable,
   imageContext,
   renderImage,
 }: MarkdownRendererProps) {
@@ -133,7 +140,7 @@ export const MarkdownRenderer = memo(function MarkdownRenderer({
         remarkPlugins={[remarkGfm, remarkBreaks]}
         components={{
           p(props: { children?: ReactNode }) {
-            const withMentions = processInlineTokens(props.children, onMentionClick, onStorageRefClick)
+            const withMentions = processInlineTokens(props.children, onMentionClick, onStorageRefClick, storageRefAvailable)
             return <p className="my-1 leading-relaxed">{withMentions}</p>
           },
           code(props: { className?: string; children?: ReactNode }) {
@@ -147,11 +154,15 @@ export const MarkdownRenderer = memo(function MarkdownRenderer({
             }
             const text = String(props.children).replace(/\n$/, '')
             if (text.startsWith('storage://')) {
-              return <StorageRefChip refText={text} onClick={onStorageRefClick} />
+              if (!storageRefAvailable || storageRefAvailable(text)) {
+                return <StorageRefChip refText={text} onClick={onStorageRefClick} />
+              }
             }
             if (isLikelyStoragePathRef(text)) {
               const refText = storageRefFromKey(text)
-              return <StorageRefChip refText={refText} onClick={onStorageRefClick} />
+              if (!storageRefAvailable || storageRefAvailable(refText)) {
+                return <StorageRefChip refText={refText} onClick={onStorageRefClick} />
+              }
             }
             if (onFileClick && isLikelyFilePath(text)) {
               return (
@@ -174,11 +185,17 @@ export const MarkdownRenderer = memo(function MarkdownRenderer({
           },
           a(props: { children?: ReactNode; href?: string }) {
             if (props.href?.startsWith('storage://')) {
-              return <StorageRefChip refText={props.href} onClick={onStorageRefClick} />
+              if (!storageRefAvailable || storageRefAvailable(props.href)) {
+                return <StorageRefChip refText={props.href} onClick={onStorageRefClick} />
+              }
+              return <>{props.children}</>
             }
             if (props.href && isLikelyStoragePathRef(props.href)) {
               const refText = storageRefFromKey(props.href)
-              return <StorageRefChip refText={refText} onClick={onStorageRefClick} />
+              if (!storageRefAvailable || storageRefAvailable(refText)) {
+                return <StorageRefChip refText={refText} onClick={onStorageRefClick} />
+              }
+              return <>{props.children}</>
             }
             return (
               <a
