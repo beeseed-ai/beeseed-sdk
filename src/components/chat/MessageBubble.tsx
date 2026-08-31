@@ -87,8 +87,8 @@ export function MessageBubble({
     onQuote?.(message)
   }, [message, onQuote])
 
-  const handleStorageRefClick = useCallback((key: string) => {
-    setStoragePreviewRef(storageRefFromKey(key))
+  const handleStorageRefClick = useCallback((keyOrRef: string) => {
+    setStoragePreviewRef(keyOrRef.startsWith('storage://') ? keyOrRef : storageRefFromKey(keyOrRef))
   }, [])
 
   const timeStr = formatChatTimestamp(message.timestamp)
@@ -276,6 +276,7 @@ export function MessageBubble({
                 {editableArtifacts.length > 0 && (
                   <EditableArtifactActions
                     artifacts={editableArtifacts}
+                    onPreview={(artifact) => handleStorageRefClick(artifact.storageRef)}
                     onRevise={(artifact) => onReviseArtifact?.(artifact, message)}
                   />
                 )}
@@ -295,6 +296,7 @@ export function MessageBubble({
                 {editableArtifacts.length > 0 && (
                   <EditableArtifactActions
                     artifacts={editableArtifacts}
+                    onPreview={(artifact) => handleStorageRefClick(artifact.storageRef)}
                     onRevise={(artifact) => onReviseArtifact?.(artifact, message)}
                   />
                 )}
@@ -388,11 +390,13 @@ function artifactKindLabel(artifact: ChatArtifact): string {
   return '产物'
 }
 
-function EditableArtifactActions({
+export function EditableArtifactActions({
   artifacts,
+  onPreview,
   onRevise,
 }: {
   artifacts: ChatArtifact[]
+  onPreview: (artifact: ChatArtifact) => void
   onRevise: (artifact: ChatArtifact) => void
 }) {
   return (
@@ -402,13 +406,18 @@ function EditableArtifactActions({
           key={artifact.artifactId}
           className="flex max-w-full items-center gap-2 rounded-md border border-[#d8dde6] bg-white px-2.5 py-2"
         >
-          <span className="min-w-0 flex-1">
+          <button
+            type="button"
+            onClick={() => onPreview(artifact)}
+            aria-label={`预览文件：${artifact.fileName}`}
+            className="min-w-0 flex-1 rounded-sm text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1b61c9] focus-visible:ring-offset-2"
+          >
             <span className="block truncate text-xs font-medium text-[#181d26]">{artifact.fileName}</span>
             <span className="block text-[10px] text-[#777169]">
               {artifactKindLabel(artifact)}
               {artifact.version ? ` · v${artifact.version}` : ''}
             </span>
-          </span>
+          </button>
           <button
             type="button"
             onClick={() => onRevise(artifact)}
