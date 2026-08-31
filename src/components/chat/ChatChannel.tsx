@@ -10,7 +10,6 @@ import { useBeeSeedContext } from '../../provider/BeeSeedProvider.js'
 import { MessageList } from './MessageList.js'
 import { MessageInput } from './MessageInput.js'
 import { AgentTodoRail } from './AgentTodoRail.js'
-import { ReasonixPublicationStatus } from './ReasonixPublicationStatus.js'
 import { markdownImageRendererContext, type MarkdownImageRenderer } from './MarkdownImageRendering.js'
 import { normalizeSkillMenuOrder, orderSkillMenuItems } from '../../lib/skill-menu-order.js'
 
@@ -89,10 +88,6 @@ export function ChatChannel({ channelId, className, header, renderMessageImage }
   const memberSkillOptions = useMemo(
     () => filterEffectiveSkillOptions(buildSkillOptionsFromMembers(visibleMembers), effectiveSkillsByAgent),
     [effectiveSkillsByAgent, visibleMembers],
-  )
-  const agentIds = useMemo(
-    () => visibleMembers.filter((member) => member.member_type === 'agent' && member.agent_id).map((member) => member.agent_id!),
-    [visibleMembers],
   )
   const publicationBlocked = Boolean(channel?.publication_status)
     && !channel?.active_revision
@@ -182,7 +177,6 @@ export function ChatChannel({ channelId, className, header, renderMessageImage }
   return (
     <div className={cn('flex h-full flex-col bg-[#fafafa]', className)}>
       {header}
-      <ReasonixPublicationStatus channelId={channelId} agentIds={agentIds} channel={channel} />
 
       <div className="relative flex min-h-0 flex-1 overflow-hidden">
         <AgentTodoRail

@@ -150,9 +150,8 @@ function createBeeSeedContext(
     if (event.type === 'notification') {
       notificationsStore.getState().handleWsNotification(event.notification)
     }
-    if (event.type === 'task_updated') {
-      void tasksStore.getState().fetchTasks(event.channel_id)
-      void tasksStore.getState().fetchMetrics(event.channel_id)
+    if (event.type === 'task_updated' || event.type === 'tasks_changed') {
+      refreshTaskSurfaces(tasksStore, event.channel_id)
     }
     if (event.type === 'workflow_updated') {
       void workflowsStore.getState().fetchWorkflows(event.channel_id)
@@ -183,6 +182,17 @@ function createBeeSeedContext(
     detailPanelStore, tasksStore, knowledgeStore, storageStore,
     notificationsStore, cronStore, workflowsStore, agentsStore, appUsersStore, invitesStore, appSettingsStore, config, updateAppConfig,
   }
+}
+
+export function refreshTaskSurfaces(tasksStore: TasksStore, channelId: string) {
+  const tasks = tasksStore.getState()
+  void Promise.all([
+    tasks.fetchProjects(channelId),
+    tasks.fetchTasks(channelId),
+    tasks.fetchScheduledTasks(channelId),
+    tasks.fetchCalendar(channelId),
+    tasks.fetchMetrics(channelId),
+  ])
 }
 
 export function BeeSeedProvider({ config, children }: Props) {

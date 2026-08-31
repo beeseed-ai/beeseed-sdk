@@ -1070,6 +1070,7 @@ export type WSEvent =
   | { type: 'kicked'; reason?: string }
   | { type: 'typing'; channel_id: string; agent_id?: string; run_id?: string }
   | { type: 'task_updated'; channel_id: string; task: Task }
+  | { type: 'tasks_changed'; channel_id: string }
   | { type: 'workflow_updated'; channel_id: string; workflow_id: string }
   | { type: 'workflow_run_updated'; channel_id: string; run: WorkflowRun }
   | { type: 'workflow_node_run_updated'; channel_id: string; run_id: string; node_run: WorkflowNodeRun }
