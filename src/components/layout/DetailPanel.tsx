@@ -21,6 +21,7 @@ import { CloudStoragePanel } from '../storage/CloudStoragePanel.js'
 import { CreateScheduledTaskDialog } from '../tasks/CreateScheduledTaskDialog.js'
 import { CreateTaskDialog } from '../tasks/CreateTaskDialog.js'
 import { TaskDetailSheet } from '../tasks/TaskDetailSheet.js'
+import { AgentSkillsPanel } from '../skills/AgentSkillsPanel.js'
 import { SkillIcon } from '../skills/SkillIcon.js'
 
 interface Props {
@@ -263,6 +264,7 @@ export function DetailPanel({ channelId, members = [], tasks = [], files = [], o
   const [storageOpen, setStorageOpen] = useState(false)
   const [agentSettingsOpen, setAgentSettingsOpen] = useState(false)
   const [selectedAgent, setSelectedAgent] = useState<ChannelMemberInfo | null>(null)
+  const [personalSkillsAgent, setPersonalSkillsAgent] = useState<ChannelMemberInfo | null>(null)
   const [agentIdentity, setAgentIdentity] = useState<AgentIdentityForm>({ name: '', personality: '', content: '' })
   const [agentConfig, setAgentConfig] = useState<AgentConfigForm | null>(null)
   const [skillModalOpen, setSkillModalOpen] = useState(false)
@@ -844,8 +846,15 @@ export function DetailPanel({ channelId, members = [], tasks = [], files = [], o
                       <div key={m.id} className="flex items-center gap-2.5">
                         <button
                           type="button"
-                          title={canConfigureAgentTier ? '设置 Agent' : undefined}
-                          onClick={() => { void openAgentSettings(m) }}
+                          title={canManageAgentMembers ? '管理 Agent Skills' : canConfigureAgentTier ? '设置 Agent' : undefined}
+                          aria-label={canManageAgentMembers ? `管理 ${m.display_name || m.agent_id || 'Agent'} 的 Skills` : undefined}
+                          onClick={() => {
+                            if (canManageAgentMembers) {
+                              setPersonalSkillsAgent(m)
+                              return
+                            }
+                            void openAgentSettings(m)
+                          }}
                           className={cn('rounded-full', canConfigureAgentTier && 'hover:ring-2 hover:ring-foreground/15')}
                           disabled={!canConfigureAgentTier}
                         >
@@ -855,7 +864,15 @@ export function DetailPanel({ channelId, members = [], tasks = [], files = [], o
                           </Avatar>
                         </button>
                         <div className="flex-1 min-w-0">
-                          <div className="text-xs font-medium truncate">{m.display_name}</div>
+                          <button
+                            type="button"
+                            title="设置 Agent"
+                            className="block max-w-full truncate text-left text-xs font-medium"
+                            disabled={!canConfigureAgentTier}
+                            onClick={() => { void openAgentSettings(m) }}
+                          >
+                            {m.display_name}
+                          </button>
                           {m.chinese_name && m.chinese_name !== m.display_name && (
                             <div className="text-[10px] text-muted-foreground">{m.chinese_name}</div>
                           )}
@@ -973,6 +990,22 @@ export function DetailPanel({ channelId, members = [], tasks = [], files = [], o
         onClose={() => setSelectedTaskId(null)}
         onTaskChanged={fetchCalendar}
       />
+
+      <Dialog open={Boolean(personalSkillsAgent)} onOpenChange={(open) => { if (!open) setPersonalSkillsAgent(null) }}>
+        <DialogContent
+          className="h-[min(720px,calc(100vh-4rem))] w-[min(760px,calc(100vw-2rem))] max-w-[calc(100vw-2rem)] overflow-hidden p-0 sm:max-w-[760px]"
+          onClose={() => setPersonalSkillsAgent(null)}
+        >
+          {personalSkillsAgent?.agent_id && (
+            <AgentSkillsPanel
+              channelId={channelId}
+              agentId={personalSkillsAgent.agent_id}
+              agentName={personalSkillsAgent.display_name || personalSkillsAgent.agent_id}
+              onSaved={onMembersChanged}
+            />
+          )}
+        </DialogContent>
+      </Dialog>
 
       <Dialog open={agentSettingsOpen} onOpenChange={setAgentSettingsOpen}>
         <DialogContent className="w-[min(420px,calc(100vw-2rem))] max-w-[calc(100vw-2rem)] p-0" onClose={() => setAgentSettingsOpen(false)}>

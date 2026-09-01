@@ -29,3 +29,4 @@ export { CreateChannelDialog } from './channels/index.js'
 // Layout
 export { ChatLayout } from './layout/index.js'
 export { WorkflowPanel } from './workflows/index.js'
+export { PersonalSkillsPanel, AgentSkillsPanel, type AgentSkillsPanelProps } from './skills/index.js'
