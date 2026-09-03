@@ -1,7 +1,7 @@
 import { FileText } from 'lucide-react'
 import { cn } from './cn.js'
 
-export const STORAGE_REF_RE = /storage:\/\/[^\s)\]}>，。；：！？,;:!?]+/g
+export const STORAGE_REF_RE = /storage:\/\/[^\s`)\]}>，。；：！？,;:!?]+/g
 const STORAGE_PATH_RE = /(^|[\s([（「『【<])((?:[^\s)\]}>，。；：！？,;!?]+\/)+[^\s)\]}>，。；：！？,;!?]+\.(?:md|markdown|txt|pdf|doc|docx|xls|xlsx|ppt|pptx|csv|json|jsonl|yaml|yml|html|htm|png|jpg|jpeg|webp|gif|svg|zip|rar|7z|tar|gz|tgz|mp3|wav|m4a|mp4|mov|webm))(?![^\s)\]}>，。；：！？,;!?])/gi
 const GENERATED_PREFIX_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}-(.+)$/i
 

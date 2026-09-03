@@ -48,9 +48,35 @@ function normalizedRef(ref: string) {
 }
 
 const storageRefExistenceCache = new Map<string, boolean>()
+const STORAGE_REF_EXISTENCE_RETRY_DELAYS_MS = [0, 250, 750, 1500] as const
 
 function storageRefCacheKey(channelId: string, refText: string) {
   return `${channelId}\u0000${keyFromStorageRef(refText)}`
+}
+
+function storageRefProbeShouldRetry(error: unknown) {
+  const status = (error as { response?: { status?: number } } | null)?.response?.status
+  return status === undefined || status >= 500
+}
+
+export async function probeStorageRefExistence(
+  check: () => Promise<unknown>,
+  wait: (delayMs: number) => Promise<void> = (delayMs) => new Promise((resolve) => window.setTimeout(resolve, delayMs)),
+) {
+  for (let attempt = 0; attempt < STORAGE_REF_EXISTENCE_RETRY_DELAYS_MS.length; attempt += 1) {
+    const delayMs = STORAGE_REF_EXISTENCE_RETRY_DELAYS_MS[attempt] ?? 0
+    if (delayMs > 0) await wait(delayMs)
+
+    try {
+      await check()
+      return true
+    } catch (error) {
+      const lastAttempt = attempt === STORAGE_REF_EXISTENCE_RETRY_DELAYS_MS.length - 1
+      if (lastAttempt || !storageRefProbeShouldRetry(error)) return false
+    }
+  }
+
+  return false
 }
 
 export function useExistingStorageRefs(channelId: string, refs: string[]) {
@@ -83,14 +109,14 @@ export function useExistingStorageRefs(channelId: string, refs: string[]) {
       }
 
       pending.push(
-        api.post(`channels/${channelId}/storage/presign-download`, {
+        probeStorageRefExistence(() => api.post(`channels/${channelId}/storage/presign-download`, {
           json: storagePresignDownloadPayload(keyFromStorageRef(refText)),
-        }).json<{ url: string }>()
-          .then(() => {
+        }).json<{ url: string }>())
+          .then((exists) => {
+            if (!exists) return
             storageRefExistenceCache.set(cacheKey, true)
             next.add(refText)
-          })
-          .catch(() => {}),
+          }),
       )
     }
 
