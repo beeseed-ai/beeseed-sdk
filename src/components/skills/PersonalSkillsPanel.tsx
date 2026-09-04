@@ -23,7 +23,9 @@ interface PersonalSkillsResponse {
 }
 
 const statusLabels: Record<string, string> = {
-  pending_review: '待审核（不可运行）',
+  pending_review: '等待 AI 审核',
+  ai_reviewing: 'AI 审核中',
+  manual_review: '平台复核中',
   ready_to_publish: '安全校验通过，待发布',
   publishing: '发布中',
   active: '可用',
@@ -34,7 +36,7 @@ const statusLabels: Record<string, string> = {
 
 function statusVariant(status: string): 'success' | 'warning' | 'destructive' | 'outline' {
   if (status === 'active') return 'success'
-  if (status === 'pending_review' || status === 'ready_to_publish' || status === 'publishing') return 'warning'
+  if (status === 'pending_review' || status === 'ai_reviewing' || status === 'manual_review' || status === 'ready_to_publish' || status === 'publishing') return 'warning'
   if (status === 'rejected' || status === 'publish_failed') return 'destructive'
   return 'outline'
 }
@@ -110,7 +112,7 @@ export function PersonalSkillsPanel() {
       <header className="flex flex-wrap items-center justify-between gap-3 border-b border-[#dddddd] px-4 py-3">
         <div>
           <h2 id="personal-skills-title" className="text-base font-medium">我的 Skills</h2>
-          <p className="mt-1 text-sm text-[#41454d]">上传完整目录；带脚本版本必须审核通过后才能运行。</p>
+          <p className="mt-1 text-sm text-[#41454d]">上传完整目录；带脚本版本由 AI 在隔离环境自动审核，通常 15 分钟内完成。</p>
         </div>
         <Button variant="outline" onClick={() => void refresh()} disabled={loading} aria-label="刷新个人 Skills">
           <RefreshCw className={loading ? 'animate-spin' : ''} />刷新
