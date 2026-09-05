@@ -7,4 +7,10 @@ describe('storageRefsFromText', () => {
       'storage://%E7%9B%AE%E5%BD%95/%E6%8A%A5%E5%91%8A.md',
     ])
   })
+
+  it('recognizes a workspace artifact path inside bold inline code', () => {
+    expect(storageRefsFromText('文件位置：**`/workspace/artifacts/演示文稿.pptx`**')).toEqual([
+      'storage://workspace/artifacts/%E6%BC%94%E7%A4%BA%E6%96%87%E7%A8%BF.pptx',
+    ])
+  })
 })

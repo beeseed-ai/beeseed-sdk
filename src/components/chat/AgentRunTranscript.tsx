@@ -1,11 +1,12 @@
 import { useMemo, useState, type ReactNode } from 'react'
 import { AlertCircle, Check, ChevronRight, Circle, Clock3, Sparkles, Wrench } from 'lucide-react'
-import type { AgentLoopState, AgentLoopToolCall, AgentLoopSkillUse, ChatMessage, AgentLoopEventItem } from '../../core/types.js'
+import type { AgentLoopState, AgentLoopToolCall, AgentLoopSkillUse, ChatArtifact, ChatMessage, AgentLoopEventItem } from '../../core/types.js'
 import { cn } from '../../lib/cn.js'
 import { storageRefFromKey, storageRefsFromText } from '../../lib/storage-ref.js'
 import { MarkdownRenderer } from './MarkdownRenderer.js'
 import { StoragePreviewDialog, useExistingStorageRefs } from './StorageAttachmentPreview.js'
 import { SkillIcon } from '../skills/SkillIcon.js'
+import { EditableArtifactActions } from './MessageBubble.js'
 
 interface Props {
   loop: AgentLoopState
@@ -17,6 +18,7 @@ interface Props {
   terminalAction?: ReactNode
   processLoading?: boolean
   onProcessOpen?: () => void
+  onReviseArtifact?: (artifact: ChatArtifact, message: ChatMessage) => void
   className?: string
 }
 
@@ -364,10 +366,36 @@ function ToolResultEventLine({ tool }: { tool: AgentLoopToolCall }) {
   )
 }
 
-function AssistantText({ channelId, content, streaming = false, final = false }: { channelId: string; content: string; streaming?: boolean; final?: boolean }) {
+function AssistantText({
+  channelId,
+  content,
+  artifacts,
+  streaming = false,
+  final = false,
+  onReviseArtifact,
+}: {
+  channelId: string
+  content: string
+  artifacts?: ChatArtifact[]
+  streaming?: boolean
+  final?: boolean
+  onReviseArtifact?: (artifact: ChatArtifact) => void
+}) {
   const [storagePreviewRef, setStoragePreviewRef] = useState<string | null>(null)
-  const storageRefs = useMemo(() => storageRefsFromText(content), [content])
+  const storageRefs = useMemo(() => {
+    const refs = storageRefsFromText(content)
+    for (const artifact of artifacts ?? []) {
+      if (artifact.storageRef.startsWith('storage://') && !refs.includes(artifact.storageRef)) {
+        refs.push(artifact.storageRef)
+      }
+    }
+    return refs
+  }, [artifacts, content])
   const { isExistingRef } = useExistingStorageRefs(channelId, storageRefs)
+  const editableArtifacts = useMemo(
+    () => (artifacts ?? []).filter((artifact) => artifact.editable),
+    [artifacts],
+  )
 
   return (
     <>
@@ -384,6 +412,13 @@ function AssistantText({ channelId, content, streaming = false, final = false }:
           />
           {streaming && (
             <span className="ml-0.5 inline-block h-4 w-1.5 animate-pulse bg-[#181d26]/50 align-text-bottom" />
+          )}
+          {editableArtifacts.length > 0 && (
+            <EditableArtifactActions
+              artifacts={editableArtifacts}
+              onPreview={(artifact) => setStoragePreviewRef(artifact.storageRef)}
+              onRevise={(artifact) => onReviseArtifact?.(artifact)}
+            />
           )}
         </div>
       </TranscriptLine>
@@ -481,6 +516,7 @@ export function AgentRunTranscript({
   terminalAction,
   processLoading = false,
   onProcessOpen,
+  onReviseArtifact,
   className,
 }: Props) {
   const isRunning = loop.status === 'running'
@@ -586,7 +622,15 @@ export function AgentRunTranscript({
       ) : renderProcessContent()}
 
       {showTerminal && hasFinalAnswer ? (
-        <AssistantText channelId={loop.channelId} content={finalAnswer} final />
+        <AssistantText
+          channelId={loop.channelId}
+          content={finalAnswer}
+          artifacts={finalMessage?.artifacts}
+          final
+          onReviseArtifact={finalMessage && onReviseArtifact
+            ? (artifact) => onReviseArtifact(artifact, finalMessage)
+            : undefined}
+        />
       ) : (
         showTerminal && loop.status !== 'running' && <TerminalLine loop={loop} displayError={terminalError} terminalAction={terminalAction} />
       )}
