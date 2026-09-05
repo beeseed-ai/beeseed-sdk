@@ -381,7 +381,7 @@ function AssistantText({
   final?: boolean
   onReviseArtifact?: (artifact: ChatArtifact) => void
 }) {
-  const [storagePreviewRef, setStoragePreviewRef] = useState<string | null>(null)
+  const [storagePreviewTarget, setStoragePreviewTarget] = useState<{ refText: string; objectId?: string } | null>(null)
   const storageRefs = useMemo(() => {
     const refs = storageRefsFromText(content)
     for (const artifact of artifacts ?? []) {
@@ -407,7 +407,7 @@ function AssistantText({
           <MarkdownRenderer
             content={content}
             className="prose prose-sm max-w-none break-words [&_p]:my-1 [&_p:first-child]:mt-0 [&_p:last-child]:mb-0 [&_ul]:my-1 [&_ol]:my-1 [&_li]:my-0 [&_h1]:text-base [&_h2]:text-base [&_h3]:text-sm [&_h1]:font-semibold [&_h2]:font-semibold [&_h3]:font-semibold [&_code.inline-code]:rounded [&_code.inline-code]:bg-[#e8f5f8] [&_code.inline-code]:px-1 [&_code.inline-code]:py-0.5 [&_code.inline-code]:text-[#0f5267]"
-            onStorageRefClick={(key) => setStoragePreviewRef(storageRefFromKey(key))}
+            onStorageRefClick={(key) => setStoragePreviewTarget({ refText: storageRefFromKey(key) })}
             storageRefAvailable={isExistingRef}
           />
           {streaming && (
@@ -416,13 +416,13 @@ function AssistantText({
           {editableArtifacts.length > 0 && (
             <EditableArtifactActions
               artifacts={editableArtifacts}
-              onPreview={(artifact) => setStoragePreviewRef(artifact.storageRef)}
+              onPreview={(artifact) => setStoragePreviewTarget({ refText: artifact.storageRef, objectId: artifact.objectId })}
               onRevise={(artifact) => onReviseArtifact?.(artifact)}
             />
           )}
         </div>
       </TranscriptLine>
-      {storagePreviewRef && <StoragePreviewDialog channelId={channelId} refText={storagePreviewRef} onClose={() => setStoragePreviewRef(null)} />}
+      {storagePreviewTarget && <StoragePreviewDialog channelId={channelId} refText={storagePreviewTarget.refText} objectId={storagePreviewTarget.objectId} onClose={() => setStoragePreviewTarget(null)} />}
     </>
   )
 }

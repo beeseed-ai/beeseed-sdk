@@ -24,6 +24,11 @@ interface Props {
   className?: string
 }
 
+interface StoragePreviewTarget {
+  refText: string
+  objectId?: string
+}
+
 const AVATAR_COLORS = ['#F59E0B', '#10B981', '#3B82F6', '#EF4444', '#8B5CF6', '#EC4899', '#6D28D9', '#059669', '#2563EB', '#DC2626']
 function avatarColor(name: string): string {
   let hash = 0
@@ -71,7 +76,7 @@ export function MessageBubble({
 }: Props) {
   const [copied, setCopied] = useState(false)
   const [previewImage, setPreviewImage] = useState<string | null>(null)
-  const [storagePreviewRef, setStoragePreviewRef] = useState<string | null>(null)
+  const [storagePreviewTarget, setStoragePreviewTarget] = useState<StoragePreviewTarget | null>(null)
   const [openSkillId, setOpenSkillId] = useState<string | null>(null)
   const storageRefs = useMemo(() => storageRefsFromText(message.content), [message.content])
   const { existingRefs, isExistingRef } = useExistingStorageRefs(channelId, storageRefs)
@@ -88,7 +93,7 @@ export function MessageBubble({
   }, [message, onQuote])
 
   const handleStorageRefClick = useCallback((keyOrRef: string) => {
-    setStoragePreviewRef(keyOrRef.startsWith('storage://') ? keyOrRef : storageRefFromKey(keyOrRef))
+    setStoragePreviewTarget({ refText: keyOrRef.startsWith('storage://') ? keyOrRef : storageRefFromKey(keyOrRef) })
   }, [])
 
   const timeStr = formatChatTimestamp(message.timestamp)
@@ -276,7 +281,7 @@ export function MessageBubble({
                 {editableArtifacts.length > 0 && (
                   <EditableArtifactActions
                     artifacts={editableArtifacts}
-                    onPreview={(artifact) => handleStorageRefClick(artifact.storageRef)}
+                    onPreview={(artifact) => setStoragePreviewTarget({ refText: artifact.storageRef, objectId: artifact.objectId })}
                     onRevise={(artifact) => onReviseArtifact?.(artifact, message)}
                   />
                 )}
@@ -296,7 +301,7 @@ export function MessageBubble({
                 {editableArtifacts.length > 0 && (
                   <EditableArtifactActions
                     artifacts={editableArtifacts}
-                    onPreview={(artifact) => handleStorageRefClick(artifact.storageRef)}
+                    onPreview={(artifact) => setStoragePreviewTarget({ refText: artifact.storageRef, objectId: artifact.objectId })}
                     onRevise={(artifact) => onReviseArtifact?.(artifact, message)}
                   />
                 )}
@@ -376,7 +381,7 @@ export function MessageBubble({
       </div>
 
       {previewImage && <ImagePreview src={previewImage} onClose={() => setPreviewImage(null)} />}
-      {storagePreviewRef && <StoragePreviewDialog channelId={channelId} refText={storagePreviewRef} onClose={() => setStoragePreviewRef(null)} />}
+      {storagePreviewTarget && <StoragePreviewDialog channelId={channelId} refText={storagePreviewTarget.refText} objectId={storagePreviewTarget.objectId} onClose={() => setStoragePreviewTarget(null)} />}
     </div>
   )
 }

@@ -246,20 +246,22 @@ async function requestStoragePreviewURL(
   channelId: string,
   refText: string,
   kind: StorageFileKind,
+  objectId?: string,
 ) {
   const proxyEndpoint = storagePreviewEndpointForKind(kind)
   const requestForKey = (key: string) => proxyEndpoint
     ? api.post(`channels/${channelId}/storage/${proxyEndpoint}`, {
-      json: { key },
+      json: storagePresignDownloadPayload(key, { objectId }),
     }).json<{ url: string }>()
     : api.post(`channels/${channelId}/storage/presign-download`, {
-      json: storagePreviewPresignPayload(`storage://${key}`),
+      json: storagePreviewPresignPayload(`storage://${key}`, objectId),
     }).json<{ url: string }>()
 
   const requestedKey = keyFromStorageRef(refText)
   try {
     return await requestForKey(requestedKey)
   } catch (err) {
+    if (objectId) throw err
     const resolvedKey = await resolvePreviewKey(api, channelId, requestedKey)
     if (resolvedKey === requestedKey) throw err
     return requestForKey(resolvedKey)
@@ -370,7 +372,7 @@ export function storageFileLabelForRef(refText: string) {
   return storageFileLabel(storageFileKindForRef(refText), extOf(refText))
 }
 
-export function StoragePreviewDialog({ channelId, refText, onClose }: { channelId: string; refText: string; onClose: () => void }) {
+export function StoragePreviewDialog({ channelId, refText, objectId, onClose }: { channelId: string; refText: string; objectId?: string; onClose: () => void }) {
   const { api, config } = useBeeSeedContext()
   const name = fileNameFromStorageRef(refText)
   const kind = storageFileKindForRef(refText)
@@ -398,7 +400,7 @@ export function StoragePreviewDialog({ channelId, refText, onClose }: { channelI
       return
     }
 
-    const previewURLRequest = requestStoragePreviewURL(api, channelId, refText, kind)
+    const previewURLRequest = requestStoragePreviewURL(api, channelId, refText, kind, objectId)
 
     void previewURLRequest
       .then(async (data) => {
@@ -421,7 +423,7 @@ export function StoragePreviewDialog({ channelId, refText, onClose }: { channelI
       })
 
     return () => { cancelled = true }
-  }, [api, config.useMockData, ext, kind, refText, channelId, presentationAttempt])
+  }, [api, config.useMockData, ext, kind, refText, objectId, channelId, presentationAttempt])
 
   const reloadPresentation = () => {
     setUrl(null)
@@ -434,9 +436,11 @@ export function StoragePreviewDialog({ channelId, refText, onClose }: { channelI
     if (config.useMockData || downloading) return
     setDownloading(true)
     try {
-      const key = await resolvePreviewKey(api, channelId, keyFromStorageRef(refText))
+      const key = objectId
+        ? keyFromStorageRef(refText)
+        : await resolvePreviewKey(api, channelId, keyFromStorageRef(refText))
       const data = await api.post(`channels/${channelId}/storage/presign-download`, {
-        json: storageAttachmentDownloadPayload(key),
+        json: storageAttachmentDownloadPayload(key, objectId),
       }).json<{ url: string }>()
       if (data.url) window.open(data.url, '_blank', 'noopener,noreferrer')
     } catch (err) {
