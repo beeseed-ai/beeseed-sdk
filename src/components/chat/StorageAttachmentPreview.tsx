@@ -372,6 +372,27 @@ export function storageFileLabelForRef(refText: string) {
   return storageFileLabel(storageFileKindForRef(refText), extOf(refText))
 }
 
+export async function openStorageDownload(
+  requestURL: () => Promise<string>,
+  openWindow: typeof window.open = window.open.bind(window),
+) {
+  // Open the tab while the browser still considers this call part of the
+  // user's click. Opening it after the presign request can be blocked because
+  // the original user activation has already expired.
+  const target = openWindow('about:blank', '_blank')
+  if (!target) throw new Error('浏览器阻止了下载窗口')
+  target.opener = null
+
+  try {
+    const url = await requestURL()
+    if (!url) throw new Error('下载链接为空')
+    target.location.replace(url)
+  } catch (err) {
+    target.close()
+    throw err
+  }
+}
+
 export function StoragePreviewDialog({ channelId, refText, objectId, onClose }: { channelId: string; refText: string; objectId?: string; onClose: () => void }) {
   const { api, config } = useBeeSeedContext()
   const name = fileNameFromStorageRef(refText)
@@ -436,13 +457,15 @@ export function StoragePreviewDialog({ channelId, refText, objectId, onClose }: 
     if (config.useMockData || downloading) return
     setDownloading(true)
     try {
-      const key = objectId
-        ? keyFromStorageRef(refText)
-        : await resolvePreviewKey(api, channelId, keyFromStorageRef(refText))
-      const data = await api.post(`channels/${channelId}/storage/presign-download`, {
-        json: storageAttachmentDownloadPayload(key, objectId),
-      }).json<{ url: string }>()
-      if (data.url) window.open(data.url, '_blank', 'noopener,noreferrer')
+      await openStorageDownload(async () => {
+        const key = objectId
+          ? keyFromStorageRef(refText)
+          : await resolvePreviewKey(api, channelId, keyFromStorageRef(refText))
+        const data = await api.post(`channels/${channelId}/storage/presign-download`, {
+          json: storageAttachmentDownloadPayload(key, objectId),
+        }).json<{ url: string }>()
+        return data.url
+      })
     } catch (err) {
       setError(err instanceof Error ? `下载链接创建失败：${err.message}` : '下载链接创建失败')
     } finally {
