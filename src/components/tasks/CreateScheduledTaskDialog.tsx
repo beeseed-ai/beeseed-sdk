@@ -164,7 +164,7 @@ export function CreateScheduledTaskDialog({ agents = [], onSubmit }: Props) {
         <CalendarPlus className="w-4 h-4" />
       </Button>
       <Dialog open={open} onOpenChange={() => setOpen(false)}>
-        <DialogContent className="w-[min(100vw-2rem,760px)] p-0" onClose={() => setOpen(false)}>
+        <DialogContent className="max-h-[calc(100dvh-2rem)] w-[min(100vw-2rem,760px)] overflow-y-auto p-0" onClose={() => setOpen(false)}>
           <DialogHeader className="px-4 py-3 border-b border-border">
             <DialogTitle>自动任务</DialogTitle>
           </DialogHeader>
