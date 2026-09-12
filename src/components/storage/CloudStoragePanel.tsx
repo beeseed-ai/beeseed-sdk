@@ -44,6 +44,7 @@ export function CloudStoragePanel({ channelId, className, onReference }: Props) 
   const [createOpen, setCreateOpen] = useState(false)
   const [directoryName, setDirectoryName] = useState('')
   const [creatingDirectory, setCreatingDirectory] = useState(false)
+  const [directoryError, setDirectoryError] = useState<string | null>(null)
   const [previewRef, setPreviewRef] = useState<string | null>(null)
 
   if (!channelId) {
@@ -70,11 +71,14 @@ export function CloudStoragePanel({ channelId, className, onReference }: Props) 
     e.preventDefault()
     const name = directoryName.trim()
     if (!name) return
+    setDirectoryError(null)
     setCreatingDirectory(true)
     try {
       await createDirectory(name, currentPrefix)
       setDirectoryName('')
       setCreateOpen(false)
+    } catch {
+      setDirectoryError('文件夹创建失败，请检查是否重名后重试。')
     } finally {
       setCreatingDirectory(false)
     }
@@ -251,6 +255,7 @@ export function CloudStoragePanel({ channelId, className, onReference }: Props) 
               placeholder="文件夹名称"
               autoFocus
             />
+            {directoryError && <p role="alert" className="text-sm text-destructive">{directoryError}</p>}
             <DialogFooter>
               <Button variant="outline" type="button" onClick={() => setCreateOpen(false)}>
                 取消
