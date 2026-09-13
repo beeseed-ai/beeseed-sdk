@@ -223,7 +223,7 @@ export function MessageBubble({
           />
         ) : (
           <div className={cn(
-            'relative px-3 py-2 text-base leading-relaxed overflow-hidden',
+            'relative min-w-0 max-w-full px-3 py-2 text-base leading-relaxed overflow-hidden',
             isUser
               ? 'bg-[#f5f5f5] text-[#1a1a1a] rounded-lg rounded-tr-sm'
               : 'w-full text-[#1a1a1a]',
