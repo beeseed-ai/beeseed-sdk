@@ -222,6 +222,13 @@ export function ChatChannel({ channelId, className, header, renderMessageImage }
 
           {/* Input area — centered at max-width */}
           <div className="mx-auto w-full shrink-0 px-4 pb-4" style={{ maxWidth: CHAT_MAX_WIDTH + 32 }}>
+            {publicationBlocked && (
+              <p role="status" aria-live="polite" className="mb-2 text-sm text-muted-foreground">
+                {channel?.publication_status === 'failed'
+                  ? '频道初始化失败，暂时无法发送消息。'
+                  : '正在准备频道，完成后即可发送消息。'}
+              </p>
+            )}
             <MessageInput
               channelId={channelId}
               onSend={handleSend}
