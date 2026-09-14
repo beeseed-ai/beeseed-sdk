@@ -1,5 +1,7 @@
 import { createStore } from 'zustand/vanilla'
 import type { KyInstance } from 'ky'
+import { runtimeHistoryMessages, runtimeRunLoop, runtimeRunTranscript } from './runtime-agent-history.js'
+import type { RuntimeRunSummary, RuntimeRunDetails } from './runtime-agent-history.js'
 import type {
   Message, ChatMessage, StreamState, WSEvent,
   ChannelMemberInfo, AgentLoopState, AgentLoopTurn, AgentLoopToolCall, AgentLoopSkillUse,
@@ -1481,6 +1483,7 @@ export function createMessagesStore(config: MessagesStoreConfig) {
           const map = new Map(get().messages)
           map.set(channelId, parsed)
           const loops = new Map(get().agentLoops)
+          const runtimeLoopsBeforeRefresh = new Map(loops)
           for (const key of loops.keys()) {
             if (key.startsWith(`${channelId}:`)) {
               loops.delete(key)
@@ -1499,6 +1502,23 @@ export function createMessagesStore(config: MessagesStoreConfig) {
           }
           set({ messages: map, askUserAnswerOutbox: outbox, agentLoops: loops, hasOlderMessages: olderMap, olderMessageCursors: cursorMap })
 
+          const runtimeMessages = runtimeHistoryMessages(msgs)
+          if (runtimeMessages.length > 0) {
+            try {
+              const runIds = [...new Set(runtimeMessages.map(message => String(message.metadata!.run_id)))]
+              const data = await config.api.get(`channels/${channelId}/agent-runs`, {
+                searchParams: { run_ids: runIds.join(',') },
+              }).json<{ runs: RuntimeRunSummary[] }>()
+              const hydrated = new Map(get().agentLoops)
+              for (const run of data.runs) {
+                const message = runtimeMessages.find(message => message.metadata?.run_id === run.run_id && message.sender_agent_id === run.agent_id)
+                if (run.channel_id !== channelId || !message) continue
+                const key = agentLoopStoreKey(channelId, run.agent_id, run.run_id)
+                hydrated.set(key, runtimeRunLoop(run, message.content, hydrated.get(key) ?? runtimeLoopsBeforeRefresh.get(key)))
+              }
+              set({ agentLoops: hydrated })
+            } catch { /* Keep the final answer visible if runtime summaries are unavailable. */ }
+          }
           const runIds = visibleRunIdsFromMessages(msgs)
           if (runIds.length === 0) return
           try {
@@ -1570,6 +1590,23 @@ export function createMessagesStore(config: MessagesStoreConfig) {
         }
         set({ messages: map, askUserAnswerOutbox: outbox, agentLoops: loops, hasOlderMessages: olderMap, olderMessageCursors: cursorMap })
 
+        const runtimeMessages = runtimeHistoryMessages(msgs)
+        if (runtimeMessages.length > 0) {
+          try {
+            const runIds = [...new Set(runtimeMessages.map(message => String(message.metadata!.run_id)))]
+            const data = await config.api.get(`channels/${channelId}/agent-runs`, {
+              searchParams: { run_ids: runIds.join(',') },
+            }).json<{ runs: RuntimeRunSummary[] }>()
+            const hydrated = new Map(get().agentLoops)
+            for (const run of data.runs) {
+              const message = runtimeMessages.find(message => message.metadata?.run_id === run.run_id && message.sender_agent_id === run.agent_id)
+              if (run.channel_id !== channelId || !message) continue
+              const key = agentLoopStoreKey(channelId, run.agent_id, run.run_id)
+              hydrated.set(key, runtimeRunLoop(run, message.content, hydrated.get(key)))
+            }
+            set({ agentLoops: hydrated })
+          } catch { /* Keep older messages visible if runtime summaries are unavailable. */ }
+        }
         const runIds = visibleRunIdsFromMessages(msgs)
         if (runIds.length > 0) {
           try {
@@ -1602,6 +1639,16 @@ export function createMessagesStore(config: MessagesStoreConfig) {
       set({ loadingAgentRunDetails: loading })
       const request = (async () => {
         try {
+          if (get().agentLoops.get(key)?.historySource === 'runtime') {
+            const details = await config.api.get(`channels/${channelId}/agent-runs/${encodeURIComponent(runId)}`).json<RuntimeRunDetails>()
+            if (details.run.run_id !== runId || details.run.channel_id !== channelId || details.run.agent_id !== agentId) return
+            const loops = new Map(get().agentLoops)
+            loops.set(key, runtimeRunTranscript(details, loops.get(key)?.finalContent, loops.get(key)))
+            const loaded = new Set(get().loadedAgentRunDetails)
+            loaded.add(key)
+            set({ agentLoops: loops, loadedAgentRunDetails: loaded })
+            return
+          }
           const messages = await config.api.get(`channels/${channelId}/messages`, {
             searchParams: { run_id: runId },
           }).json<Message[]>()

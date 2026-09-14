@@ -419,6 +419,7 @@ export interface AgentLoopEventItem {
 
 export interface AgentLoopState {
   runId?: string
+  historySource?: 'runtime'
   agentId: string
   channelId: string
   turns: AgentLoopTurn[]
