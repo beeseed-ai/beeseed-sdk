@@ -238,7 +238,7 @@ function buildTimelineGroups(messages: ChatMessage[], loops: AgentLoopState[]): 
       inputs.push({
         kind: 'legacy_loop',
         loop,
-        timestamp: agentLoopActivityAt(loop),
+        timestamp: loop.historySource === 'runtime' ? loop.startedAt : agentLoopActivityAt(loop),
         order: Number.MAX_SAFE_INTEGER / 2 + loopIndex,
       })
     }

@@ -528,13 +528,13 @@ export function AgentRunTranscript({
   const hasFinalAnswer = loop.status === 'completed' && finalAnswer.trim() !== ''
   const orderedEvents = events?.length ? events : loop.events?.length ? loop.events : undefined
   const [processOpen, setProcessOpen] = useState(false)
-  const hasProcess = orderedEvents ? orderedEvents.length > 0 : loop.turns.some((turn) => (
+  const hasProcess = loop.historySource === 'runtime' || (orderedEvents ? orderedEvents.length > 0 : loop.turns.some((turn) => (
     turn.thinking
     || turn.content
     || turn.progress
     || (turn.skillUses ?? []).length > 0
     || (turn.toolCalls ?? []).length > 0
-  ))
+  )))
   const shouldCollapseProcess = hasProcess
   const processLabel = processStatusLabel(loop, observedEndAt(loop, finalMessage, orderedEvents), terminalError)
   const processSummary = processStatusSummary(loop, orderedEvents, finalAnswer, terminalError)

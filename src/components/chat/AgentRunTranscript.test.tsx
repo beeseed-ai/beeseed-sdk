@@ -13,6 +13,18 @@ vi.mock('./StorageAttachmentPreview.js', () => ({
 }))
 
 describe('AgentRunTranscript', () => {
+  it('keeps persisted runtime summaries expandable before details are loaded', () => {
+    const loop: AgentLoopState = {
+      runId: 'runtime-run', historySource: 'runtime', agentId: 'assistant', channelId: 'channel-1',
+      status: 'completed', currentTurn: 1, startedAt: 1000, completedAt: 2000,
+      finalContent: '唯一最终结果',
+      turns: [{ turnNumber: 1, toolCalls: [], skillUses: [], status: 'completed', startedAt: 1000, completedAt: 2000 }],
+    }
+    const html = renderToStaticMarkup(<AgentRunTranscript loop={loop} onProcessOpen={vi.fn()} />)
+    expect(html).toContain('aria-expanded="false"')
+    expect(html.match(/唯一最终结果/g)).toHaveLength(1)
+  })
+
   it('renders final message artifacts without requiring a history refresh', () => {
     const loop: AgentLoopState = {
       agentId: 'content-writer',
