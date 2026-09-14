@@ -2,14 +2,14 @@ import { describe, expect, it, vi } from 'vitest'
 import { openStorageDownload, probeStorageRefExistence, requestStoragePreviewURL } from './StorageAttachmentPreview.js'
 
 describe('presentation preview signing', () => {
-  it('keeps the exact long-name object without adding a filename disposition for Office', async () => {
+  it('requests a short preview address bound to the exact long-name object for Office', async () => {
     const post = vi.fn(() => ({ json: async () => ({ url: 'https://storage.example/signed-object' }) }))
     const api = { post } as unknown as Parameters<typeof requestStoragePreviewURL>[0]
     const key = `folder/${'中文演示文稿'.repeat(15)}.pptx`
 
     await requestStoragePreviewURL(api, 'channel-a', `storage://${key}`, 'presentation', 'exact-object')
 
-    expect(post).toHaveBeenCalledWith('channels/channel-a/storage/presign-download', {
+    expect(post).toHaveBeenCalledWith('channels/channel-a/storage/presentation-preview', {
       json: { key, object_id: 'exact-object' },
     })
   })

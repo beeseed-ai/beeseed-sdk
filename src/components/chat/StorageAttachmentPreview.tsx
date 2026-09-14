@@ -194,10 +194,11 @@ export function storageFileCanPreview(kind: StorageFileKind) {
 }
 
 export function storagePreviewUsesProxy(kind: StorageFileKind) {
-  return kind === 'pdf' || kind === 'html' || kind === 'text' || kind === 'code'
+  return kind === 'pdf' || kind === 'html' || kind === 'text' || kind === 'code' || kind === 'presentation'
 }
 
 function storagePreviewEndpointForKind(kind: StorageFileKind) {
+  if (kind === 'presentation') return 'presentation-preview'
   if (kind === 'pdf') return 'pdf-preview'
   if (kind === 'html') return 'html-preview'
   if (kind === 'text' || kind === 'code') return 'text-preview'
@@ -254,11 +255,7 @@ export async function requestStoragePreviewURL(
       json: storagePresignDownloadPayload(key, { objectId }),
     }).json<{ url: string }>()
     : api.post(`channels/${channelId}/storage/presign-download`, {
-      // Office fetches the file itself. Repeating a long filename in signed
-      // Content-Disposition parameters can make its embed URL return 404.
-      json: kind === 'presentation'
-        ? storagePresignDownloadPayload(key, { objectId })
-        : storagePreviewPresignPayload(`storage://${key}`, objectId),
+      json: storagePreviewPresignPayload(`storage://${key}`, objectId),
     }).json<{ url: string }>()
 
   const requestedKey = keyFromStorageRef(refText)
