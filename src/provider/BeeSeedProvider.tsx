@@ -186,6 +186,7 @@ function createBeeSeedContext(
 
 export function refreshTaskSurfaces(tasksStore: TasksStore, channelId: string) {
   const tasks = tasksStore.getState()
+  if (tasks.channelId !== channelId) return
   void Promise.all([
     tasks.fetchProjects(channelId),
     tasks.fetchTasks(channelId),

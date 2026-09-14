@@ -7,6 +7,7 @@ export function useTasks(channelId: string | null) {
   const state = useStore(tasksStore)
 
   useEffect(() => {
+    state.selectChannel(channelId)
     if (!channelId) return
     void state.fetchProjects(channelId)
     void state.fetchTasks(channelId)
@@ -15,15 +16,16 @@ export function useTasks(channelId: string | null) {
     void state.fetchCalendar(channelId)
   }, [channelId])
 
+  const current = state.channelId === channelId
   return {
-    projects: state.projects,
-    tasks: state.tasks,
-    scheduledTasks: state.scheduledTasks,
-    calendarEvents: state.calendarEvents,
-    metrics: state.metrics,
-    loading: state.loading,
-    schedulesLoading: state.schedulesLoading,
-    metricsLoading: state.metricsLoading,
+    projects: current ? state.projects : [],
+    tasks: current ? state.tasks : [],
+    scheduledTasks: current ? state.scheduledTasks : [],
+    calendarEvents: current ? state.calendarEvents : [],
+    metrics: current ? state.metrics : null,
+    loading: current ? state.loading : Boolean(channelId),
+    schedulesLoading: current ? state.schedulesLoading : Boolean(channelId),
+    metricsLoading: current ? state.metricsLoading : Boolean(channelId),
     getTask: (taskId: string) => channelId ? state.getTask(channelId, taskId) : Promise.resolve(null),
     fetchMetrics: () => channelId ? state.fetchMetrics(channelId) : Promise.resolve(),
     createTask: (data: Parameters<typeof state.createTask>[1]) => channelId ? state.createTask(channelId, data) : Promise.resolve(null),

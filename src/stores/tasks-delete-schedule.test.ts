@@ -10,6 +10,7 @@ describe('删除计划后的任务列表', () => {
     const get = vi.fn((path: string) => ({ json: async () => path.endsWith('/tasks') ? { tasks: [retained] } : {} }))
     const api = { delete: vi.fn().mockResolvedValue(undefined), get } as unknown as KyInstance
     const store = createTasksStore({ api })
+    store.getState().selectChannel('channel')
     store.setState({ tasks: [occurrence], scheduledTasks: [{ id: 'schedule' } as TaskSchedule] })
 
     await store.getState().deleteScheduledTask('channel', 'schedule')
@@ -23,6 +24,7 @@ describe('删除计划后的任务列表', () => {
     const schedule = { id: 'schedule' } as TaskSchedule
     const api = { delete: vi.fn().mockRejectedValue(new Error('unavailable')) } as unknown as KyInstance
     const store = createTasksStore({ api })
+    store.getState().selectChannel('channel')
     store.setState({ tasks: [task], scheduledTasks: [schedule] })
 
     await store.getState().deleteScheduledTask('channel', 'schedule')

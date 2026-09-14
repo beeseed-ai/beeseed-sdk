@@ -45,6 +45,7 @@ describe('SDK Store 请求合并', () => {
     const result = deferred<{ tasks: [] }>()
     const get = vi.fn(() => ({ json: () => result.promise }))
     const store = createTasksStore({ api: { get } as unknown as KyInstance })
+    store.getState().selectChannel('channel-1')
 
     const first = store.getState().fetchTasks('channel-1')
     const second = store.getState().fetchTasks('channel-1')

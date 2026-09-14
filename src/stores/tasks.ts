@@ -29,6 +29,8 @@ export type UpdateScheduledTaskInput = Partial<Pick<TaskSchedule, 'timezone' | '
 }
 
 export interface TasksState {
+  channelId: string | null
+  selectChannel: (channelId: string | null) => void
   projects: Project[]
   tasks: Task[]
   scheduledTasks: TaskSchedule[]
@@ -61,6 +63,7 @@ export interface TasksStoreConfig {
 }
 
 export function createTasksStore(config: TasksStoreConfig) {
+  let channelVersion = 0
   const readRequests = new Map<string, Promise<void>>()
   const coalesceRead = (key: string, load: () => Promise<void>) => {
     const activeRequest = readRequests.get(key)
@@ -72,7 +75,25 @@ export function createTasksStore(config: TasksStoreConfig) {
     return request
   }
 
-  return createStore<TasksState>()((set, get) => ({
+  return createStore<TasksState>()((set, get) => {
+    const emptyView = () => ({ projects: [], tasks: [], scheduledTasks: [], calendarEvents: [], metrics: null, loading: false, schedulesLoading: false, metricsLoading: false })
+    const scopedSet = (channelId: string) => {
+      const version = channelVersion
+      return (patch: Partial<TasksState> | ((state: TasksState) => Partial<TasksState>)) => {
+        if (get().channelId === channelId && version === channelVersion) set(patch)
+      }
+    }
+    const readChannel = (key: string, channelId: string, load: (update: ReturnType<typeof scopedSet>) => Promise<void>) => {
+      if (get().channelId !== channelId) return Promise.resolve()
+      return coalesceRead(`${channelVersion}:${key}`, () => load(scopedSet(channelId)))
+    }
+    return ({
+    channelId: null,
+    selectChannel: (channelId) => {
+      if (get().channelId === channelId) return
+      channelVersion++
+      set({ ...emptyView(), channelId })
+    },
     projects: [],
     tasks: [],
     scheduledTasks: [],
@@ -82,7 +103,7 @@ export function createTasksStore(config: TasksStoreConfig) {
     schedulesLoading: false,
     metricsLoading: false,
 
-    fetchProjects: (channelId) => coalesceRead(`projects:${channelId}`, async () => {
+    fetchProjects: (channelId) => readChannel(`projects:${channelId}`, channelId, async (set) => {
       if (config.useMock) { set({ projects: MOCK_PROJECTS }); return }
       try {
         const data = await config.api.get(`channels/${channelId}/projects`).json<{ projects: Project[] }>()
@@ -90,7 +111,7 @@ export function createTasksStore(config: TasksStoreConfig) {
       } catch { /* */ }
     }),
 
-    fetchTasks: (channelId) => coalesceRead(`tasks:${channelId}`, async () => {
+    fetchTasks: (channelId) => readChannel(`tasks:${channelId}`, channelId, async (set) => {
       set({ loading: true })
       if (config.useMock) { set({ tasks: MOCK_TASKS, loading: false }); return }
       try {
@@ -99,7 +120,7 @@ export function createTasksStore(config: TasksStoreConfig) {
       } catch { set({ loading: false }) }
     }),
 
-    fetchMetrics: (channelId) => coalesceRead(`metrics:${channelId}`, async () => {
+    fetchMetrics: (channelId) => readChannel(`metrics:${channelId}`, channelId, async (set) => {
       set({ metricsLoading: true })
       if (config.useMock) {
         set({ metrics: createMockMetrics(get().tasks, get().scheduledTasks), metricsLoading: false })
@@ -112,6 +133,7 @@ export function createTasksStore(config: TasksStoreConfig) {
     }),
 
     createTask: async (channelId, data) => {
+      const set = scopedSet(channelId)
       if (config.useMock) {
         const task: Task = { id: `task-${Date.now()}`, channel_id: channelId, title: data.title || '', status: 'pending', priority: data.priority ?? 3, created_at: new Date().toISOString(), updated_at: new Date().toISOString(), ...data }
         set({ tasks: [...get().tasks, task] })
@@ -126,7 +148,8 @@ export function createTasksStore(config: TasksStoreConfig) {
     },
 
     getTask: async (channelId, taskId) => {
-      const existing = get().tasks.find((task) => task.id === taskId)
+      const set = scopedSet(channelId)
+      const existing = get().channelId === channelId ? get().tasks.find((task) => task.id === taskId) : undefined
       if (existing) return existing
       if (config.useMock) {
         return MOCK_TASKS.find((task) => task.id === taskId) || null
@@ -143,6 +166,7 @@ export function createTasksStore(config: TasksStoreConfig) {
     },
 
     updateTask: async (channelId, taskId, patch) => {
+      const set = scopedSet(channelId)
       if (config.useMock) {
         set({ tasks: get().tasks.map((t) => t.id === taskId ? applyTaskPatch(t, patch) : t) })
         return
@@ -155,6 +179,7 @@ export function createTasksStore(config: TasksStoreConfig) {
     },
 
     deleteTask: async (channelId, taskId) => {
+      const set = scopedSet(channelId)
       if (config.useMock) {
         set({
           tasks: get().tasks.filter((t) => t.id !== taskId),
@@ -174,7 +199,7 @@ export function createTasksStore(config: TasksStoreConfig) {
       } catch { /* */ }
     },
 
-    fetchScheduledTasks: (channelId) => coalesceRead(`scheduled:${channelId}`, async () => {
+    fetchScheduledTasks: (channelId) => readChannel(`scheduled:${channelId}`, channelId, async (set) => {
       set({ schedulesLoading: true })
       if (config.useMock) { set({ scheduledTasks: MOCK_TASK_SCHEDULES, schedulesLoading: false }); return }
       try {
@@ -184,6 +209,7 @@ export function createTasksStore(config: TasksStoreConfig) {
     }),
 
     createScheduledTask: async (channelId, data) => {
+      const set = scopedSet(channelId)
       if (config.useMock) {
         const schedule: TaskSchedule = {
           id: `schedule-${Date.now()}`,
@@ -212,6 +238,7 @@ export function createTasksStore(config: TasksStoreConfig) {
     },
 
     updateScheduledTask: async (channelId, scheduleId, patch) => {
+      const set = scopedSet(channelId)
       if (config.useMock) {
         set({ scheduledTasks: get().scheduledTasks.map((s) => s.id === scheduleId ? { ...s, ...patch } : s) })
         return
@@ -234,6 +261,7 @@ export function createTasksStore(config: TasksStoreConfig) {
     },
 
     deleteScheduledTask: async (channelId, scheduleId) => {
+      const set = scopedSet(channelId)
       if (config.useMock) {
         set({
           scheduledTasks: get().scheduledTasks.filter((s) => s.id !== scheduleId),
@@ -253,9 +281,10 @@ export function createTasksStore(config: TasksStoreConfig) {
       } catch { /* */ }
     },
 
-    fetchCalendar: (channelId, range) => coalesceRead(
+    fetchCalendar: (channelId, range) => readChannel(
       `calendar:${channelId}:${range?.from ?? ''}:${range?.to ?? ''}`,
-      async () => {
+      channelId,
+      async (set) => {
         if (config.useMock) { set({ calendarEvents: MOCK_CALENDAR_EVENTS }); return }
         try {
           const params = new URLSearchParams()
@@ -292,8 +321,12 @@ export function createTasksStore(config: TasksStoreConfig) {
       } catch { return null }
     },
 
-    reset: () => set({ projects: [], tasks: [], scheduledTasks: [], calendarEvents: [], metrics: null, loading: false, schedulesLoading: false, metricsLoading: false }),
-  }))
+    reset: () => {
+      channelVersion++
+      set({ ...emptyView(), channelId: null })
+    },
+    })
+  })
 }
 
 export type TasksStore = ReturnType<typeof createTasksStore>
