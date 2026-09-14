@@ -10,7 +10,7 @@ interface UseChatOptions {
 }
 
 export function useChat(channelId: string | null, options?: UseChatOptions) {
-  const { authStore, channelsStore, messagesStore, ws } = useBeeSeedContext()
+  const { authStore, channelsStore, connectionStore, messagesStore, ws } = useBeeSeedContext()
   const state = useStore(messagesStore)
   const markRead = options?.markRead === true
   const sync = options?.sync !== false
@@ -18,16 +18,36 @@ export function useChat(channelId: string | null, options?: UseChatOptions) {
   useEffect(() => {
     if (!channelId || !sync) return
     let cancelled = false
+    let pending = false
+    let connectionVersion = 0
     const s = messagesStore.getState()
-    void s.fetchMessages(channelId).then(() => {
-      if (cancelled) return
+    // A pagination entry exists even for an empty, successfully loaded channel.
+    const needsHistory = () => !messagesStore.getState().hasOlderMessages.has(channelId)
+    const fetchHistory = () => {
+      pending = true
+      const startedAtConnection = connectionVersion
+      void s.fetchMessages(channelId).then(() => {
+        pending = false
+        if (cancelled) return
+        // Reconnect may finish before the old HTTP request reports its failure.
+        if (startedAtConnection !== connectionVersion && connectionStore.getState().state === 'connected' && needsHistory()) {
+          fetchHistory()
+        }
+      })
+    }
+    const unsubscribe = connectionStore.subscribe((next, previous) => {
+      if (next.state !== 'connected' || previous.state === 'connected') return
+      connectionVersion += 1
+      if (!pending && needsHistory()) fetchHistory()
     })
+    fetchHistory()
     void s.fetchMembers(channelId)
     ws.send({ type: 'join_channel', channel_id: channelId })
     return () => {
       cancelled = true
+      unsubscribe()
     }
-  }, [channelId, channelsStore, messagesStore, sync, ws])
+  }, [channelId, connectionStore, messagesStore, sync, ws])
 
   const channelMessages = channelId ? state.getMessages(channelId) : []
   const latestMsgId = latestMessageId(channelMessages)
