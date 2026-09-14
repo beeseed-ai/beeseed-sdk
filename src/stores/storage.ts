@@ -7,6 +7,7 @@ import { storageAttachmentDownloadPayload } from '../lib/storage-presign.js'
 import { MOCK_OBJECTS, MOCK_DIRECTORIES } from '../mocks/storage.js'
 
 export interface StorageState {
+  channelId: string | null
   objects: StorageObject[]
   directories: string[]
   currentPrefix: string
@@ -19,6 +20,8 @@ export interface StorageState {
   canUpload: boolean
   searchQuery: string
   previewObj: StorageObject | null
+  error: string | null
+  clearError: () => void
 
   browse: (channelId: string, prefix?: string) => Promise<void>
   createDirectory: (channelId: string, name: string, prefix?: string) => Promise<void>
@@ -39,7 +42,10 @@ export interface StorageStoreConfig {
 }
 
 export function createStorageStore(config: StorageStoreConfig) {
+  let requestVersion = 0
+  let channelVersion = 0
   return createStore<StorageState>()((set, get) => ({
+    channelId: null,
     objects: [],
     directories: [],
     currentPrefix: '',
@@ -52,25 +58,39 @@ export function createStorageStore(config: StorageStoreConfig) {
     canUpload: true,
     searchQuery: '',
     previewObj: null,
+    error: null,
+    clearError: () => set({ error: null }),
 
     browse: async (channelId, prefix = '') => {
-      set({ loading: true, currentPrefix: prefix })
+      const version = ++requestVersion
+      if (get().channelId !== channelId) {
+        channelVersion++
+        set({ channelId, objects: [], directories: [], usage: { objects: 0, bytes: 0 }, previewObj: null,
+          searchQuery: '', canUpload: false, uploading: false, uploadProgress: 0, uploadError: null,
+          policy: { enabled: true, visibility: 'channel', members_can_upload: true, members_can_delete_own: true } })
+      }
+      set({ loading: true, currentPrefix: prefix, error: null })
       if (config.useMock) {
         const pfx = prefix
         const dirs = MOCK_DIRECTORIES.filter((d) => d.startsWith(pfx) && d !== pfx)
           .map((d) => d.slice(pfx.length).split('/')[0] + '/')
           .filter((v, i, a) => a.indexOf(v) === i)
         const objs = MOCK_OBJECTS.filter((o) => o.key.startsWith(pfx) && !o.key.slice(pfx.length).includes('/'))
-        set({ directories: dirs, objects: objs, usage: { objects: MOCK_OBJECTS.length, bytes: MOCK_OBJECTS.reduce((sum, obj) => sum + obj.size, 0) }, loading: false })
+        set({ directories: dirs, objects: objs, usage: { objects: MOCK_OBJECTS.length, bytes: MOCK_OBJECTS.reduce((sum, obj) => sum + obj.size, 0) }, canUpload: true, loading: false })
         return
       }
       try {
         const data = await config.api.get(`channels/${channelId}/storage`, { searchParams: prefix ? { prefix } : {} }).json<{ objects: StorageObject[]; common_prefixes: string[]; policy?: StoragePolicy; usage?: StorageUsage; capabilities?: { can_upload?: boolean } }>()
+        if (version !== requestVersion) return
         set({ objects: data.objects || [], directories: data.common_prefixes || [], policy: data.policy || get().policy, usage: data.usage || get().usage, canUpload: data.capabilities?.can_upload ?? get().canUpload, loading: false })
-      } catch { set({ loading: false }) }
+      } catch {
+        if (version === requestVersion) set({ loading: false, error: '文件列表加载失败，请重试。' })
+      }
     },
 
     uploadFile: async (channelId, file, prefix = get().currentPrefix) => {
+      const version = channelVersion
+      const isCurrent = () => version === channelVersion && get().channelId === channelId
       const visiblePrefix = get().currentPrefix
       const contentType = contentTypeForUpload(file)
       set({ uploading: true, uploadProgress: 0, uploadError: null })
@@ -89,25 +109,28 @@ export function createStorageStore(config: StorageStoreConfig) {
         const headers = presign.headers && Object.keys(presign.headers).length > 0 ? presign.headers : undefined
         const uploadBody = await file.arrayBuffer()
         await uploadWithProgress(presign.upload_url, presign.method || 'PUT', uploadBody, headers, (progress) => {
-          set({ uploadProgress: progress })
+          if (isCurrent()) set({ uploadProgress: progress })
         })
 
         const completed = await config.api.post(`channels/${channelId}/storage/complete-upload`, {
           json: { object_id: presign.object.id },
         }).json<StorageObject>()
-        set({ uploadProgress: 100 })
-        await get().browse(channelId, visiblePrefix)
+        if (isCurrent()) {
+          set({ uploadProgress: 100 })
+          await get().browse(channelId, get().currentPrefix)
+        }
         return completed
       } catch (err) {
         const message = storageUploadErrorMessage(err)
-        set({ uploadError: message })
+        if (isCurrent()) set({ uploadError: message })
         throw new Error(message)
       } finally {
-        set({ uploading: false })
+        if (isCurrent()) set({ uploading: false })
       }
     },
 
     createDirectory: async (channelId, name, prefix = get().currentPrefix) => {
+      const version = channelVersion
       const safeName = name.trim()
       if (!safeName) return
       if (config.useMock) {
@@ -118,7 +141,7 @@ export function createStorageStore(config: StorageStoreConfig) {
       await config.api.post(`channels/${channelId}/storage/directory`, {
         json: { name: safeName, prefix },
       })
-      await get().browse(channelId, prefix)
+      if (version === channelVersion && get().channelId === channelId) await get().browse(channelId, get().currentPrefix)
     },
 
     downloadFile: async (channelId, key) => {
@@ -130,11 +153,22 @@ export function createStorageStore(config: StorageStoreConfig) {
     },
 
     deleteFile: async (channelId, key) => {
-      if (config.useMock) { set({ objects: get().objects.filter((o) => o.key !== key) }); return }
+      const version = channelVersion
+      const isCurrent = () => version === channelVersion && get().channelId === channelId
+      if (isCurrent()) set({ error: null })
+      if (config.useMock) {
+        const removed = get().objects.find((o) => o.key === key)
+        set({ objects: get().objects.filter((o) => o.key !== key), usage: { objects: Math.max(0, get().usage.objects - (removed ? 1 : 0)), bytes: Math.max(0, get().usage.bytes - (removed?.size || 0)) } })
+        return
+      }
       try {
         await config.api.delete(`channels/${channelId}/storage/file/${encodeURIComponent(key)}`)
+        if (!isCurrent()) return
         set({ objects: get().objects.filter((o) => o.key !== key) })
-      } catch { /* */ }
+        await get().browse(channelId, get().currentPrefix)
+      } catch {
+        if (isCurrent()) set({ error: '文件删除失败，请重试。' })
+      }
     },
 
     clearUploadError: () => set({ uploadError: null }),
@@ -155,7 +189,11 @@ export function createStorageStore(config: StorageStoreConfig) {
       return crumbs
     },
 
-    reset: () => set({ objects: [], directories: [], currentPrefix: '', loading: false, uploading: false, uploadProgress: 0, uploadError: null, policy: { enabled: true, visibility: 'channel', members_can_upload: true, members_can_delete_own: true }, usage: { objects: 0, bytes: 0 }, canUpload: true, searchQuery: '', previewObj: null }),
+    reset: () => {
+      requestVersion++
+      channelVersion++
+      set({ channelId: null, objects: [], directories: [], currentPrefix: '', loading: false, uploading: false, uploadProgress: 0, uploadError: null, error: null, policy: { enabled: true, visibility: 'channel', members_can_upload: true, members_can_delete_own: true }, usage: { objects: 0, bytes: 0 }, canUpload: true, searchQuery: '', previewObj: null })
+    },
   }))
 }
 

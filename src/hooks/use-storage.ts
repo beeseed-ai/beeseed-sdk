@@ -7,6 +7,7 @@ const STORAGE_MUTATION_EVENT = 'beeseed:storage-mutated'
 export function useStorage(channelId: string | null) {
   const { storageStore } = useBeeSeedContext()
   const state = useStore(storageStore)
+  const matchesChannel = Boolean(channelId) && state.channelId === channelId
 
   useEffect(() => {
     if (!channelId) return
@@ -36,19 +37,21 @@ export function useStorage(channelId: string | null) {
   }, [channelId, storageStore])
 
   return {
-    objects: state.filteredObjects(),
-    directories: state.directories,
-    currentPrefix: state.currentPrefix,
-    loading: state.loading,
-    uploading: state.uploading,
-    uploadProgress: state.uploadProgress,
-    uploadError: state.uploadError,
+    objects: matchesChannel ? state.filteredObjects() : [],
+    directories: matchesChannel ? state.directories : [],
+    currentPrefix: matchesChannel ? state.currentPrefix : '',
+    loading: Boolean(channelId) && (!matchesChannel || state.loading),
+    uploading: matchesChannel && state.uploading,
+    uploadProgress: matchesChannel ? state.uploadProgress : 0,
+    uploadError: matchesChannel ? state.uploadError : null,
+    error: matchesChannel ? state.error : null,
+    clearError: state.clearError,
     policy: state.policy,
-    usage: state.usage,
-    canUpload: state.canUpload,
-    searchQuery: state.searchQuery,
-    previewObj: state.previewObj,
-    breadcrumbs: state.breadcrumbs(),
+    usage: matchesChannel ? state.usage : { objects: 0, bytes: 0 },
+    canUpload: matchesChannel && state.canUpload,
+    searchQuery: matchesChannel ? state.searchQuery : '',
+    previewObj: matchesChannel ? state.previewObj : null,
+    breadcrumbs: matchesChannel ? state.breadcrumbs() : [{ label: '根目录', prefix: '' }],
     browse: (prefix: string) => channelId ? state.browse(channelId, prefix) : Promise.resolve(),
     createDirectory: (name: string, prefix?: string) => channelId ? state.createDirectory(channelId, name, prefix) : Promise.resolve(),
     uploadFile: (file: File, prefix?: string) => channelId ? state.uploadFile(channelId, file, prefix) : Promise.resolve(null),
