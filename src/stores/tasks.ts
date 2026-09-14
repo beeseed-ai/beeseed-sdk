@@ -246,9 +246,9 @@ export function createTasksStore(config: TasksStoreConfig) {
         await config.api.delete(`channels/${channelId}/scheduled-tasks/${scheduleId}`)
         set({
           scheduledTasks: get().scheduledTasks.filter((s) => s.id !== scheduleId),
-          tasks: get().tasks.filter((task) => task.schedule_id !== scheduleId),
           calendarEvents: get().calendarEvents.filter((event) => event.schedule_id !== scheduleId),
         })
+        await get().fetchTasks(channelId)
         void get().fetchMetrics(channelId)
       } catch { /* */ }
     },
