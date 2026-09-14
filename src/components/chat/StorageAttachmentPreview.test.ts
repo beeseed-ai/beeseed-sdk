@@ -1,5 +1,30 @@
 import { describe, expect, it, vi } from 'vitest'
-import { openStorageDownload, probeStorageRefExistence } from './StorageAttachmentPreview.js'
+import { openStorageDownload, probeStorageRefExistence, requestStoragePreviewURL } from './StorageAttachmentPreview.js'
+
+describe('presentation preview signing', () => {
+  it('keeps the exact long-name object without adding a filename disposition for Office', async () => {
+    const post = vi.fn(() => ({ json: async () => ({ url: 'https://storage.example/signed-object' }) }))
+    const api = { post } as unknown as Parameters<typeof requestStoragePreviewURL>[0]
+    const key = `folder/${'中文演示文稿'.repeat(15)}.pptx`
+
+    await requestStoragePreviewURL(api, 'channel-a', `storage://${key}`, 'presentation', 'exact-object')
+
+    expect(post).toHaveBeenCalledWith('channels/channel-a/storage/presign-download', {
+      json: { key, object_id: 'exact-object' },
+    })
+  })
+
+  it('preserves the PDF preview endpoint and its version binding', async () => {
+    const post = vi.fn(() => ({ json: async () => ({ url: 'https://storage.example/signed-object' }) }))
+    const api = { post } as unknown as Parameters<typeof requestStoragePreviewURL>[0]
+
+    await requestStoragePreviewURL(api, 'channel-a', 'storage://folder/report.pdf', 'pdf', 'pdf-v2')
+
+    expect(post).toHaveBeenCalledWith('channels/channel-a/storage/pdf-preview', {
+      json: { key: 'folder/report.pdf', object_id: 'pdf-v2' },
+    })
+  })
+})
 
 describe('openStorageDownload', () => {
   it('opens a tab before waiting for the presigned URL', async () => {

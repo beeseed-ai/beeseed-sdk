@@ -241,7 +241,7 @@ async function resolvePreviewKey(api: ReturnType<typeof useBeeSeedContext>['api'
   return requestedKey
 }
 
-async function requestStoragePreviewURL(
+export async function requestStoragePreviewURL(
   api: ReturnType<typeof useBeeSeedContext>['api'],
   channelId: string,
   refText: string,
@@ -254,7 +254,11 @@ async function requestStoragePreviewURL(
       json: storagePresignDownloadPayload(key, { objectId }),
     }).json<{ url: string }>()
     : api.post(`channels/${channelId}/storage/presign-download`, {
-      json: storagePreviewPresignPayload(`storage://${key}`, objectId),
+      // Office fetches the file itself. Repeating a long filename in signed
+      // Content-Disposition parameters can make its embed URL return 404.
+      json: kind === 'presentation'
+        ? storagePresignDownloadPayload(key, { objectId })
+        : storagePreviewPresignPayload(`storage://${key}`, objectId),
     }).json<{ url: string }>()
 
   const requestedKey = keyFromStorageRef(refText)
