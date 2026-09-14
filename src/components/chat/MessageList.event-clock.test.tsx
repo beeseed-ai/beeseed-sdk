@@ -81,4 +81,16 @@ describe('实时聊天的服务器事件时间', () => {
     store.getState().handleEvent({ type: 'agent_progress', channel_id: 'channel-clock', agent_id: 'assistant-clock', run_id: 'legacy', turn: 1, summary: '运行中', created_at } as WSEvent)
     expect(store.getState().getAgentLoops('channel-clock')[0].events?.[0].timestamp).toBe(origin)
   })
+
+  it('失败终态使用服务器时间，客户端时钟跳变不放大耗时', () => {
+    vi.spyOn(Date, 'now').mockReturnValue(origin - 60000)
+    const store = createMessagesStore({ api: {} as KyInstance, getCurrentChannelId: () => 'channel-clock', getCurrentUserId: () => 'user-clock', sendWsCommand: vi.fn() })
+    const identity = { channel_id: 'channel-clock', agent_id: 'assistant-clock', run_id: 'failed-clock', turn: 1 }
+    store.getState().handleEvent({ ...identity, type: 'agent_progress', summary: '运行中', created_at: serverTime(1) })
+    vi.mocked(Date.now).mockReturnValue(origin + 60000)
+    store.getState().handleEvent({ ...identity, type: 'error', error: '测试失败', created_at: serverTime(3) })
+    const loop = store.getState().getAgentLoops('channel-clock')[0]
+    expect(loop).toMatchObject({ status: 'error', startedAt: origin + 1000, completedAt: origin + 3000 })
+    expect(loop.turns[0].completedAt).toBe(origin + 3000)
+  })
 })
