@@ -1289,8 +1289,8 @@ function ensureLoopTurn(
   agentId: string,
   turnNumber: number,
   runId?: string,
+  now = Date.now(),
 ): AgentLoopState {
-  const now = Date.now()
   const base: AgentLoopState = loop ?? {
     runId,
     agentId,
@@ -1718,6 +1718,7 @@ export function createMessagesStore(config: MessagesStoreConfig) {
     handleEvent: (event) => {
       const state = get()
       const userId = config.getCurrentUserId()
+      const eventTimestamp = timestampFromWire('created_at' in event ? event.created_at : undefined)
 
       switch (event.type) {
         case 'messages_cleared': {
@@ -1884,7 +1885,7 @@ export function createMessagesStore(config: MessagesStoreConfig) {
           const existing = streams.get(key)
           const loops = new Map(state.agentLoops)
           const turnNumber = eventTurnNumber(event, existing?.agentLoop ?? loops.get(key))
-          let agentLoop = ensureLoopTurn(existing?.agentLoop ?? loops.get(key), event.channel_id, event.agent_id, turnNumber, eventRunId(event))
+          let agentLoop = ensureLoopTurn(existing?.agentLoop ?? loops.get(key), event.channel_id, event.agent_id, turnNumber, eventRunId(event), eventTimestamp)
           agentLoop = updateLoopTurn(agentLoop, turnNumber, (turn) => ({
             ...turn,
             content: (turn.content || '') + event.content,
@@ -1893,7 +1894,7 @@ export function createMessagesStore(config: MessagesStoreConfig) {
             agentLoop,
             turnNumber,
             event.content,
-            Date.now(),
+            eventTimestamp,
             `${key}:turn-${turnNumber}:assistant-content`,
             eventSeq(event),
           )
@@ -1967,7 +1968,7 @@ export function createMessagesStore(config: MessagesStoreConfig) {
             const turnNumber = eventTurnNumber(event, loop)
             const updatedTurns = loop.turns.map((turn) => (
               turn.turnNumber === turnNumber
-                ? { ...turn, status: 'completed' as const, content: finalContent, completedAt: Date.now() }
+                ? { ...turn, status: 'completed' as const, content: finalContent, completedAt: eventTimestamp }
                 : turn
             ))
             loops.set(streamKey, {
@@ -1975,7 +1976,7 @@ export function createMessagesStore(config: MessagesStoreConfig) {
               turns: updatedTurns,
               status: 'completed',
               finalContent,
-              completedAt: Date.now(),
+              completedAt: eventTimestamp,
             })
             set({ agentLoops: loops })
           }
@@ -1993,15 +1994,15 @@ export function createMessagesStore(config: MessagesStoreConfig) {
           const existing = streams.get(key)
           const loops = new Map(state.agentLoops)
           const turnNumber = eventTurnNumber(event, existing?.agentLoop ?? loops.get(key))
-          let agentLoop = ensureLoopTurn(existing?.agentLoop ?? loops.get(key), event.channel_id, event.agent_id, turnNumber, eventRunId(event))
+          let agentLoop = ensureLoopTurn(existing?.agentLoop ?? loops.get(key), event.channel_id, event.agent_id, turnNumber, eventRunId(event), eventTimestamp)
           const toolCall: AgentLoopToolCall = {
-            id: eventToolCallId(event) || `${event.name}-${eventSeq(event) ?? Date.now()}`,
+            id: eventToolCallId(event) || `${event.name}-${eventSeq(event) ?? eventTimestamp}`,
             toolCallId: eventToolCallId(event),
             seq: eventSeq(event),
             name: event.name,
             args: event.args as Record<string, unknown>,
             status: 'calling',
-            startedAt: Date.now(),
+            startedAt: eventTimestamp,
             parallel: (event as { parallel?: boolean }).parallel,
             batchId: (event as { batch_id?: string }).batch_id,
           }
@@ -2014,7 +2015,7 @@ export function createMessagesStore(config: MessagesStoreConfig) {
             seq: eventSeq(event),
             type: 'tool_call',
             turnNumber,
-            timestamp: Date.now(),
+            timestamp: eventTimestamp,
             tool: toolCall,
           })
           loops.set(key, agentLoop)
@@ -2048,7 +2049,7 @@ export function createMessagesStore(config: MessagesStoreConfig) {
           const existing = streams.get(key)
           const loops = new Map(state.agentLoops)
           const turnNumber = eventTurnNumber(event, existing?.agentLoop ?? loops.get(key))
-          let agentLoop = ensureLoopTurn(existing?.agentLoop ?? loops.get(key), event.channel_id, event.agent_id, turnNumber, eventRunId(event))
+          let agentLoop = ensureLoopTurn(existing?.agentLoop ?? loops.get(key), event.channel_id, event.agent_id, turnNumber, eventRunId(event), eventTimestamp)
           let resultTool: AgentLoopToolCall | undefined
           agentLoop = updateLoopTurn(agentLoop, turnNumber, (turn) => {
             let nextTurn = turn
@@ -2064,7 +2065,7 @@ export function createMessagesStore(config: MessagesStoreConfig) {
                 updated.toolCallId = updated.toolCallId ?? eventToolCallId(event)
                 updated.status = event.success !== false ? 'success' : 'failed'
                 updated.output = event.output
-                updated.completedAt = Date.now()
+                updated.completedAt = eventTimestamp
                 resultTool = updated
                 nextTurn = {
                   ...turn,
@@ -2076,14 +2077,14 @@ export function createMessagesStore(config: MessagesStoreConfig) {
                 }
               } else {
                 resultTool = {
-                  id: eventToolCallId(event) || `${event.name}-${eventSeq(event) ?? Date.now()}`,
+                  id: eventToolCallId(event) || `${event.name}-${eventSeq(event) ?? eventTimestamp}`,
                   toolCallId: eventToolCallId(event),
                   seq: eventSeq(event),
                   name: event.name,
                   status: event.success !== false ? 'success' : 'failed',
                   output: event.output,
-                  startedAt: Date.now(),
-                  completedAt: Date.now(),
+                  startedAt: eventTimestamp,
+                  completedAt: eventTimestamp,
                 }
                 nextTurn = {
                   ...turn,
@@ -2102,7 +2103,7 @@ export function createMessagesStore(config: MessagesStoreConfig) {
               seq: eventSeq(event),
               type: 'tool_result',
               turnNumber,
-              timestamp: Date.now(),
+              timestamp: eventTimestamp,
               tool: resultTool,
             })
           }
@@ -2132,9 +2133,9 @@ export function createMessagesStore(config: MessagesStoreConfig) {
           const existing = streams.get(key)
           const loops = new Map(state.agentLoops)
           const turnNumber = eventTurnNumber(event, existing?.agentLoop ?? loops.get(key))
-          let agentLoop = ensureLoopTurn(existing?.agentLoop ?? loops.get(key), event.channel_id, event.agent_id, turnNumber, eventRunId(event))
+          let agentLoop = ensureLoopTurn(existing?.agentLoop ?? loops.get(key), event.channel_id, event.agent_id, turnNumber, eventRunId(event), eventTimestamp)
           const skillUse: AgentLoopSkillUse = {
-            id: `${event.name}-${eventSeq(event) ?? Date.now()}`,
+            id: `${event.name}-${eventSeq(event) ?? eventTimestamp}`,
             seq: eventSeq(event),
             name: event.name,
             displayName: event.display_name,
@@ -2142,7 +2143,7 @@ export function createMessagesStore(config: MessagesStoreConfig) {
             iconUrl: event.icon_url,
             status: event.status || 'injected',
             reason: event.reason,
-            startedAt: Date.now(),
+            startedAt: eventTimestamp,
           }
           agentLoop = updateLoopTurn(agentLoop, turnNumber, (turn) => ({
             ...turn,
@@ -2156,7 +2157,7 @@ export function createMessagesStore(config: MessagesStoreConfig) {
             seq: eventSeq(event),
             type: 'skill_use',
             turnNumber,
-            timestamp: Date.now(),
+            timestamp: eventTimestamp,
             skill: skillUse,
           })
           loops.set(key, agentLoop)
@@ -2198,7 +2199,7 @@ export function createMessagesStore(config: MessagesStoreConfig) {
             toolCalls: [],
             skillUses: [],
             status: 'active',
-            startedAt: Date.now(),
+            startedAt: eventTimestamp,
           }
 
           let loop: AgentLoopState = shouldContinueExisting && existing
@@ -2217,7 +2218,7 @@ export function createMessagesStore(config: MessagesStoreConfig) {
                 turns: [newTurn],
                 status: 'running',
                 currentTurn: turnNumber,
-                startedAt: Date.now(),
+                startedAt: eventTimestamp,
               }
 
           if (event.content) {
@@ -2226,7 +2227,7 @@ export function createMessagesStore(config: MessagesStoreConfig) {
               seq: eventSeq(event),
               type: 'progress',
               turnNumber,
-              timestamp: Date.now(),
+              timestamp: eventTimestamp,
               summary: event.content,
             })
           }
@@ -2259,7 +2260,7 @@ export function createMessagesStore(config: MessagesStoreConfig) {
           const loops = new Map(state.agentLoops)
           const loopKey = eventLoopKey(event)
           const turnNumber = eventTurnNumber(event, loops.get(loopKey))
-          let updated = ensureLoopTurn(loops.get(loopKey), event.channel_id, event.agent_id, turnNumber, eventRunId(event))
+          let updated = ensureLoopTurn(loops.get(loopKey), event.channel_id, event.agent_id, turnNumber, eventRunId(event), eventTimestamp)
           updated = updateLoopTurn(updated, turnNumber, (turn) => ({
             ...turn,
             thinking: (turn.thinking || '') + (event.content || ''),
@@ -2282,7 +2283,7 @@ export function createMessagesStore(config: MessagesStoreConfig) {
           if (shouldIgnoreStaleLiveAgentEvent(state, event)) break
           const loops = new Map(state.agentLoops)
           const loopKey = eventLoopKey(event)
-          const loop = ensureLoopTurn(loops.get(loopKey), event.channel_id, event.agent_id, event.turn, eventRunId(event))
+          const loop = ensureLoopTurn(loops.get(loopKey), event.channel_id, event.agent_id, event.turn, eventRunId(event), eventTimestamp)
           loops.set(loopKey, loop)
           set({ agentLoops: loops })
 
@@ -2305,17 +2306,17 @@ export function createMessagesStore(config: MessagesStoreConfig) {
           const loops = new Map(state.agentLoops)
           const loopKey = eventLoopKey(event)
           const turnNumber = eventTurnNumber(event, loops.get(loopKey))
-          let updated = ensureLoopTurn(loops.get(loopKey), event.channel_id, event.agent_id, turnNumber, eventRunId(event))
+          let updated = ensureLoopTurn(loops.get(loopKey), event.channel_id, event.agent_id, turnNumber, eventRunId(event), eventTimestamp)
           updated = updateLoopTurn(updated, turnNumber, (turn) => ({
             ...turn,
             progress: event.summary,
           }))
           updated = appendLoopEvent(updated, {
-            id: eventId(event, `${loopKey}:progress-${turnNumber}-${eventSeq(event) ?? Date.now()}`),
+            id: eventId(event, `${loopKey}:progress-${turnNumber}-${eventSeq(event) ?? eventTimestamp}`),
             seq: eventSeq(event),
             type: 'progress',
             turnNumber,
-            timestamp: Date.now(),
+            timestamp: eventTimestamp,
             summary: event.summary,
           })
           loops.set(loopKey, updated)
@@ -2352,7 +2353,7 @@ export function createMessagesStore(config: MessagesStoreConfig) {
           const loops = new Map(state.agentLoops)
           const loopKey = eventLoopKey(event)
           const turnNumber = eventTurnNumber(event, loops.get(loopKey))
-          let updated = ensureLoopTurn(loops.get(loopKey), event.channel_id, event.agent_id, turnNumber, eventRunId(event))
+          let updated = ensureLoopTurn(loops.get(loopKey), event.channel_id, event.agent_id, turnNumber, eventRunId(event), eventTimestamp)
           updated = applyAgentTodoEvent(updated, event.todos, event.todo)
           loops.set(loopKey, updated)
           set({ agentLoops: loops })
@@ -2370,14 +2371,14 @@ export function createMessagesStore(config: MessagesStoreConfig) {
           const loopKey = eventLoopKey(event)
           const loops = new Map(state.agentLoops)
           const turnNumber = eventTurnNumber(event, loops.get(loopKey))
-          let updated = ensureLoopTurn(loops.get(loopKey), event.channel_id, event.agent_id, turnNumber, eventRunId(event))
+          let updated = ensureLoopTurn(loops.get(loopKey), event.channel_id, event.agent_id, turnNumber, eventRunId(event), eventTimestamp)
           updated = updateLoopTurn(updated, turnNumber, (turn) => ({
             ...turn,
             status: 'completed',
             progress: event.summary || turn.progress || 'Agent 正在等待用户补充信息。',
-            completedAt: Date.now(),
+            completedAt: eventTimestamp,
           }))
-          loops.set(loopKey, { ...updated, status: 'waiting_for_user' as const, completedAt: Date.now() })
+          loops.set(loopKey, { ...updated, status: 'waiting_for_user' as const, completedAt: eventTimestamp })
           set({ agentLoops: loops })
 
           const streams = new Map(state.streams)
@@ -2399,18 +2400,18 @@ export function createMessagesStore(config: MessagesStoreConfig) {
 
           const loops = new Map(state.agentLoops)
           const turnNumber = eventTurnNumber(event, loops.get(loopKey))
-          let updated = ensureLoopTurn(loops.get(loopKey), event.channel_id, event.agent_id, turnNumber, eventRunId(event))
+          let updated = ensureLoopTurn(loops.get(loopKey), event.channel_id, event.agent_id, turnNumber, eventRunId(event), eventTimestamp)
           updated = updateLoopTurn(updated, turnNumber, (turn) => ({
             ...turn,
             status: 'completed',
             progress: event.summary || turn.progress || '用户未在限定时间内回答，Agent 已停止等待。',
-            completedAt: Date.now(),
+            completedAt: eventTimestamp,
           }))
           loops.set(loopKey, {
             ...updated,
             status: 'waiting_expired' as const,
             error: event.summary || '等待用户回答已超时。',
-            completedAt: Date.now(),
+            completedAt: eventTimestamp,
           })
           set({ agentLoops: loops })
 
@@ -2424,18 +2425,18 @@ export function createMessagesStore(config: MessagesStoreConfig) {
           const loops = new Map(state.agentLoops)
           const loopKey = eventLoopKey(event)
           const turnNumber = eventTurnNumber(event, loops.get(loopKey))
-          let updated = ensureLoopTurn(loops.get(loopKey), event.channel_id, event.agent_id, turnNumber, eventRunId(event))
+          let updated = ensureLoopTurn(loops.get(loopKey), event.channel_id, event.agent_id, turnNumber, eventRunId(event), eventTimestamp)
           updated = updateLoopTurn(updated, turnNumber, (turn) => ({
             ...turn,
             status: 'completed',
             content: event.content,
-            completedAt: Date.now(),
+            completedAt: eventTimestamp,
           }))
           updated = {
             ...updated,
             status: 'completed',
             finalContent: event.content,
-            completedAt: Date.now(),
+            completedAt: eventTimestamp,
           }
           loops.set(loopKey, updated)
           set({ agentLoops: loops })
@@ -2456,13 +2457,13 @@ export function createMessagesStore(config: MessagesStoreConfig) {
           const loops = new Map(state.agentLoops)
           const loopKey = eventLoopKey(event)
           const turnNumber = eventTurnNumber(event, loops.get(loopKey))
-          let updated = ensureLoopTurn(loops.get(loopKey), event.channel_id, event.agent_id, turnNumber, eventRunId(event))
+          let updated = ensureLoopTurn(loops.get(loopKey), event.channel_id, event.agent_id, turnNumber, eventRunId(event), eventTimestamp)
           updated = updateLoopTurn(updated, turnNumber, (turn) => ({
             ...turn,
             status: 'completed',
-            completedAt: Date.now(),
+            completedAt: eventTimestamp,
           }))
-          loops.set(loopKey, { ...updated, status: 'max_turns_reached' as const, completedAt: Date.now() })
+          loops.set(loopKey, { ...updated, status: 'max_turns_reached' as const, completedAt: eventTimestamp })
           set({ agentLoops: loops })
 
           const streams = new Map(state.streams)
@@ -2488,10 +2489,10 @@ export function createMessagesStore(config: MessagesStoreConfig) {
             const turnNumber = eventTurnNumber(event, loop)
             const turns = loop.turns.map((turn) => (
               turn.turnNumber === turnNumber && turn.status === 'active'
-                ? { ...turn, status: 'completed' as const, progress: event.summary || turn.progress || '任务已停止。', completedAt: Date.now() }
+                ? { ...turn, status: 'completed' as const, progress: event.summary || turn.progress || '任务已停止。', completedAt: eventTimestamp }
                 : turn
             ))
-            loops.set(loopKey, { ...loop, turns, status: 'stopped' as const, error: event.summary || '任务已停止。', completedAt: Date.now() })
+            loops.set(loopKey, { ...loop, turns, status: 'stopped' as const, error: event.summary || '任务已停止。', completedAt: eventTimestamp })
             set({ agentLoops: loops })
           }
 
@@ -2512,17 +2513,17 @@ export function createMessagesStore(config: MessagesStoreConfig) {
 
           const summary = localAgentProgressSummary(event)
           const turnNumber = eventTurnNumber({ turn: 1 }, target.loop)
-          let updated = ensureLoopTurn(target.loop, event.channel_id, target.agentId, turnNumber, eventRunId(event))
+          let updated = ensureLoopTurn(target.loop, event.channel_id, target.agentId, turnNumber, eventRunId(event), eventTimestamp)
           updated = updateLoopTurn(updated, turnNumber, (turn) => ({
             ...turn,
             progress: summary,
           }))
           updated = appendLoopEvent(updated, {
-            id: eventId(event, `${target.key}:${event.type}-${eventSeq(event) ?? Date.now()}`),
+            id: eventId(event, `${target.key}:${event.type}-${eventSeq(event) ?? eventTimestamp}`),
             seq: eventSeq(event),
             type: 'progress',
             turnNumber,
-            timestamp: Date.now(),
+            timestamp: eventTimestamp,
             summary,
           })
           loops.set(target.key, updated)
@@ -2550,19 +2551,19 @@ export function createMessagesStore(config: MessagesStoreConfig) {
 
           const summary = localAgentRunSummary(event)
           const turnNumber = eventTurnNumber({ turn: 1 }, target.loop)
-          let updated = ensureLoopTurn(target.loop, event.channel_id, target.agentId, turnNumber, eventRunId(event))
+          let updated = ensureLoopTurn(target.loop, event.channel_id, target.agentId, turnNumber, eventRunId(event), eventTimestamp)
           updated = updateLoopTurn(updated, turnNumber, (turn) => ({
             ...turn,
             status: 'completed',
             progress: summary,
-            completedAt: Date.now(),
+            completedAt: eventTimestamp,
           }))
           updated = appendLoopEvent(updated, {
-            id: eventId(event, `${target.key}:${event.type}-${eventSeq(event) ?? Date.now()}`),
+            id: eventId(event, `${target.key}:${event.type}-${eventSeq(event) ?? eventTimestamp}`),
             seq: eventSeq(event),
             type: 'progress',
             turnNumber,
-            timestamp: Date.now(),
+            timestamp: eventTimestamp,
             summary,
           })
           loops.set(target.key, {
@@ -2570,7 +2571,7 @@ export function createMessagesStore(config: MessagesStoreConfig) {
 			status: event.type === 'local_agent.run.succeeded' ? 'completed' : event.type === 'local_agent.run.cancelled' ? 'stopped' : 'error',
             finalContent: event.type === 'local_agent.run.succeeded' ? summary : updated.finalContent,
 			error: event.type === 'local_agent.run.succeeded' ? undefined : summary,
-            completedAt: Date.now(),
+            completedAt: eventTimestamp,
           })
           set({ agentLoops: loops })
 
@@ -2598,10 +2599,10 @@ export function createMessagesStore(config: MessagesStoreConfig) {
                 const turnNumber = eventTurnNumber(event, loop)
                 const turns = loop.turns.map((turn) => (
                   turn.turnNumber === turnNumber
-                    ? { ...turn, status: 'completed' as const, completedAt: Date.now() }
+                    ? { ...turn, status: 'completed' as const, completedAt: eventTimestamp }
                     : turn
                 ))
-                loops.set(loopKey, { ...loop, turns, status: 'error', error: event.error, completedAt: Date.now() })
+                loops.set(loopKey, { ...loop, turns, status: 'error', error: event.error, completedAt: eventTimestamp })
                 set({ agentLoops: loops })
               }
 
