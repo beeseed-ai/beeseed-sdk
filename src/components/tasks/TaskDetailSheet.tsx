@@ -33,6 +33,8 @@ export function TaskDetailSheet({ channelId, task, members, channelName, open, o
   const [titleDraft, setTitleDraft] = useState('')
   const [descriptionDraft, setDescriptionDraft] = useState('')
   const [dueAtDraft, setDueAtDraft] = useState('')
+  const [statusDraft, setStatusDraft] = useState<Task['status'] | null>(null)
+  const [agentDraft, setAgentDraft] = useState<string | null>(null)
   const [savingDetails, setSavingDetails] = useState(false)
 
   const agents = useMemo(
@@ -53,11 +55,13 @@ export function TaskDetailSheet({ channelId, task, members, channelName, open, o
   }, [open, task?.id])
 
   useEffect(() => {
-    if (!task) return
+    if (!open || !task) return
     setTitleDraft(task.title)
     setDescriptionDraft(task.description || '')
     setDueAtDraft(toDateTimeLocal(task.due_at))
-  }, [task?.id])
+    setStatusDraft(null)
+    setAgentDraft(null)
+  }, [open, task?.id])
 
   if (!task) {
     return null
@@ -94,6 +98,11 @@ export function TaskDetailSheet({ channelId, task, members, channelName, open, o
         title,
         description: descriptionDraft,
         due_at: dueAtDraft ? new Date(dueAtDraft).toISOString() : null,
+        ...(statusDraft === null ? {} : { status: statusDraft }),
+        ...(agentDraft === null ? {} : {
+          assigned_agent_id: agentDraft || null,
+          assigned_type: agentDraft ? 'agent' as const : null,
+        }),
       })
       onTaskChanged?.()
       saved = true
@@ -174,10 +183,8 @@ export function TaskDetailSheet({ channelId, task, members, channelName, open, o
             <div className="grid grid-cols-[72px_1fr] items-center gap-2">
               <label className="text-xs text-muted-foreground">状态</label>
               <select
-                value={task.status}
-                onChange={(event) => {
-                  void updateTask(task.id, { status: event.target.value as Task['status'] }).then(onTaskChanged)
-                }}
+                value={statusDraft ?? task.status}
+                onChange={(event) => setStatusDraft(event.target.value as Task['status'])}
                 className="h-8 rounded-lg border border-input bg-background px-2 text-sm outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
               >
                 <option value="pending">待处理</option>
@@ -191,14 +198,8 @@ export function TaskDetailSheet({ channelId, task, members, channelName, open, o
             <div className="grid grid-cols-[72px_1fr] items-center gap-2">
               <label className="text-xs text-muted-foreground">执行人</label>
               <select
-                value={task.assigned_agent_id || ''}
-                onChange={(event) => {
-                  const agentID = event.target.value
-                  void updateTask(task.id, {
-                    assigned_agent_id: agentID || null,
-                    assigned_type: agentID ? 'agent' : null,
-                  }).then(onTaskChanged)
-                }}
+                value={agentDraft ?? task.assigned_agent_id ?? ''}
+                onChange={(event) => setAgentDraft(event.target.value)}
                 className="h-8 rounded-lg border border-input bg-background px-2 text-sm outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
               >
                 <option value="">未指定</option>
