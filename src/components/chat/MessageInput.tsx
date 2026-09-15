@@ -137,6 +137,12 @@ export function MessageInput({
   const [mentionStart, setMentionStart] = useState(-1)
   const [storageRefs, setStorageRefs] = useState<string[]>([])
   const [attachmentError, setAttachmentError] = useState<string | null>(null)
+  const attachmentGeneration = useRef(0)
+  useLayoutEffect(() => {
+    setStorageRefs([])
+    setAttachmentError(null)
+    return () => { attachmentGeneration.current++ }
+  }, [channelId])
   const [selectedSkills, setSelectedSkills] = useState<SelectedSkillIntent[]>([])
   const [skillMenuOpen, setSkillMenuOpen] = useState(false)
   const [skillQuery, setSkillQuery] = useState('')
@@ -441,15 +447,18 @@ export function MessageInput({
 
   const handleAttachFile = useCallback(async (file: File | undefined) => {
     if (!file || disabled) return
+    const generation = attachmentGeneration.current
     setAttachmentError(null)
     try {
       const uploaded = await uploadFile(file, CHAT_UPLOAD_PREFIX)
+      if (generation !== attachmentGeneration.current) return
       if (!uploaded?.key) return
       const refText = storageRefFromKey(uploaded.key)
       setStorageRefs((refs) => refs.includes(refText) ? refs : [...refs, refText])
       setMentionOpen(false)
       ref.current?.focus()
     } catch (err) {
+      if (generation !== attachmentGeneration.current) return
       setAttachmentError(err instanceof Error ? err.message : '文件上传失败')
     }
   }, [disabled, uploadFile])
