@@ -60,7 +60,13 @@ describe('storage channel view', () => {
     get.mockReturnValueOnce({ json: async () => listing('a.txt') }).mockReturnValueOnce({ json: async () => ({ objects: [], common_prefixes: [], usage: { bytes: 0, objects: 0 } }) })
     del.mockResolvedValue({})
     await store.getState().browse('a'); await store.getState().deleteFile('a', 'a.txt')
-    expect(store.getState()).toMatchObject({ objects: [], usage: { objects: 0, bytes: 0 } })
+    expect(store.getState()).toMatchObject({ objects: [], usage: { objects: 0, bytes: 0 }, notice: '文件已删除' })
+    get.mockReturnValueOnce({ json: async () => listing('b.txt') })
+    await store.getState().browse('b')
+    expect(store.getState().notice).toBeNull()
+    store.setState({ notice: '文件已删除' })
+    store.getState().reset()
+    expect(store.getState().notice).toBeNull()
   })
 
   it('delete failure preserves the file and exposes a retry message', async () => {
@@ -68,7 +74,7 @@ describe('storage channel view', () => {
     get.mockReturnValue({ json: async () => listing('a.txt') }); del.mockRejectedValue(new Error('network failed'))
     await store.getState().browse('a'); await store.getState().deleteFile('a', 'a.txt')
     expect(store.getState().objects).toEqual([object('a.txt')])
-    expect(store.getState()).toMatchObject({ error: '文件删除失败，请重试。' })
+    expect(store.getState()).toMatchObject({ error: '文件删除失败，请重试。', notice: null })
   })
 
   it('a late delete cannot remove the same key from another channel', async () => {
@@ -77,6 +83,7 @@ describe('storage channel view', () => {
     await store.getState().browse('a'); const pending = store.getState().deleteFile('a', 'same.txt')
     await store.getState().browse('b'); deletion.resolve({}); await pending
     expect(store.getState().objects).toEqual([object('same.txt')])
+    expect(store.getState().notice).toBeNull()
     expect(get).toHaveBeenCalledTimes(2)
   })
 

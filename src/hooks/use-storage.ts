@@ -45,6 +45,7 @@ export function useStorage(channelId: string | null) {
     uploadProgress: matchesChannel ? state.uploadProgress : 0,
     uploadError: matchesChannel ? state.uploadError : null,
     error: matchesChannel ? state.error : null,
+    notice: matchesChannel ? state.notice : null,
     clearError: state.clearError,
     policy: state.policy,
     usage: matchesChannel ? state.usage : { objects: 0, bytes: 0 },

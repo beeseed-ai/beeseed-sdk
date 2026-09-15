@@ -21,6 +21,7 @@ export interface StorageState {
   searchQuery: string
   previewObj: StorageObject | null
   error: string | null
+  notice: string | null
   clearError: () => void
 
   browse: (channelId: string, prefix?: string) => Promise<void>
@@ -59,6 +60,7 @@ export function createStorageStore(config: StorageStoreConfig) {
     searchQuery: '',
     previewObj: null,
     error: null,
+    notice: null,
     clearError: () => set({ error: null }),
 
     browse: async (channelId, prefix = '') => {
@@ -66,7 +68,7 @@ export function createStorageStore(config: StorageStoreConfig) {
       if (get().channelId !== channelId) {
         channelVersion++
         set({ channelId, objects: [], directories: [], usage: { objects: 0, bytes: 0 }, previewObj: null,
-          searchQuery: '', canUpload: false, uploading: false, uploadProgress: 0, uploadError: null,
+          searchQuery: '', canUpload: false, uploading: false, uploadProgress: 0, uploadError: null, notice: null,
           policy: { enabled: true, visibility: 'channel', members_can_upload: true, members_can_delete_own: true } })
       }
       set({ loading: true, currentPrefix: prefix, error: null })
@@ -93,7 +95,7 @@ export function createStorageStore(config: StorageStoreConfig) {
       const isCurrent = () => version === channelVersion && get().channelId === channelId
       const visiblePrefix = get().currentPrefix
       const contentType = contentTypeForUpload(file)
-      set({ uploading: true, uploadProgress: 0, uploadError: null })
+      set({ uploading: true, uploadProgress: 0, uploadError: null, notice: null })
       if (config.useMock) {
         const key = `${prefix || ''}${file.name}`
         const obj: StorageObject = { key, name: file.name, display_name: file.name, size: file.size, content_type: contentType, last_modified: new Date().toISOString(), status: 'available' }
@@ -155,10 +157,10 @@ export function createStorageStore(config: StorageStoreConfig) {
     deleteFile: async (channelId, key) => {
       const version = channelVersion
       const isCurrent = () => version === channelVersion && get().channelId === channelId
-      if (isCurrent()) set({ error: null })
+      if (isCurrent()) set({ error: null, notice: null })
       if (config.useMock) {
         const removed = get().objects.find((o) => o.key === key)
-        set({ objects: get().objects.filter((o) => o.key !== key), usage: { objects: Math.max(0, get().usage.objects - (removed ? 1 : 0)), bytes: Math.max(0, get().usage.bytes - (removed?.size || 0)) } })
+        set({ objects: get().objects.filter((o) => o.key !== key), usage: { objects: Math.max(0, get().usage.objects - (removed ? 1 : 0)), bytes: Math.max(0, get().usage.bytes - (removed?.size || 0)) }, notice: '文件已删除' })
         return
       }
       try {
@@ -166,6 +168,7 @@ export function createStorageStore(config: StorageStoreConfig) {
         if (!isCurrent()) return
         set({ objects: get().objects.filter((o) => o.key !== key) })
         await get().browse(channelId, get().currentPrefix)
+        if (isCurrent()) set({ notice: '文件已删除' })
       } catch {
         if (isCurrent()) set({ error: '文件删除失败，请重试。' })
       }
@@ -192,7 +195,7 @@ export function createStorageStore(config: StorageStoreConfig) {
     reset: () => {
       requestVersion++
       channelVersion++
-      set({ channelId: null, objects: [], directories: [], currentPrefix: '', loading: false, uploading: false, uploadProgress: 0, uploadError: null, error: null, policy: { enabled: true, visibility: 'channel', members_can_upload: true, members_can_delete_own: true }, usage: { objects: 0, bytes: 0 }, canUpload: true, searchQuery: '', previewObj: null })
+      set({ channelId: null, objects: [], directories: [], currentPrefix: '', loading: false, uploading: false, uploadProgress: 0, uploadError: null, error: null, notice: null, policy: { enabled: true, visibility: 'channel', members_can_upload: true, members_can_delete_own: true }, usage: { objects: 0, bytes: 0 }, canUpload: true, searchQuery: '', previewObj: null })
     },
   }))
 }
