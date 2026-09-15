@@ -36,6 +36,22 @@ describe('ReasonIX 实时等待和存储反馈', () => {
   })
 
   it.each([
+    ['storage_write', true, 'run-a', 1],
+    ['storage_delete', true, 'run-a', 1],
+    ['storage_delete', false, 'run-a', 0],
+    ['storage_read', true, 'run-a', 0],
+    ['storage_delete', true, 'run-b', 0],
+  ])('无工具名的完成事件按同一 Run 的调用 ID 关联 %s', (tool, success, resultRun, count) => {
+    const dispatch = vi.spyOn(window, 'dispatchEvent')
+    const send = makeStore().getState().handleEvent
+    send({ type: 'tool_call', ...run, name: `mcp__BeeSeed_Channel_abc__${tool}`, tool_call_id: 'call-1', args: {}, turn: 1 })
+    send({ type: 'tool_result', ...run, run_id: resultRun, name: '', tool_call_id: 'call-1', success, output: '', turn: 1 })
+    const events = dispatch.mock.calls.map(([event]) => event).filter(event => event.type === 'beeseed:storage-mutated')
+    expect(events).toHaveLength(count)
+    if (count) expect((events[0] as CustomEvent).detail).toEqual({ channelId: 'channel-a', toolName: `mcp__BeeSeed_Channel_abc__${tool}` })
+  })
+
+  it.each([
     ['storage_write', true, 1], ['storage_delete', true, 1],
     ['mcp__BeeSeed_Channel_abc__storage_write', true, 1],
     ['mcp__BeeSeed_Channel_abc__storage_delete', true, 1],

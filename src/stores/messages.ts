@@ -2049,9 +2049,6 @@ export function createMessagesStore(config: MessagesStoreConfig) {
 
         case 'tool_result': {
           if (shouldIgnoreStaleLiveAgentEvent(state, event)) break
-          if (isStorageMutationTool(event.name, event.success)) {
-            emitStorageMutation(event.channel_id, event.name)
-          }
           const streams = new Map(state.streams)
           const key = eventLoopKey(event)
           const existing = streams.get(key)
@@ -2106,6 +2103,9 @@ export function createMessagesStore(config: MessagesStoreConfig) {
             return nextTurn
           })
           if (resultTool) {
+            if (isStorageMutationTool(resultTool.name, event.success)) {
+              emitStorageMutation(event.channel_id, resultTool.name)
+            }
             agentLoop = appendLoopEvent(agentLoop, {
               id: eventId(event, `${resultTool.id}:result`),
               seq: eventSeq(event),
@@ -2120,13 +2120,13 @@ export function createMessagesStore(config: MessagesStoreConfig) {
 
           if (agentLoop.status === 'waiting_for_user') streams.delete(key)
           else streams.set(key, {
-              agentId: event.agent_id,
-              runId: eventRunId(event),
-              content: existing?.content || '',
-              thinking: existing?.thinking || '',
-              agentLoop,
-              toolCall: undefined,
-            })
+            agentId: event.agent_id,
+            runId: eventRunId(event),
+            content: existing?.content || '',
+            thinking: existing?.thinking || '',
+            agentLoop,
+            toolCall: undefined,
+          })
           set({ streams })
 
           const typing = new Map(state.typingStatus)
