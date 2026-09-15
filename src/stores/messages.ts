@@ -123,7 +123,9 @@ function overlayAskUserAnswerOutbox(
 }
 
 function isStorageMutationTool(name: unknown, success: unknown) {
-  return typeof name === 'string' && STORAGE_MUTATION_TOOLS.has(name) && success !== false
+  if (typeof name !== 'string') return false
+  const toolName = name.startsWith('mcp__') ? name.split('__').at(-1) : name
+  return Boolean(toolName && STORAGE_MUTATION_TOOLS.has(toolName)) && success !== false
 }
 
 function emitStorageMutation(channelId: string, toolName: string) {
@@ -825,7 +827,7 @@ function buildAgentLoopsFromMessages(channelId: string, messages: Message[]): Ma
       }
       if (message.sender_type === 'agent' && message.msg_type === 'text') {
         const loop = loops.get(key)
-        if (loop && loop.status === 'running') {
+        if (loop && (loop.status === 'running' || loop.status === 'waiting_for_user')) {
           const turn = loop.turns[loop.turns.length - 1]
           const completedTurn = turn
             ? { ...turn, status: 'completed' as const, content: message.content, completedAt: timestamp }
@@ -842,6 +844,10 @@ function buildAgentLoopsFromMessages(channelId: string, messages: Message[]): Ma
       continue
     }
     latestEventAt.set(key, timestamp)
+
+    // A run ID identifies one lifecycle; replayed waiting/ACK events cannot reopen it.
+    if (runId && isTerminalAgentLoop(loops.get(key))
+      && (meta.event === 'agent_waiting_user' || meta.event === 'agent_ack')) continue
 
     const turnNumber = typeof meta.turn === 'number' && meta.turn > 0 ? meta.turn : 1
     let loop = loops.get(key)
@@ -1322,9 +1328,9 @@ function ensureLoopTurn(
   return {
     ...base,
     turns,
-    status: 'running',
+    status: base.status === 'waiting_for_user' ? 'waiting_for_user' : 'running',
     currentTurn: Math.max(base.currentTurn, turnNumber),
-    completedAt: undefined,
+    completedAt: base.status === 'waiting_for_user' ? base.completedAt : undefined,
     error: undefined,
   }
 }
@@ -1440,6 +1446,8 @@ function shouldIgnoreStaleLiveAgentEvent(
 ): boolean {
   const loop = state.agentLoops.get(eventLoopKey(event))
   if (!isTerminalAgentLoop(loop) || !loop?.completedAt) return false
+  // A new user message can start another Run, never reopen this exact Run.
+  if (eventRunId(event)) return true
   const latestUserAt = latestUserMessageAt(state.messages.get(event.channel_id))
   return latestUserAt === 0 || loop.completedAt >= latestUserAt
 }
@@ -2110,18 +2118,20 @@ export function createMessagesStore(config: MessagesStoreConfig) {
           loops.set(key, agentLoop)
           set({ agentLoops: loops })
 
-          streams.set(key, {
-            agentId: event.agent_id,
-            runId: eventRunId(event),
-            content: existing?.content || '',
-            thinking: existing?.thinking || '',
-            agentLoop,
-            toolCall: undefined,
-          })
+          if (agentLoop.status === 'waiting_for_user') streams.delete(key)
+          else streams.set(key, {
+              agentId: event.agent_id,
+              runId: eventRunId(event),
+              content: existing?.content || '',
+              thinking: existing?.thinking || '',
+              agentLoop,
+              toolCall: undefined,
+            })
           set({ streams })
 
           const typing = new Map(state.typingStatus)
-          typing.set(typingKey(event.channel_id, event.agent_id), `${event.agent_id} 正在思考...`)
+          if (agentLoop.status === 'waiting_for_user') clearTypingForChannel(typing, event.channel_id, event.agent_id)
+          else typing.set(typingKey(event.channel_id, event.agent_id), `${event.agent_id} 正在思考...`)
           set({ typingStatus: typing })
           break
         }
@@ -2283,7 +2293,7 @@ export function createMessagesStore(config: MessagesStoreConfig) {
           if (shouldIgnoreStaleLiveAgentEvent(state, event)) break
           const loops = new Map(state.agentLoops)
           const loopKey = eventLoopKey(event)
-          const loop = ensureLoopTurn(loops.get(loopKey), event.channel_id, event.agent_id, event.turn, eventRunId(event), eventTimestamp)
+          const loop = { ...ensureLoopTurn(loops.get(loopKey), event.channel_id, event.agent_id, event.turn, eventRunId(event), eventTimestamp), status: 'running' as const, completedAt: undefined }
           loops.set(loopKey, loop)
           set({ agentLoops: loops })
 
@@ -2331,12 +2341,35 @@ export function createMessagesStore(config: MessagesStoreConfig) {
           }
 
           const typing = new Map(state.typingStatus)
-          typing.set(typingKey(event.channel_id, event.agent_id), event.summary)
+          if (updated.status === 'waiting_for_user') clearTypingForChannel(typing, event.channel_id, event.agent_id)
+          else typing.set(typingKey(event.channel_id, event.agent_id), event.summary)
           set({ typingStatus: typing })
           break
         }
 
         case 'agent_run_status': {
+          const loopKey = eventLoopKey(event)
+          const existing = state.agentLoops.get(loopKey)
+          // Unkeyed legacy notifications must not complete another run by agent ID.
+          if (eventRunId(event) && existing && !isTerminalAgentLoop(existing)) {
+            const terminal: Record<string, AgentLoopState['status']> = {
+              completed: 'completed', canceled: 'stopped', failed: 'error', timed_out: 'error',
+              fenced: 'error', budget_exhausted: 'error', loop_blocked: 'error',
+            }
+            const nextStatus = terminal[event.status]
+              ?? (event.status === 'waiting_user' ? 'waiting_for_user' : undefined)
+              ?? (['starting', 'running', 'waiting_tool'].includes(event.status) ? 'running' : undefined)
+            if (nextStatus) {
+              const loops = new Map(state.agentLoops)
+              loops.set(loopKey, { ...existing, status: nextStatus, completedAt: nextStatus === 'running' ? undefined : eventTimestamp })
+              set({ agentLoops: loops })
+              if (nextStatus === 'waiting_for_user') {
+                const streams = new Map(state.streams)
+                streams.delete(loopKey)
+                set({ streams })
+              }
+            }
+          }
           const typing = new Map(state.typingStatus)
           if (['queued', 'starting', 'running', 'waiting_tool'].includes(event.status)) {
             typing.set(typingKey(event.channel_id, event.agent_id), `${event.agent_id} 正在思考...`)
@@ -2369,6 +2402,8 @@ export function createMessagesStore(config: MessagesStoreConfig) {
 
         case 'agent_waiting_user': {
           const loopKey = eventLoopKey(event)
+          if (eventRunId(event) && isTerminalAgentLoop(state.agentLoops.get(loopKey))) break
+          if (shouldIgnoreStaleLiveAgentEvent(state, event)) break
           const loops = new Map(state.agentLoops)
           const turnNumber = eventTurnNumber(event, loops.get(loopKey))
           let updated = ensureLoopTurn(loops.get(loopKey), event.channel_id, event.agent_id, turnNumber, eventRunId(event), eventTimestamp)

@@ -39,7 +39,7 @@ function DialogContent({
     >
       {children}
       {showCloseButton && onClose && (
-        <Button variant="ghost" size="icon-sm" className="absolute top-2 right-2" onClick={onClose}>
+        <Button variant="ghost" size="icon-sm" className="absolute top-2 right-2" onClick={onClose} aria-label="关闭弹窗">
           <X />
         </Button>
       )}

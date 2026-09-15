@@ -227,3 +227,69 @@ describe('ReasonIX run typing status', () => {
     expect(store.getState().getTyping('channel-a')).toBe('')
   })
 })
+
+describe('ReasonIX ask_user lifecycle', () => {
+  function createStore(messages: Message[] = []) {
+    return createMessagesStore({
+      api: { get: vi.fn().mockImplementation(async () => new Response(JSON.stringify(messages))) } as unknown as KyInstance,
+      getCurrentChannelId: () => 'channel-a',
+      getCurrentUserId: () => 'user-a',
+      sendWsCommand: vi.fn(),
+    })
+  }
+
+  function waiting(runId: string) {
+    return { type: 'agent_waiting_user' as const, channel_id: 'channel-a', agent_id: 'agent-a', run_id: runId, turn: 1, summary: '等待回答' }
+  }
+
+  function wire(id: number, runId: string, final = false): Message {
+    return {
+      id, channel_id: 'channel-a', sender_type: 'agent', sender_agent_id: 'agent-a',
+      content: final ? '已完成回答' : '等待回答', msg_type: final ? 'text' : 'thinking',
+      metadata: { run_id: runId, source: final ? 'reasonix_runtime' : 'agent_loop', event: final ? undefined : 'agent_waiting_user', turn: 1 },
+      created_at: new Date(Date.now() - 10000 + id * 100).toISOString(),
+    }
+  }
+
+  it('hydrates a completed answer without clearing a different pending run', async () => {
+    const store = createStore([wire(1, 'run-a'), wire(2, 'run-a', true), wire(3, 'run-b')])
+    await store.getState().fetchMessages('channel-a')
+    expect(store.getState().getAgentLoops('channel-a').find(l => l.runId === 'run-a')).toMatchObject({ status: 'completed', finalContent: '已完成回答' })
+    expect(store.getState().getAgentLoops('channel-a').find(l => l.runId === 'run-b')?.status).toBe('waiting_for_user')
+  })
+
+  it('does not resurrect a completed run from a delayed historical waiting event', async () => {
+    const store = createStore([wire(1, 'run-a'), wire(2, 'run-a', true), wire(3, 'run-a')])
+    await store.getState().fetchMessages('channel-a')
+    expect(store.getState().getAgentLoops('channel-a')[0]?.status).toBe('completed')
+  })
+
+  it('resumes only the answered run when the server reports running', () => {
+    const store = createStore()
+    store.getState().handleEvent(waiting('run-a'))
+    store.getState().handleEvent(waiting('run-b'))
+    store.getState().handleEvent({ type: 'agent_run_status', channel_id: 'channel-a', agent_id: 'agent-a', run_id: 'run-a', status: 'running' })
+    expect(store.getState().getAgentLoops('channel-a').find(l => l.runId === 'run-a')?.status).toBe('running')
+    expect(store.getState().getAgentLoops('channel-a').find(l => l.runId === 'run-b')?.status).toBe('waiting_for_user')
+  })
+
+  it('does not reopen an old run when its ACK arrives after a new user message', () => {
+    const store = createStore()
+    store.getState().handleEvent(waiting('run-a'))
+    store.getState().handleEvent({ type: 'agent_run_status', channel_id: 'channel-a', agent_id: 'agent-a', run_id: 'run-a', status: 'completed' })
+    store.setState({ messages: new Map([['channel-a', [{ role: 'user', content: '新任务', timestamp: Date.now() + 1000 }]]]) })
+    store.getState().handleEvent({ type: 'agent_ack', channel_id: 'channel-a', agent_id: 'agent-a', run_id: 'run-a', turn: 1 })
+    expect(store.getState().getAgentLoops('channel-a').find(l => l.runId === 'run-a')?.status).toBe('completed')
+    store.getState().handleEvent({ type: 'agent_ack', channel_id: 'channel-a', agent_id: 'agent-a', run_id: 'run-b', turn: 1 })
+    expect(store.getState().getAgentLoops('channel-a').find(l => l.runId === 'run-b')?.status).toBe('running')
+  })
+
+  it.each([['completed', 'completed'], ['failed', 'error'], ['canceled', 'stopped'], ['timed_out', 'error']])('keeps %s terminal despite delayed waiting after a new user message', (status, expected) => {
+    const store = createStore()
+    store.getState().handleEvent(waiting('run-a'))
+    store.getState().handleEvent({ type: 'agent_run_status', channel_id: 'channel-a', agent_id: 'agent-a', run_id: 'run-a', status })
+    store.setState({ messages: new Map([['channel-a', [{ role: 'user', content: '新任务', timestamp: Date.now() + 1000 }]]]) })
+    store.getState().handleEvent(waiting('run-a'))
+    expect(store.getState().getAgentLoops('channel-a').find(l => l.runId === 'run-a')?.status).toBe(expected)
+  })
+})

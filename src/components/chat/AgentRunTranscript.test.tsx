@@ -13,6 +13,19 @@ vi.mock('./StorageAttachmentPreview.js', () => ({
 }))
 
 describe('AgentRunTranscript', () => {
+  it('等待回答时不把进程的 completed idle 当作用户状态', () => {
+    const loop: AgentLoopState = {
+      runId: 'waiting-run', agentId: 'assistant', channelId: 'channel-1',
+      status: 'waiting_for_user', currentTurn: 1, startedAt: 1000, completedAt: 2000,
+      turns: [{ turnNumber: 1, toolCalls: [], skillUses: [], status: 'completed', startedAt: 1000, progress: 'completed · idle' }],
+      events: [{ id: 'late-progress', type: 'progress', turnNumber: 1, timestamp: 2000, summary: 'completed · idle' }],
+    }
+    const html = renderToStaticMarkup(<AgentRunTranscript loop={loop} />)
+    expect(html).toContain('等待用户回答')
+    expect(html).toContain('等待用户补充信息')
+    expect(html).not.toContain('completed · idle')
+  })
+
   it('keeps persisted runtime summaries expandable before details are loaded', () => {
     const loop: AgentLoopState = {
       runId: 'runtime-run', historySource: 'runtime', agentId: 'assistant', channelId: 'channel-1',

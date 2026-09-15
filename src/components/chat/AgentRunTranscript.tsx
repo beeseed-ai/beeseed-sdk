@@ -148,7 +148,7 @@ function processStatusSummary(loop: AgentLoopState, events: AgentLoopEventItem[]
   if (loop.status === 'error') return displayError || loop.error || latestEventStatus(events, finalAnswer) || '处理失败'
   if (loop.status === 'stopped') return latestEventStatus(events, finalAnswer) || '用户已停止本次处理'
   if (loop.status === 'interrupted') return displayError || loop.error || latestEventStatus(events, finalAnswer) || '本次处理已中断'
-  if (loop.status === 'waiting_for_user') return latestEventStatus(events, finalAnswer) || '等待用户补充信息'
+  if (loop.status === 'waiting_for_user') return '等待用户补充信息'
   if (loop.status === 'waiting_expired') return latestEventStatus(events, finalAnswer) || '等待用户回答已超时'
   if (loop.status === 'max_turns_reached') return latestEventStatus(events, finalAnswer) || latestTurnStatus(loop, finalAnswer)
   return latestEventStatus(events, finalAnswer) || latestTurnStatus(loop, finalAnswer)
