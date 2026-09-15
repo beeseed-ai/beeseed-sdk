@@ -64,15 +64,24 @@ export interface TasksStoreConfig {
 
 export function createTasksStore(config: TasksStoreConfig) {
   let channelVersion = 0
-  const readRequests = new Map<string, Promise<void>>()
+  const readRequests = new Map<string, { promise: Promise<void>; pending: boolean }>()
   const coalesceRead = (key: string, load: () => Promise<void>) => {
     const activeRequest = readRequests.get(key)
-    if (activeRequest) return activeRequest
-    const request = load().finally(() => {
+    if (activeRequest) {
+      activeRequest.pending = true
+      return activeRequest.promise
+    }
+    const request = { promise: Promise.resolve(), pending: false }
+    readRequests.set(key, request)
+    request.promise = (async () => {
+      do {
+        request.pending = false
+        await load()
+      } while (request.pending)
+    })().finally(() => {
       readRequests.delete(key)
     })
-    readRequests.set(key, request)
-    return request
+    return request.promise
   }
 
   return createStore<TasksState>()((set, get) => {
@@ -85,7 +94,11 @@ export function createTasksStore(config: TasksStoreConfig) {
     }
     const readChannel = (key: string, channelId: string, load: (update: ReturnType<typeof scopedSet>) => Promise<void>) => {
       if (get().channelId !== channelId) return Promise.resolve()
-      return coalesceRead(`${channelVersion}:${key}`, () => load(scopedSet(channelId)))
+      const version = channelVersion
+      return coalesceRead(`${version}:${key}`, () => {
+        if (get().channelId !== channelId || version !== channelVersion) return Promise.resolve()
+        return load(scopedSet(channelId))
+      })
     }
     return ({
     channelId: null,
