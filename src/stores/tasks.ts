@@ -141,7 +141,7 @@ export function createTasksStore(config: TasksStoreConfig) {
       }
       try {
         const task = await config.api.post(`channels/${channelId}/tasks`, { json: data }).json<Task>()
-        set({ tasks: [...get().tasks, task] })
+        set((state) => ({ tasks: state.tasks.some((item) => item.id === task.id) ? state.tasks : [...state.tasks, task] }))
         void get().fetchMetrics(channelId)
         return task
       } catch { return null }
@@ -231,7 +231,7 @@ export function createTasksStore(config: TasksStoreConfig) {
       try {
         const result = await config.api.post(`channels/${channelId}/scheduled-tasks`, { json: data }).json<{ task?: Task; template?: Task; schedule: TaskSchedule }>()
         const schedule = { ...result.schedule, template_title: result.template?.title || result.task?.title || result.schedule.template_title }
-        set({ scheduledTasks: [...get().scheduledTasks, schedule] })
+        set((state) => ({ scheduledTasks: state.scheduledTasks.some((item) => item.id === schedule.id) ? state.scheduledTasks : [...state.scheduledTasks, schedule] }))
         void get().fetchMetrics(channelId)
         return { ...result, schedule }
       } catch { return null }
