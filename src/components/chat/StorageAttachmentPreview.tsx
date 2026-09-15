@@ -304,7 +304,7 @@ function PresentationPreview({
     <div className="space-y-3">
       <div className="flex flex-wrap items-center gap-2 rounded border border-[#e5e5e5] bg-white px-3 py-2 text-xs text-[#5f6b7a]">
         <Presentation className="h-4 w-4 shrink-0 text-[#254fad]" />
-        <span className="min-w-0 flex-1 truncate">正在使用 Office 在线预览演示文稿。</span>
+        <span className="min-w-0 basis-[calc(100%-1.5rem)] sm:flex-1 sm:basis-auto">正在使用 Office 在线预览演示文稿。</span>
         <button
           type="button"
           onClick={onReload}
@@ -324,7 +324,7 @@ function PresentationPreview({
       </div>
       {showGuidance && (
         <div role="status" className="flex flex-wrap items-center gap-2 rounded-md border border-[#d8dde6] bg-white px-3 py-2 text-xs text-[#41454d]">
-          <span className="min-w-0 flex-1">如果预览仍为空白，可能是 Office 在线预览暂时未完成。可重新加载预览或下载原文件。</span>
+          <span className="min-w-0 basis-full sm:flex-1 sm:basis-auto">如果预览仍为空白，可能是 Office 在线预览暂时未完成。可重新加载预览或下载原文件。</span>
           <button
             type="button"
             onClick={onReload}

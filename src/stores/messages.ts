@@ -2626,6 +2626,20 @@ export function createMessagesStore(config: MessagesStoreConfig) {
             clearTypingForChannel(typing, event.channel_id, event.agent_id)
             set({ typingStatus: typing })
 
+            if (!event.agent_id) {
+              const messages = new Map(state.messages)
+              const channelMessages = messages.get(event.channel_id) || []
+              if (channelMessages.at(-1)?.systemSource !== 'request_error') {
+                messages.set(event.channel_id, [...channelMessages, {
+                  role: 'system',
+                  systemSource: 'request_error',
+                  content: '本次请求未能完成，请稍后重试。',
+                  timestamp: eventTimestamp,
+                }])
+                set({ messages })
+              }
+            }
+
             if (event.agent_id) {
               const loopKey = agentLoopStoreKey(event.channel_id, event.agent_id, eventRunId(event))
               const loops = new Map(state.agentLoops)
