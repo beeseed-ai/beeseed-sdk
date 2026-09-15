@@ -136,8 +136,14 @@ function emitStorageMutation(channelId: string, toolName: string) {
 }
 
 function maybeEmitStorageMutationFromMessage(channelId: string, message: Message) {
-  if (message.msg_type !== 'tool_result') return
   const meta = (message.metadata ?? {}) as Record<string, unknown>
+  if (message.sender_type === 'agent' && parseMessageArtifacts(meta)?.some((artifact) => (
+    artifact.objectId && !artifact.storageRef.startsWith('storage://workspace/')
+  ))) {
+    emitStorageMutation(channelId, 'artifact_delivery')
+    return
+  }
+  if (message.msg_type !== 'tool_result') return
   if (isStorageMutationTool(meta.name, meta.success)) {
     emitStorageMutation(channelId, meta.name as string)
   }
