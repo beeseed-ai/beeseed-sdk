@@ -2,6 +2,7 @@ import { useMemo, useState, type ReactNode } from 'react'
 import { AlertCircle, Check, ChevronRight, Circle, Clock3, Sparkles, Wrench } from 'lucide-react'
 import type { AgentLoopState, AgentLoopToolCall, AgentLoopSkillUse, ChatArtifact, ChatMessage, AgentLoopEventItem } from '../../core/types.js'
 import { cn } from '../../lib/cn.js'
+import { displayFileLinks } from '../../lib/signed-file-links.js'
 import { storageRefFromKey, storageRefsFromText } from '../../lib/storage-ref.js'
 import { MarkdownRenderer } from './MarkdownRenderer.js'
 import { StoragePreviewDialog, useExistingStorageRefs } from './StorageAttachmentPreview.js'
@@ -37,15 +38,15 @@ function sameText(a?: string, b?: string): boolean {
 
 function truncate(value: unknown, maxLen: number): string {
   if (typeof value === 'string') {
-    const compact = value.replace(/\n/g, '↵')
+    const compact = displayFileLinks(value).replace(/\n/g, '↵')
     return compact.length > maxLen ? `${compact.slice(0, maxLen)}...` : compact
   }
-  const text = JSON.stringify(value) ?? ''
+  const text = displayFileLinks(JSON.stringify(value) ?? '')
   return text.length > maxLen ? `${text.slice(0, maxLen)}...` : text
 }
 
 function outputSummary(value?: string): string {
-  const text = oneLine(value)
+  const text = oneLine(displayFileLinks(value ?? ''))
   if (!text) return ''
   return text.length > 120 ? `${text.slice(0, 120)}...` : text
 }
@@ -248,6 +249,7 @@ function SkillLine({ skill }: { skill: AgentLoopSkillUse }) {
 
 function ToolLine({ tool }: { tool: AgentLoopToolCall }) {
   const [detailOpen, setDetailOpen] = useState(false)
+  const output = displayFileLinks(tool.output ?? '')
   const hasDetail = !!tool.args || !!tool.output
   const duration = elapsedSeconds(tool.startedAt, tool.completedAt)
   const summary = outputSummary(tool.output)
@@ -287,7 +289,7 @@ function ToolLine({ tool }: { tool: AgentLoopToolCall }) {
           )}
           {tool.output && (
             <pre className="max-h-[220px] overflow-y-auto whitespace-pre-wrap break-all font-mono text-foreground">
-              {tool.output.length > 2000 ? `${tool.output.slice(0, 2000)}\n...(truncated)` : tool.output}
+              {output.length > 2000 ? `${output.slice(0, 2000)}\n...(truncated)` : output}
             </pre>
           )}
         </div>
@@ -334,6 +336,7 @@ function ToolCallEventLine({ tool }: { tool: AgentLoopToolCall }) {
 
 function ToolResultEventLine({ tool }: { tool: AgentLoopToolCall }) {
   const [detailOpen, setDetailOpen] = useState(false)
+  const output = displayFileLinks(tool.output ?? '')
   const hasOutput = !!tool.output
   const duration = elapsedSeconds(tool.startedAt, tool.completedAt)
   const summary = outputSummary(tool.output)
@@ -359,7 +362,7 @@ function ToolResultEventLine({ tool }: { tool: AgentLoopToolCall }) {
       </button>
       {detailOpen && tool.output && (
         <pre className="ml-5 mt-1 max-h-[220px] overflow-y-auto whitespace-pre-wrap break-all border-l-2 border-[#dddddd] pl-2 font-mono text-[11px] leading-4 text-foreground">
-          {tool.output.length > 2000 ? `${tool.output.slice(0, 2000)}\n...(truncated)` : tool.output}
+          {output.length > 2000 ? `${output.slice(0, 2000)}\n...(truncated)` : output}
         </pre>
       )}
     </TranscriptLine>
@@ -383,14 +386,14 @@ function AssistantText({
 }) {
   const [storagePreviewTarget, setStoragePreviewTarget] = useState<{ refText: string; objectId?: string } | null>(null)
   const storageRefs = useMemo(() => {
-    const refs = storageRefsFromText(content)
+    const refs = storageRefsFromText(displayFileLinks(content, channelId))
     for (const artifact of artifacts ?? []) {
       if (artifact.storageRef.startsWith('storage://') && !refs.includes(artifact.storageRef)) {
         refs.push(artifact.storageRef)
       }
     }
     return refs
-  }, [artifacts, content])
+  }, [artifacts, content, channelId])
   const { isExistingRef } = useExistingStorageRefs(channelId, storageRefs)
   const editableArtifacts = useMemo(
     () => (artifacts ?? []).filter((artifact) => artifact.editable),
@@ -405,6 +408,7 @@ function AssistantText({
       >
         <div className="text-sm leading-6 text-[#181d26]">
           <MarkdownRenderer
+            channelId={channelId}
             content={content}
             className="prose prose-sm max-w-none break-words [&_p]:my-1 [&_p:first-child]:mt-0 [&_p:last-child]:mb-0 [&_ul]:my-1 [&_ol]:my-1 [&_li]:my-0 [&_h1]:text-base [&_h2]:text-base [&_h3]:text-sm [&_h1]:font-semibold [&_h2]:font-semibold [&_h3]:font-semibold [&_code.inline-code]:rounded [&_code.inline-code]:bg-[#e8f5f8] [&_code.inline-code]:px-1 [&_code.inline-code]:py-0.5 [&_code.inline-code]:text-[#0f5267]"
             onStorageRefClick={(key) => setStoragePreviewTarget({ refText: storageRefFromKey(key) })}
@@ -475,7 +479,7 @@ function TerminalLine({ loop, displayError, terminalAction }: { loop: AgentLoopS
       <TranscriptLine icon={<Circle className={cn('size-3.5', dot)} />}>
         <div className="flex min-h-6 items-start gap-1.5 text-xs">
           <span className={cn('shrink-0 font-medium', tone)}>{label}</span>
-          {displayError && <span className="min-w-0 leading-5 text-muted-foreground">{displayError}</span>}
+          {displayError && <span className="min-w-0 leading-5 text-muted-foreground">{displayFileLinks(displayError)}</span>}
         </div>
       </TranscriptLine>
       {terminalAction}
@@ -490,7 +494,7 @@ function renderEventItem(item: AgentLoopEventItem, loop: AgentLoopState, finalAn
   if (item.type === 'progress' && item.summary && !sameText(item.summary, finalAnswer)) {
     return (
       <TranscriptLine key={item.id} icon={<Clock3 className="size-3.5 text-[#999]" />}>
-        <div className="text-xs leading-5 text-[#555]">{item.summary}</div>
+        <div className="text-xs leading-5 text-[#555]">{displayFileLinks(item.summary)}</div>
       </TranscriptLine>
     )
   }
@@ -537,7 +541,7 @@ export function AgentRunTranscript({
   )))
   const shouldCollapseProcess = hasProcess
   const processLabel = processStatusLabel(loop, observedEndAt(loop, finalMessage, orderedEvents), terminalError)
-  const processSummary = processStatusSummary(loop, orderedEvents, finalAnswer, terminalError)
+  const processSummary = displayFileLinks(processStatusSummary(loop, orderedEvents, finalAnswer, terminalError))
 
   const renderProcessContent = () => orderedEvents ? orderedEvents.map((item) => renderEventItem(item, loop, finalAnswer)) : loop.turns.map((turn, index) => {
     const visibleContent = showContent === 'none'
@@ -563,7 +567,7 @@ export function AgentRunTranscript({
 
         {turn.thinking && (
           <TranscriptLine icon={<Clock3 className="size-3.5 text-[#777169]" />}>
-            <div className="text-xs leading-5 text-[#555]">{turn.thinking}</div>
+            <div className="text-xs leading-5 text-[#555]">{displayFileLinks(turn.thinking)}</div>
           </TranscriptLine>
         )}
 
@@ -576,7 +580,7 @@ export function AgentRunTranscript({
 
         {shouldShowProgress && (
           <TranscriptLine icon={<Clock3 className="size-3.5 text-[#999]" />}>
-            <div className="text-xs leading-5 text-[#555]">{turn.progress}</div>
+            <div className="text-xs leading-5 text-[#555]">{displayFileLinks(turn.progress!)}</div>
           </TranscriptLine>
         )}
 

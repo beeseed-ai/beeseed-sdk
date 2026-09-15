@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { cn } from '../../lib/cn.js'
+import { displayFileLinks } from '../../lib/signed-file-links.js'
 
 interface Props {
   content: string
@@ -9,6 +10,7 @@ interface Props {
 
 export function ThinkingBlock({ content, isStreaming, className }: Props) {
   const [open, setOpen] = useState(false)
+  content = displayFileLinks(content)
 
   if (!content && !isStreaming) return null
 

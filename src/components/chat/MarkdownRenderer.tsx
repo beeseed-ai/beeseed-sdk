@@ -2,6 +2,7 @@ import { memo, useContext, useMemo, type ReactNode } from 'react'
 import Markdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import remarkBreaks from 'remark-breaks'
+import { signedFileLinksRemark } from '../../lib/signed-file-links.js'
 import { isLikelyFilePath } from '../../lib/file-path-utils.js'
 import { cn } from '../../lib/cn.js'
 import { StorageRefChip, isLikelyStoragePathRef, storageInlineRefMatches, storageRefFromKey } from '../../lib/storage-ref.js'
@@ -105,6 +106,7 @@ function appendMentionParts(parts: ReactNode[], text: string, onMentionClick: (n
 
 interface MarkdownRendererProps {
   content: string
+  channelId?: string
   className?: string
   onMentionClick?: (name: string) => void
   onFileClick?: (path: string) => void
@@ -116,6 +118,7 @@ interface MarkdownRendererProps {
 
 export const MarkdownRenderer = memo(function MarkdownRenderer({
   content,
+  channelId,
   className,
   onMentionClick,
   onFileClick,
@@ -128,6 +131,7 @@ export const MarkdownRenderer = memo(function MarkdownRenderer({
   const contextualImageContext = useContext(markdownImageContext)
   const imageRenderer = renderImage ?? contextualImageRenderer
   const resolvedImageContext = imageContext ?? contextualImageContext
+  const plugins = useMemo(() => [remarkGfm, remarkBreaks, signedFileLinksRemark(channelId)], [channelId])
   const processed = useMemo(() => {
     return content
       .replace(/\*\*([''""〈-】〔-〟《》【】（）「」『』、。])/g, '**‍$1')
@@ -137,7 +141,7 @@ export const MarkdownRenderer = memo(function MarkdownRenderer({
   return (
     <div className={cn('sdk-markdown', className)}>
       <Markdown
-        remarkPlugins={[remarkGfm, remarkBreaks]}
+        remarkPlugins={plugins}
         components={{
           p(props: { children?: ReactNode }) {
             const withMentions = processInlineTokens(props.children, onMentionClick, onStorageRefClick, storageRefAvailable)

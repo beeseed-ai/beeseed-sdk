@@ -9,6 +9,7 @@ import { AskUserCard } from './AskUserCard.js'
 import { StorageAttachmentPreview, StoragePreviewDialog, useExistingStorageRefs } from './StorageAttachmentPreview.js'
 import { SkillIcon } from '../skills/SkillIcon.js'
 import { formatChatTimestamp } from '../../lib/format.js'
+import { displayFileLinks } from '../../lib/signed-file-links.js'
 
 interface Props {
   message: ChatMessage
@@ -78,22 +79,23 @@ export function MessageBubble({
   const [previewImage, setPreviewImage] = useState<string | null>(null)
   const [storagePreviewTarget, setStoragePreviewTarget] = useState<StoragePreviewTarget | null>(null)
   const [openSkillId, setOpenSkillId] = useState<string | null>(null)
+  const publicContent = message.isAgent ? displayFileLinks(message.content, channelId) : message.content
   const storageRefs = useMemo(() => storageRefsFromText([
-    message.content,
+    publicContent,
     ...(message.askUserData?.questions ?? []).flatMap((question) => [question.title, question.description ?? '']),
-  ].join('\n')), [message.content, message.askUserData?.questions])
+  ].join('\n')), [publicContent, message.askUserData?.questions])
   const { existingRefs, isExistingRef } = useExistingStorageRefs(channelId, storageRefs)
   const existingRefSet = useMemo(() => new Set(existingRefs), [existingRefs])
 
   const handleCopy = useCallback(() => {
-    void navigator.clipboard.writeText(message.content)
+    void navigator.clipboard.writeText(publicContent)
     setCopied(true)
     setTimeout(() => setCopied(false), 2000)
-  }, [message.content])
+  }, [publicContent])
 
   const handleQuote = useCallback(() => {
-    onQuote?.(message)
-  }, [message, onQuote])
+    onQuote?.(publicContent === message.content ? message : { ...message, content: publicContent })
+  }, [message, publicContent, onQuote])
 
   const handleStorageRefClick = useCallback((keyOrRef: string) => {
     setStoragePreviewTarget({ refText: keyOrRef.startsWith('storage://') ? keyOrRef : storageRefFromKey(keyOrRef) })
@@ -241,7 +243,7 @@ export function MessageBubble({
                 onClick={() => { if (message.quotedMessage?.msgId && onScrollToMessage) onScrollToMessage(message.quotedMessage.msgId) }}
               >
                 <span className="block text-[11px] font-medium text-[#999] mb-0.5">{message.quotedMessage.senderName || '引用'}</span>
-                <div className="text-[#aaa] text-xs leading-relaxed line-clamp-3">{message.quotedMessage.content}</div>
+                <div className="text-[#aaa] text-xs leading-relaxed line-clamp-3">{displayFileLinks(message.quotedMessage.content)}</div>
               </div>
             )}
 
@@ -250,7 +252,7 @@ export function MessageBubble({
               <details className="mb-2 text-xs text-[#999]">
                 <summary className="cursor-pointer select-none">思考过程</summary>
                 <div className="mt-1 max-h-40 overflow-y-auto whitespace-pre-wrap bg-[#f8f8f8] rounded p-2 text-[#666]">
-                  {message.thinkingContent}
+                  {displayFileLinks(message.thinkingContent)}
                 </div>
               </details>
             )}
@@ -267,7 +269,7 @@ export function MessageBubble({
                   <details className="mt-2 text-xs text-[#999]" open>
                     <summary className="cursor-pointer select-none">思考过程</summary>
                     <div className="mt-1 max-h-40 overflow-y-auto whitespace-pre-wrap bg-[#f8f8f8] rounded p-2 text-[#666]">
-                      {message.thinkingContent}
+                      {displayFileLinks(message.thinkingContent)}
                     </div>
                   </details>
                 )}
@@ -276,6 +278,7 @@ export function MessageBubble({
               <>
                 {visibleContent && (
                   <MarkdownRenderer
+                    channelId={channelId}
                     content={visibleContent}
                     className="prose prose-sm max-w-none break-words text-inherit [&_p]:my-1 [&_p:first-child]:mt-0 [&_p:last-child]:mb-0"
                     onMentionClick={onMentionClick}
@@ -296,6 +299,7 @@ export function MessageBubble({
               <>
                 {visibleContent && (
                   <MarkdownRenderer
+                    channelId={channelId}
                     content={visibleContent}
                     className="prose prose-base max-w-none break-words [&_pre]:overflow-x-auto [&_pre]:max-w-full [&_pre]:rounded-lg [&_pre]:bg-[#f5f5f5] [&_pre]:p-3 [&_pre]:text-xs [&_code.inline-code]:rounded [&_code.inline-code]:bg-[#e8f5f8] [&_code.inline-code]:px-1.5 [&_code.inline-code]:py-0.5 [&_code.inline-code]:text-xs [&_code.inline-code]:text-[#0f5267] [&_a]:text-black [&_a]:underline [&_p]:my-2 [&_p:last-child]:mb-0 [&_p:first-child]:mt-0 [&_ul]:my-1 [&_li]:my-0 [&_ol]:list-decimal [&_ol]:pl-5 [&_ul]:list-disc [&_ul]:pl-5 [&_hr]:my-4 [&_hr]:border-t [&_hr]:border-[#e5e5e5] [&_table]:border-collapse [&_table]:w-full [&_th]:border [&_th]:border-[#e5e5e5] [&_th]:px-3 [&_th]:py-1.5 [&_th]:bg-[#f5f5f5] [&_th]:text-left [&_td]:border [&_td]:border-[#e5e5e5] [&_td]:px-3 [&_td]:py-1.5"
                     onMentionClick={onMentionClick}

@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { ChevronDown, ChevronRight } from 'lucide-react'
 import type { ChatMessage } from '../../core/types.js'
 import { cn } from '../../lib/cn.js'
+import { displayFileLinks } from '../../lib/signed-file-links.js'
 import { Avatar, AvatarFallback, AvatarImage } from '../ui/avatar.js'
 
 interface Props {
@@ -22,10 +23,10 @@ function formatToolArgs(args?: Record<string, unknown>): Record<string, unknown>
 
 function truncateValue(v: unknown, maxLen = 120): string {
   if (typeof v === 'string') {
-    const oneLine = v.replace(/\n/g, '↵').replace(/\r/g, '')
+    const oneLine = displayFileLinks(v).replace(/\n/g, '↵').replace(/\r/g, '')
     return oneLine.length > maxLen ? oneLine.slice(0, maxLen) + '…' : oneLine
   }
-  const s = JSON.stringify(v)
+  const s = displayFileLinks(JSON.stringify(v))
   return s.length > maxLen ? s.slice(0, maxLen) + '…' : s
 }
 
@@ -41,9 +42,9 @@ function ToolLine({ message }: { message: ChatMessage }) {
     ? 'bg-green-500'
     : 'bg-red-500'
 
-  const hint = isCall ? message.content : ''
+  const hint = isCall ? displayFileLinks(message.content) : ''
   const args = isCall ? formatToolArgs(message.toolArgs) : null
-  const resultOutput = !isCall && message.content ? message.content : null
+  const resultOutput = !isCall && message.content ? displayFileLinks(message.content) : null
   const hasDetail = !!args || !!resultOutput
 
   return (
