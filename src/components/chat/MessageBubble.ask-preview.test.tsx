@@ -33,7 +33,7 @@ describe('确认题卡文件预览', () => {
       role: 'assistant', content: '', timestamp: Date.now(), isAgent: true,
       askUserData: { status: 'pending', askId: 'ask-a', targetUserId: 'user-a', questions: [{
         id: 'confirm', type: 'single_select', title: '确认 `storage://draft/deck.pptx`',
-        description: '预览 `storage://draft/document.pdf` 和 `storage://draft/missing.pdf`',
+        description: '预览 storage://draft/document.pdf（文件保持原样，不会修改）和 `storage://draft/missing.pdf`',
         options: [{ id: 'yes', label: '确认' }],
       }] },
     } as ChatMessage
