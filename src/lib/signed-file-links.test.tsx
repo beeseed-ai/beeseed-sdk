@@ -48,4 +48,16 @@ describe('signed file link presentation', () => {
     expect(visible).not.toContain('qa-signature')
     expect(visible).toContain('report.pdf')
   })
+
+  it('makes delivered file references clickable in tight Markdown lists', () => {
+    for (const ref of ['storage://docs/report.pdf', raw]) {
+      const content = '- 下载原文件：\n  ' + ref
+      const html = renderToStaticMarkup(<MarkdownRenderer content={content} channelId={channel} onStorageRefClick={() => {}} storageRefAvailable={() => true} />)
+      expect(html).toContain('<button')
+      expect(html).toContain('report.pdf')
+      expect(html).not.toContain('qa-signature')
+      const missing = renderToStaticMarkup(<MarkdownRenderer content={content} channelId={channel} onStorageRefClick={() => {}} storageRefAvailable={() => false} />)
+      expect(missing).not.toContain('<button')
+    }
+  })
 })

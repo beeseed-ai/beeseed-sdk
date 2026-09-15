@@ -228,6 +228,9 @@ export const MarkdownRenderer = memo(function MarkdownRenderer({
           ol(props: { children?: ReactNode }) {
             return <ol className="my-1 ml-4 list-decimal space-y-0.5">{props.children}</ol>
           },
+          li(props: { children?: ReactNode }) {
+            return <li>{processInlineTokens(props.children, onMentionClick, onStorageRefClick, storageRefAvailable)}</li>
+          },
           blockquote(props: { children?: ReactNode }) {
             return (
               <blockquote className="my-2 border-l-2 border-muted-foreground/30 pl-3 text-muted-foreground italic">
