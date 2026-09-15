@@ -13,6 +13,8 @@ interface Props {
   data: AskUserData
   currentUserId?: string
   onSubmit: (answers: Record<string, unknown>) => void
+  onStorageRefClick?: (key: string) => void
+  storageRefAvailable?: (refText: string) => boolean
   className?: string
 }
 
@@ -66,7 +68,7 @@ export const questionPromptStyle = {
   whiteSpace: 'normal' as const,
 }
 
-export function AskUserCard({ data, currentUserId, onSubmit, className }: Props) {
+export function AskUserCard({ data, currentUserId, onSubmit, onStorageRefClick, storageRefAvailable, className }: Props) {
   const questions = useMemo(
     () => (Array.isArray(data.questions) ? data.questions.map((question) => normalizeQuestionForDisplay(question, data)) : []),
     [data],
@@ -167,6 +169,8 @@ export function AskUserCard({ data, currentUserId, onSubmit, className }: Props)
             >
               <MarkdownRenderer
                 content={normalizeAskUserMarkdown(question.title)}
+                onStorageRefClick={onStorageRefClick}
+                storageRefAvailable={storageRefAvailable}
                 className="[&_p:first-child]:mt-0 [&_p:last-child]:mb-0"
               />
             </div>
@@ -174,6 +178,8 @@ export function AskUserCard({ data, currentUserId, onSubmit, className }: Props)
               <div data-ask-user-question-prompt className="mt-1" style={questionPromptStyle}>
                 <MarkdownRenderer
                   content={normalizeAskUserMarkdown(questionDescription)}
+                  onStorageRefClick={onStorageRefClick}
+                  storageRefAvailable={storageRefAvailable}
                   className="[&_p:first-child]:mt-0 [&_p:last-child]:mb-0"
                 />
               </div>

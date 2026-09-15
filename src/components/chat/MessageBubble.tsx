@@ -78,7 +78,10 @@ export function MessageBubble({
   const [previewImage, setPreviewImage] = useState<string | null>(null)
   const [storagePreviewTarget, setStoragePreviewTarget] = useState<StoragePreviewTarget | null>(null)
   const [openSkillId, setOpenSkillId] = useState<string | null>(null)
-  const storageRefs = useMemo(() => storageRefsFromText(message.content), [message.content])
+  const storageRefs = useMemo(() => storageRefsFromText([
+    message.content,
+    ...(message.askUserData?.questions ?? []).flatMap((question) => [question.title, question.description ?? '']),
+  ].join('\n')), [message.content, message.askUserData?.questions])
   const { existingRefs, isExistingRef } = useExistingStorageRefs(channelId, storageRefs)
   const existingRefSet = useMemo(() => new Set(existingRefs), [existingRefs])
 
@@ -123,12 +126,15 @@ export function MessageBubble({
           <AskUserCard
             data={message.askUserData}
             currentUserId={currentUserId}
+            onStorageRefClick={handleStorageRefClick}
+            storageRefAvailable={isExistingRef}
             onSubmit={(answers) => {
               if (message.askUserData?.askId && onSubmitAnswer) onSubmitAnswer(message.askUserData.askId, answers)
             }}
             className="mx-0 my-0"
           />
         </div>
+        {storagePreviewTarget && <StoragePreviewDialog channelId={channelId} refText={storagePreviewTarget.refText} onClose={() => setStoragePreviewTarget(null)} />}
       </div>
     )
   }
