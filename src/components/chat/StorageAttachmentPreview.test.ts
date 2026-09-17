@@ -27,45 +27,24 @@ describe('presentation preview signing', () => {
 })
 
 describe('openStorageDownload', () => {
-  it('opens a tab before waiting for the presigned URL', async () => {
-    let resolveURL!: (url: string) => void
-    const requestURL = vi.fn(() => new Promise<string>((resolve) => { resolveURL = resolve }))
-    const target = {
-      opener: {} as Window | null,
-      location: { replace: vi.fn() },
-      close: vi.fn(),
-    }
-    const openWindow = vi.fn(() => target as unknown as Window)
+  it('downloads through a local blob instead of navigating to the signed URL', async () => {
+    const requestURL = vi.fn().mockResolvedValue('https://storage.example/file')
+    const fetchFile = vi.fn().mockResolvedValue(new Response('pptx-bytes'))
+    const saveFile = vi.fn()
 
-    const pending = openStorageDownload(requestURL, openWindow as typeof window.open)
+    await openStorageDownload(requestURL, '中医科普.pptx', fetchFile, saveFile)
 
-    expect(openWindow).toHaveBeenCalledWith('about:blank', '_blank')
-    expect(requestURL).toHaveBeenCalledOnce()
-    expect(target.opener).toBeNull()
-    expect(target.location.replace).not.toHaveBeenCalled()
-
-    resolveURL('https://storage.example/file')
-    await pending
-
-    expect(target.location.replace).toHaveBeenCalledWith('https://storage.example/file')
-    expect(target.close).not.toHaveBeenCalled()
+    expect(fetchFile).toHaveBeenCalledWith('https://storage.example/file')
+    expect(saveFile).toHaveBeenCalledWith(expect.any(Blob), '中医科普.pptx')
   })
 
-  it('closes the pre-opened tab when URL creation fails', async () => {
-    const target = {
-      opener: {} as Window | null,
-      location: { replace: vi.fn() },
-      close: vi.fn(),
-    }
-    const openWindow = vi.fn(() => target as unknown as Window)
-
+  it('reports a failed file fetch without navigating away', async () => {
     await expect(openStorageDownload(
-      () => Promise.reject(new Error('presign failed')),
-      openWindow as typeof window.open,
-    )).rejects.toThrow('presign failed')
-
-    expect(target.close).toHaveBeenCalledOnce()
-    expect(target.location.replace).not.toHaveBeenCalled()
+      () => Promise.resolve('https://storage.example/file'),
+      '中医科普.pptx',
+      vi.fn().mockResolvedValue(new Response('', { status: 403 })),
+      vi.fn(),
+    )).rejects.toThrow('文件下载失败：HTTP 403')
   })
 })
 

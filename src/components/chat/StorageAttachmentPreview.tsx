@@ -373,25 +373,31 @@ export function storageFileLabelForRef(refText: string) {
   return storageFileLabel(storageFileKindForRef(refText), extOf(refText))
 }
 
+function saveDownloadedBlob(blob: Blob, fileName: string) {
+  const objectURL = URL.createObjectURL(blob)
+  const link = document.createElement('a')
+  link.href = objectURL
+  link.download = fileName
+  link.rel = 'noopener'
+  link.style.display = 'none'
+  document.body.appendChild(link)
+  link.click()
+  link.remove()
+  window.setTimeout(() => URL.revokeObjectURL(objectURL), 1_000)
+}
+
 export async function openStorageDownload(
   requestURL: () => Promise<string>,
-  openWindow: typeof window.open = window.open.bind(window),
+  fileName: string,
+  fetchFile: typeof window.fetch = window.fetch.bind(window),
+  saveFile: (blob: Blob, fileName: string) => void = saveDownloadedBlob,
 ) {
-  // Open the tab while the browser still considers this call part of the
-  // user's click. Opening it after the presign request can be blocked because
-  // the original user activation has already expired.
-  const target = openWindow('about:blank', '_blank')
-  if (!target) throw new Error('浏览器阻止了下载窗口')
-  target.opener = null
+  const url = await requestURL()
+  if (!url) throw new Error('下载链接为空')
 
-  try {
-    const url = await requestURL()
-    if (!url) throw new Error('下载链接为空')
-    target.location.replace(url)
-  } catch (err) {
-    target.close()
-    throw err
-  }
+  const response = await fetchFile(url)
+  if (!response.ok) throw new Error(`文件下载失败：HTTP ${response.status}`)
+  saveFile(await response.blob(), fileName)
 }
 
 export function StoragePreviewDialog({ channelId, refText, objectId, onClose }: { channelId: string; refText: string; objectId?: string; onClose: () => void }) {
@@ -466,7 +472,7 @@ export function StoragePreviewDialog({ channelId, refText, objectId, onClose }: 
           json: storageAttachmentDownloadPayload(key, objectId),
         }).json<{ url: string }>()
         return data.url
-      })
+      }, name)
     } catch (err) {
       setError(err instanceof Error ? `下载链接创建失败：${err.message}` : '下载链接创建失败')
     } finally {
