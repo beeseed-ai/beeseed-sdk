@@ -5,6 +5,8 @@ import { cn } from '../../lib/cn.js'
 import { displayFileLinks } from '../../lib/signed-file-links.js'
 import { storageRefFromKey, storageRefsFromText } from '../../lib/storage-ref.js'
 import { MarkdownRenderer } from './MarkdownRenderer.js'
+import { RunningPulseIcon } from './RunningPulseIcon.js'
+import { RunStatusRow } from './RunStatusRow.js'
 import { StoragePreviewDialog, useExistingStorageRefs } from './StorageAttachmentPreview.js'
 import { SkillIcon } from '../skills/SkillIcon.js'
 import { EditableArtifactActions } from './MessageBubble.js'
@@ -145,13 +147,13 @@ function processStatusLabel(loop: AgentLoopState, completedAt: number | undefine
 }
 
 function processStatusSummary(loop: AgentLoopState, events: AgentLoopEventItem[] | undefined, finalAnswer: string, displayError?: string): string {
-  if (loop.status === 'completed') return latestEventStatus(events, finalAnswer) || '已生成最终回复'
-  if (loop.status === 'error') return displayError || loop.error || latestEventStatus(events, finalAnswer) || '处理失败'
-  if (loop.status === 'stopped') return latestEventStatus(events, finalAnswer) || '用户已停止本次处理'
-  if (loop.status === 'interrupted') return displayError || loop.error || latestEventStatus(events, finalAnswer) || '本次处理已中断'
+  if (loop.status === 'completed') return '本次处理已完成'
+  if (loop.status === 'error') return displayError || loop.error || '处理失败'
+  if (loop.status === 'stopped') return '用户已停止本次处理'
+  if (loop.status === 'interrupted') return displayError || loop.error || '本次处理已中断'
   if (loop.status === 'waiting_for_user') return '等待用户补充信息'
-  if (loop.status === 'waiting_expired') return latestEventStatus(events, finalAnswer) || '等待用户回答已超时'
-  if (loop.status === 'max_turns_reached') return latestEventStatus(events, finalAnswer) || latestTurnStatus(loop, finalAnswer)
+  if (loop.status === 'waiting_expired') return '等待用户回答已超时'
+  if (loop.status === 'max_turns_reached') return '已达到最大处理轮数'
   return latestEventStatus(events, finalAnswer) || latestTurnStatus(loop, finalAnswer)
 }
 
@@ -164,14 +166,7 @@ function processStatusTone(loop: AgentLoopState): string {
 }
 
 function ProcessStatusIcon({ loop }: { loop: AgentLoopState }) {
-  if (loop.status === 'running') {
-    return (
-      <span className="relative flex size-3.5 shrink-0 items-center justify-center">
-        <span className="absolute inline-flex size-3 rounded-full bg-[#181d26]/15 animate-ping" />
-        <span className="relative inline-flex size-2 rounded-full bg-[#181d26]" />
-      </span>
-    )
-  }
+  if (loop.status === 'running') return <RunningPulseIcon />
   if (loop.status === 'completed') return <Check className="size-3.5 shrink-0 text-[#006400]" />
   if (loop.status === 'error') return <AlertCircle className="size-3.5 shrink-0 text-red-700" />
   if (loop.status === 'waiting_for_user') return <Clock3 className="size-3.5 shrink-0 text-amber-700" />
@@ -597,30 +592,20 @@ export function AgentRunTranscript({
     <div className={cn('space-y-0.5', className)}>
       {shouldCollapseProcess ? (
         <>
-          <button
-            type="button"
-            aria-expanded={processOpen}
+          <RunStatusRow
+            icon={<ProcessStatusIcon loop={loop} />}
+            label={processLabel}
+            labelClassName={processStatusTone(loop)}
+            summary={processSummary}
+            summaryLive={loop.status === 'running'}
+            trailing={processLoading ? <span className="shrink-0 text-[#777169]">加载完整记录中...</span> : null}
             title={processSummary ? `${processLabel} · ${processSummary}` : processLabel}
-            onClick={() => setProcessOpen((open) => {
+            open={processOpen}
+            onToggle={() => setProcessOpen((open) => {
               if (!open) onProcessOpen?.()
               return !open
             })}
-            className="mb-1 flex min-h-8 w-full min-w-0 items-center gap-2 rounded-md border border-[#dddddd] bg-white px-2.5 py-1.5 text-left text-xs transition-colors hover:bg-[#f8fafc]"
-          >
-            <ChevronRight className={cn('size-3 shrink-0 text-[#777169] transition-transform', processOpen && 'rotate-90')} />
-            <ProcessStatusIcon loop={loop} />
-            <span className={cn('shrink-0 font-medium', processStatusTone(loop))}>{processLabel}</span>
-            {processSummary && (
-              <span
-                className="min-w-0 flex-1 truncate text-[#555]"
-                aria-live={loop.status === 'running' ? 'polite' : undefined}
-                aria-atomic={loop.status === 'running' ? 'true' : undefined}
-              >
-                {processSummary}
-              </span>
-            )}
-            {processLoading && <span className="shrink-0 text-[#777169]">加载完整记录中...</span>}
-          </button>
+          />
           {processOpen && <div className="ml-5 border-l border-[#dddddd] pl-2 pt-1">{renderProcessContent()}</div>}
         </>
       ) : renderProcessContent()}

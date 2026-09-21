@@ -6,6 +6,8 @@ import { fileNameFromStorageRef, keyFromStorageRef } from '../../lib/storage-ref
 import { useBeeSeedContext } from '../../provider/BeeSeedProvider.js'
 import { MarkdownRenderer } from './MarkdownRenderer.js'
 import type { StorageObject } from '../../core/types.js'
+import { shareStorageProbe } from '../../lib/storage-probe-flight.js'
+import { useRetryAfter } from '../../hooks/use-retry-after.js'
 
 interface Props {
   channelId: string
@@ -47,7 +49,6 @@ function normalizedRef(ref: string) {
   return `storage://${encodeURI(keyFromStorageRef(ref).replace(/^\/+/, ''))}`
 }
 
-const storageRefExistenceCache = new Map<string, boolean>()
 const STORAGE_REF_EXISTENCE_RETRY_DELAYS_MS = [0, 250, 750, 1500] as const
 
 function storageRefCacheKey(channelId: string, refText: string) {
@@ -55,7 +56,8 @@ function storageRefCacheKey(channelId: string, refText: string) {
 }
 
 function storageRefProbeShouldRetry(error: unknown) {
-  const status = (error as { response?: { status?: number } } | null)?.response?.status
+  const failure = error as { status?: number; response?: { status?: number } } | null
+  const status = failure?.status ?? failure?.response?.status
   return status === undefined || status >= 500
 }
 
@@ -81,7 +83,10 @@ export async function probeStorageRefExistence(
 
 export function useExistingStorageRefs(channelId: string, refs: string[]) {
   const { api, config } = useBeeSeedContext()
-  const unique = useMemo(() => uniqueRefs(refs).map(normalizedRef), [refs])
+  let session: string | null = null
+  try { session = localStorage.getItem(config.tokenKey ?? 'beeseed_token') } catch { /* 与 API 客户端一致，存储不可用时不读取凭据。 */ }
+  const refsKey = JSON.stringify(uniqueRefs(refs).map(normalizedRef))
+  const unique = useMemo<string[]>(() => JSON.parse(refsKey), [refsKey])
   const [existing, setExisting] = useState<Set<string>>(() => new Set())
 
   useEffect(() => {
@@ -102,19 +107,12 @@ export function useExistingStorageRefs(channelId: string, refs: string[]) {
 
     for (const refText of unique) {
       const cacheKey = storageRefCacheKey(channelId, refText)
-      const cached = storageRefExistenceCache.get(cacheKey)
-      if (cached === true) {
-        next.add(refText)
-        continue
-      }
-
       pending.push(
-        probeStorageRefExistence(() => api.post(`channels/${channelId}/storage/presign-download`, {
+        shareStorageProbe(api, session, cacheKey, () => probeStorageRefExistence(() => api.post(`channels/${channelId}/storage/presign-download`, {
           json: storagePresignDownloadPayload(keyFromStorageRef(refText)),
-        }).json<{ url: string }>())
+        }).json<{ url: string }>()))
           .then((exists) => {
             if (!exists) return
-            storageRefExistenceCache.set(cacheKey, true)
             next.add(refText)
           }),
       )
@@ -126,7 +124,7 @@ export function useExistingStorageRefs(channelId: string, refs: string[]) {
     })
 
     return () => { cancelled = true }
-  }, [api, channelId, config.useMockData, unique])
+  }, [api, channelId, config.useMockData, unique, session])
 
   const isExistingRef = (refText: string) => existing.has(normalizedRef(refText))
   return { existingRefs: unique.filter((refText) => existing.has(refText)), isExistingRef }
@@ -262,6 +260,9 @@ export async function requestStoragePreviewURL(
   try {
     return await requestForKey(requestedKey)
   } catch (err) {
+    const failure = err as { status?: number; response?: { status?: number } } | null
+    const status = failure?.status ?? failure?.response?.status
+    if (status !== 404) throw err
     if (objectId) throw err
     const resolvedKey = await resolvePreviewKey(api, channelId, requestedKey)
     if (resolvedKey === requestedKey) throw err
@@ -402,6 +403,7 @@ export async function openStorageDownload(
 
 export function StoragePreviewDialog({ channelId, refText, objectId, onClose }: { channelId: string; refText: string; objectId?: string; onClose: () => void }) {
   const { api, config } = useBeeSeedContext()
+  const { remainingSeconds, handleRateLimit, isCoolingDown } = useRetryAfter()
   const name = fileNameFromStorageRef(refText)
   const kind = storageFileKindForRef(refText)
   const ext = extOf(refText)
@@ -444,16 +446,17 @@ export function StoragePreviewDialog({ channelId, refText, objectId, onClose }: 
         }
       })
       .catch((err) => {
-        if (!cancelled) setError(err instanceof Error ? err.message : '预览加载失败')
+        if (!cancelled) setError(handleRateLimit(err) ? '请求过于频繁，请稍后重试。' : err instanceof Error ? err.message : '预览加载失败')
       })
       .finally(() => {
         if (!cancelled) setLoading(false)
       })
 
     return () => { cancelled = true }
-  }, [api, config.useMockData, ext, kind, refText, objectId, channelId, presentationAttempt])
+  }, [api, config.useMockData, ext, kind, refText, objectId, channelId, presentationAttempt, handleRateLimit])
 
   const reloadPresentation = () => {
+    if (isCoolingDown()) return
     setUrl(null)
     setLoading(true)
     setError(null)
@@ -461,7 +464,7 @@ export function StoragePreviewDialog({ channelId, refText, objectId, onClose }: 
   }
 
   const download = async () => {
-    if (config.useMockData || downloading) return
+    if (config.useMockData || downloading || isCoolingDown()) return
     setDownloading(true)
     try {
       await openStorageDownload(async () => {
@@ -474,7 +477,7 @@ export function StoragePreviewDialog({ channelId, refText, objectId, onClose }: 
         return data.url
       }, name)
     } catch (err) {
-      setError(err instanceof Error ? `下载链接创建失败：${err.message}` : '下载链接创建失败')
+      setError(handleRateLimit(err) ? '请求过于频繁，请稍后重试。' : '文件下载失败，请稍后重试。')
     } finally {
       setDownloading(false)
     }
@@ -498,7 +501,7 @@ export function StoragePreviewDialog({ channelId, refText, objectId, onClose }: 
             <button
               type="button"
               onClick={() => void download()}
-              disabled={downloading}
+              disabled={downloading || remainingSeconds > 0}
               className="flex h-8 w-8 items-center justify-center rounded-md text-[#666] hover:bg-black/5 hover:text-black disabled:cursor-not-allowed disabled:opacity-50"
               aria-label="下载文件"
             >
@@ -522,12 +525,13 @@ export function StoragePreviewDialog({ channelId, refText, objectId, onClose }: 
             <div className="flex h-48 flex-col items-center justify-center gap-2 text-center">
               <Icon className="h-9 w-9 text-[#9aa1aa]" />
               <div className="text-sm font-medium text-[#333840]">无法预览此文件</div>
-              <div className="max-w-sm text-xs text-[#777169]">{error}</div>
+              <div role="alert" className="max-w-sm text-xs text-[#777169]">{error}{remainingSeconds > 0 && ` 请等待 ${remainingSeconds} 秒。`}</div>
               {kind === 'presentation' && !config.useMockData && (
                 <div className="mt-2 flex flex-wrap items-center justify-center gap-2">
                   <button
                     type="button"
                     onClick={reloadPresentation}
+                    disabled={remainingSeconds > 0}
                     className="inline-flex h-8 items-center gap-1.5 rounded-md border border-[#9297a0] bg-white px-3 text-xs font-medium text-[#181d26] hover:bg-[#f8fafc]"
                   >
                     <RotateCw className="h-3.5 w-3.5" />
@@ -536,7 +540,7 @@ export function StoragePreviewDialog({ channelId, refText, objectId, onClose }: 
                   <button
                     type="button"
                     onClick={() => void download()}
-                    disabled={downloading}
+                    disabled={downloading || remainingSeconds > 0}
                     className="inline-flex h-8 items-center gap-1.5 rounded-md bg-[#181d26] px-3 text-xs font-medium text-white hover:bg-[#0d1218] disabled:cursor-not-allowed disabled:opacity-50"
                   >
                     <Download className="h-3.5 w-3.5" />
@@ -561,7 +565,7 @@ export function StoragePreviewDialog({ channelId, refText, objectId, onClose }: 
               url={url}
               name={name}
               attempt={presentationAttempt}
-              downloading={downloading}
+              downloading={downloading || remainingSeconds > 0}
               onReload={reloadPresentation}
               onDownload={() => void download()}
             />

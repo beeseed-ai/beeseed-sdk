@@ -21,12 +21,19 @@ export function createApiClient(config: ClientConfig): KyInstance {
         async ({ response }) => {
           if (!response.ok) {
             const body = await response.json().catch(() => ({})) as Record<string, unknown>
-            throw new ApiError(
+            const error = new ApiError(
               (body['error'] as string) || `${response.status} ${response.statusText}`,
               response.status,
               body['code'] as string | undefined,
               body,
             )
+            const retryAfter = response.headers.get('Retry-After')
+            if (retryAfter?.trim()) {
+              const seconds = /^\d+$/.test(retryAfter.trim()) ? Number(retryAfter) : undefined
+              const delay = seconds === undefined ? Date.parse(retryAfter) - Date.now() : seconds * 1000
+              if (Number.isFinite(delay)) error.retryAfterMs = Math.max(0, delay)
+            }
+            throw error
           }
         },
       ],

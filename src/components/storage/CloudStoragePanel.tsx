@@ -9,7 +9,9 @@ import { storageRefFromKey } from '../../lib/storage-ref.js'
 import { Input } from '../ui/input.js'
 import { Button } from '../ui/button.js'
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '../ui/dialog.js'
-import { StorageFileIcon, StoragePreviewDialog, storageFileLabelForRef } from '../chat/StorageAttachmentPreview.js'
+import { openStorageDownload, StorageFileIcon, StoragePreviewDialog, storageFileLabelForRef } from '../chat/StorageAttachmentPreview.js'
+
+import { useRetryAfter } from '../../hooks/use-retry-after.js'
 
 interface Props {
   channelId: string | null
@@ -18,6 +20,7 @@ interface Props {
 }
 
 export function CloudStoragePanel({ channelId, className, onReference }: Props) {
+  const { remainingSeconds, handleRateLimit, isCoolingDown } = useRetryAfter()
   const { insertIntoComposer, setActiveFeature, setPanel } = useDetailPanel()
   const {
     objects,
@@ -49,6 +52,9 @@ export function CloudStoragePanel({ channelId, className, onReference }: Props) 
   const [creatingDirectory, setCreatingDirectory] = useState(false)
   const [directoryError, setDirectoryError] = useState<string | null>(null)
   const [previewRef, setPreviewRef] = useState<string | null>(null)
+  const downloadPending = useRef(false)
+  const [downloadingKey, setDownloadingKey] = useState<string | null>(null)
+  const [downloadError, setDownloadError] = useState<string | null>(null)
 
   if (!channelId) {
     return <div className="flex-1 flex items-center justify-center text-muted-foreground text-sm">选择一个对话查看文件</div>
@@ -66,8 +72,19 @@ export function CloudStoragePanel({ channelId, className, onReference }: Props) 
   }
 
   async function handleDownload(key: string) {
-    const url = await downloadFile(key)
-    if (url) window.open(url, '_blank')
+    if (downloadPending.current || isCoolingDown()) return
+    downloadPending.current = true
+    setDownloadingKey(key)
+    setDownloadError(null)
+    try {
+      const object = objects.find((item) => item.key === key)
+      await openStorageDownload(async () => (await downloadFile(key)) || '', object ? storageDisplayName(object) : key.split('/').pop() || '下载文件')
+    } catch (error) {
+      setDownloadError(handleRateLimit(error) ? '请求过于频繁，请稍后重试。' : '文件下载失败，请稍后重试。')
+    } finally {
+      downloadPending.current = false
+      setDownloadingKey(null)
+    }
   }
 
   async function handleCreateDirectory(e: FormEvent) {
@@ -137,6 +154,8 @@ export function CloudStoragePanel({ channelId, className, onReference }: Props) 
       </div>
 
       {notice && <p role="status" className="mx-4 mt-3 rounded-md border bg-muted/50 px-3 py-2 text-sm text-foreground">{notice}</p>}
+      {downloadingKey && <p role="status" className="px-4 py-2 text-xs text-muted-foreground">正在下载文件…</p>}
+      {downloadError && <p role="alert" className="px-4 py-2 text-xs text-destructive">{downloadError}{remainingSeconds > 0 && ` 请等待 ${remainingSeconds} 秒。`}</p>}
       {error && (
         <div role="alert" className="flex items-center gap-2 border-b border-border px-4 py-2 text-xs text-destructive">
           <AlertCircle className="h-3.5 w-3.5 shrink-0" />
@@ -236,6 +255,7 @@ export function CloudStoragePanel({ channelId, className, onReference }: Props) 
                   <button
                     data-testid="storage-file-download"
                     title="下载"
+                    disabled={downloadingKey !== null || remainingSeconds > 0}
                     onClick={() => void handleDownload(obj.key)}
                     className="hidden group-hover:block p-1 rounded hover:bg-muted transition-colors"
                   >

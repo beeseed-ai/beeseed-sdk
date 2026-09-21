@@ -5,10 +5,13 @@ import { MessageBubble } from './MessageBubble.js'
 import { ToolGroupBubble } from './ToolGroupBubble.js'
 import { StreamRenderer } from './StreamRenderer.js'
 import { AgentRunTranscript } from './AgentRunTranscript.js'
+import { TypingBlock } from './TypingBlock.js'
 import { Avatar, AvatarFallback, AvatarImage } from '../ui/avatar.js'
 import { Button } from '../ui/button.js'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '../ui/dialog.js'
 import { stripStorageReferenceBlock } from '../../lib/storage-ref.js'
+import { agentDisplayName } from '../../lib/members.js'
+import type { TypingStatus } from '../../stores/messages.js'
 import { formatChatTimestamp } from '../../lib/format.js'
 import { latestPendingAskUserForUser, pendingAskUserKey } from '../../lib/ask-user-action.js'
 import { markdownImageContext } from './MarkdownImageRendering.js'
@@ -45,7 +48,7 @@ interface Props {
   agentLoops?: AgentLoopState[]
   members?: ChannelMemberInfo[]
   typing?: string
-  typings?: string[]
+  typings?: TypingStatus[]
   onQuote?: (message: ChatMessage) => void
   onMentionClick?: (name: string) => void
   currentUserId?: string
@@ -97,11 +100,6 @@ function agentLoopActivityAt(loop: AgentLoopState): number {
 
 function agentLoopKey(loop: AgentLoopState): string {
   return `${loop.agentId}:${loop.runId || loop.startedAt}`
-}
-
-function agentDisplayName(members: ChannelMemberInfo[] | undefined, agentId: string) {
-  const member = members?.find((m) => m.agent_id === agentId)
-  return member?.display_name || agentId
 }
 
 function agentLoopTimestamp(loop: AgentLoopState, events?: AgentLoopEventItem[]): number {
@@ -428,7 +426,10 @@ export function MessageList({
         return true
       })
   ), [stream, streams])
-  const visibleTypings = useMemo(() => typings ?? (typing ? [typing] : []), [typing, typings])
+  const visibleTypings = useMemo(
+    () => typings ?? (typing ? [{ agentId: '', text: typing }] : []),
+    [typing, typings],
+  )
   const displayQuickQuestions = onQuickQuestion
     ? (quickQuestions && quickQuestions.length > 0 ? quickQuestions : DEFAULT_WELCOME_QUICK_QUESTIONS)
     : []
@@ -658,14 +659,13 @@ export function MessageList({
         })}
 
         {/* Typing indicator */}
-        {visibleTypings.length > 0 && visibleStreams.length === 0 && !runningTimelineLoops && visibleTypings.map((text, i) => (
-          <div key={`typing-${i}-${text}`} className="flex items-center gap-2 px-16 py-2 text-[#999] text-xs mx-auto" style={{ maxWidth: CHAT_MAX_WIDTH }}>
-            <span className="inline-flex gap-1">
-              <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-[#999] [animation-delay:0ms]" />
-              <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-[#999] [animation-delay:150ms]" />
-              <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-[#999] [animation-delay:300ms]" />
-            </span>
-            <span>{text}</span>
+        {visibleTypings.length > 0 && visibleStreams.length === 0 && !runningTimelineLoops && visibleTypings.map((entry, i) => (
+          <div
+            key={`typing-${i}-${entry.agentId}-${entry.text}`}
+            className="mx-auto w-full"
+            style={{ maxWidth: CHAT_MAX_WIDTH }}
+          >
+            <TypingBlock entry={entry} members={members} />
           </div>
         ))}
       </div>

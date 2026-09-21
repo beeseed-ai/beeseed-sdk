@@ -15,6 +15,35 @@ const STORAGE_MUTATION_EVENT = 'beeseed:storage-mutated'
 const STORAGE_MUTATION_TOOLS = new Set(['storage_write', 'storage_delete'])
 const ASK_USER_ANSWER_OUTBOX_KEY = 'beeseed_ask_user_answer_outbox_v1'
 
+/**
+ * User-facing wording for the in-flight run statuses. They used to collapse into
+ * a single "正在思考" label, which hid the difference between waiting for the
+ * container to start (queued/starting) and waiting for the model (running).
+ */
+function runStatusLabel(status: string): string | undefined {
+  switch (status) {
+    case 'queued':
+    case 'starting':
+      return '准备中'
+    case 'running':
+      return '思考中'
+    case 'waiting_tool':
+      return '执行工具中'
+    default:
+      return undefined
+  }
+}
+
+/**
+ * One in-flight run indicator. The agent id is carried alongside the wording so
+ * the chat can render the same block a finished run uses — avatar, name row and
+ * status card — instead of a bare text line.
+ */
+export interface TypingStatus {
+  agentId: string
+  text: string
+}
+
 export interface AskUserAnswerOutboxEntry {
   userId: string
   channelId: string
@@ -1418,7 +1447,7 @@ export interface MessagesState {
   getAgentLoops: (channelId: string) => AgentLoopState[]
   getMembers: (channelId: string) => ChannelMemberInfo[]
   getTyping: (channelId: string) => string
-  getTypings: (channelId: string) => string[]
+  getTypings: (channelId: string) => TypingStatus[]
   hasOlder: (channelId: string) => boolean
   isLoadingOlder: (channelId: string) => boolean
   reset: () => void
@@ -1887,7 +1916,7 @@ export function createMessagesStore(config: MessagesStoreConfig) {
 
         case 'typing': {
           const typing = new Map(state.typingStatus)
-          typing.set(typingKey(event.channel_id, event.agent_id), `${event.agent_id || 'Agent'} 正在输入...`)
+          typing.set(typingKey(event.channel_id, event.agent_id), '正在输入...')
           set({ typingStatus: typing })
           break
         }
@@ -2048,7 +2077,7 @@ export function createMessagesStore(config: MessagesStoreConfig) {
           set({ streams })
 
           const typing = new Map(state.typingStatus)
-          typing.set(typingKey(event.channel_id, event.agent_id), `${event.agent_id} 调用工具 ${event.name}...`)
+          typing.set(typingKey(event.channel_id, event.agent_id), `调用工具 ${event.name}...`)
           set({ typingStatus: typing })
           break
         }
@@ -2137,7 +2166,7 @@ export function createMessagesStore(config: MessagesStoreConfig) {
 
           const typing = new Map(state.typingStatus)
           if (agentLoop.status === 'waiting_for_user') clearTypingForChannel(typing, event.channel_id, event.agent_id)
-          else typing.set(typingKey(event.channel_id, event.agent_id), `${event.agent_id} 正在思考...`)
+          else typing.set(typingKey(event.channel_id, event.agent_id), '思考中')
           set({ typingStatus: typing })
           break
         }
@@ -2190,7 +2219,7 @@ export function createMessagesStore(config: MessagesStoreConfig) {
           set({ streams })
 
           const typing = new Map(state.typingStatus)
-          typing.set(typingKey(event.channel_id, event.agent_id), `${event.agent_id} 启用技能 ${event.display_name || event.name}`)
+          typing.set(typingKey(event.channel_id, event.agent_id), `启用技能 ${event.display_name || event.name}`)
           set({ typingStatus: typing })
           break
         }
@@ -2266,7 +2295,7 @@ export function createMessagesStore(config: MessagesStoreConfig) {
           set({ streams })
 
           const typing = new Map(state.typingStatus)
-          typing.set(typingKey(event.channel_id, event.agent_id), `${event.agent_id} 开始第 ${event.turn} 轮...`)
+          typing.set(typingKey(event.channel_id, event.agent_id), `开始第 ${event.turn} 轮...`)
           set({ typingStatus: typing })
           break
         }
@@ -2377,8 +2406,9 @@ export function createMessagesStore(config: MessagesStoreConfig) {
             }
           }
           const typing = new Map(state.typingStatus)
-          if (['queued', 'starting', 'running', 'waiting_tool'].includes(event.status)) {
-            typing.set(typingKey(event.channel_id, event.agent_id), `${event.agent_id} 正在思考...`)
+          const statusText = runStatusLabel(event.status)
+          if (statusText) {
+            typing.set(typingKey(event.channel_id, event.agent_id), statusText)
           } else {
             clearTypingForChannel(typing, event.channel_id, event.agent_id)
           }
@@ -2772,14 +2802,20 @@ export function createMessagesStore(config: MessagesStoreConfig) {
     getMembers: (channelId) => get().members.get(channelId) || [],
 
     getTypings: (channelId) => {
+      const entries: TypingStatus[] = []
       const direct = get().typingStatus.get(channelId)
-      const values = [...get().typingStatus.entries()]
-        .filter(([key]) => key.startsWith(`${channelId}:`))
-        .map(([, value]) => value)
-      return direct ? [direct, ...values] : values
+      if (direct) entries.push({ agentId: '', text: direct })
+      for (const [key, text] of get().typingStatus.entries()) {
+        // typingKey() writes `${channelId}:${agentId || '_'}`; the agent id is
+        // recovered from the key so callers can resolve the agent's avatar and
+        // name without a second lookup table.
+        if (!key.startsWith(`${channelId}:`)) continue
+        entries.push({ agentId: key.slice(channelId.length + 1).replace(/^_$/, ''), text })
+      }
+      return entries
     },
 
-    getTyping: (channelId) => get().getTypings(channelId)[0] || '',
+    getTyping: (channelId) => get().getTypings(channelId)[0]?.text || '',
 
     hasOlder: (channelId) => get().hasOlderMessages.get(channelId) ?? false,
 

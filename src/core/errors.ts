@@ -2,6 +2,7 @@ export class ApiError extends Error {
   status: number
   code?: string
   details?: Record<string, unknown>
+  retryAfterMs?: number
 
   constructor(message: string, status: number, code?: string, details?: Record<string, unknown>) {
     super(message)

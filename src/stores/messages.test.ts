@@ -198,7 +198,12 @@ describe('ReasonIX run typing status', () => {
     })
   }
 
-  it.each(['queued', 'starting', 'running', 'waiting_tool'])('shows thinking for %s', (status) => {
+  it.each([
+    ['queued', '准备中'],
+    ['starting', '准备中'],
+    ['running', '思考中'],
+    ['waiting_tool', '执行工具中'],
+  ])('labels the %s run status as %s', (status, label) => {
     const store = createStore()
 
     store.getState().handleEvent({
@@ -209,7 +214,21 @@ describe('ReasonIX run typing status', () => {
       status,
     })
 
-    expect(store.getState().getTyping('channel-a')).toBe('agent-a 正在思考...')
+    expect(store.getState().getTyping('channel-a')).toBe(label)
+  })
+
+  it('exposes the agent id alongside the label so the chat can render the agent block', () => {
+    const store = createStore()
+
+    store.getState().handleEvent({
+      type: 'agent_run_status',
+      channel_id: 'channel-a',
+      agent_id: 'agent-a',
+      run_id: 'run-a',
+      status: 'running',
+    })
+
+    expect(store.getState().getTypings('channel-a')).toEqual([{ agentId: 'agent-a', text: '思考中' }])
   })
 
   it.each(['completed', 'failed', 'canceled', 'timed_out', 'fenced', 'budget_exhausted', 'loop_blocked'])('clears thinking for %s', (status) => {

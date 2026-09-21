@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from 'vitest'
 import { openStorageDownload, probeStorageRefExistence, requestStoragePreviewURL } from './StorageAttachmentPreview.js'
+import { ApiError } from '../../core/errors.js'
 
 describe('presentation preview signing', () => {
   it('requests a short preview address bound to the exact long-name object for Office', async () => {
@@ -49,6 +50,23 @@ describe('openStorageDownload', () => {
 })
 
 describe('probeStorageRefExistence', () => {
+  for (const status of [401, 403, 404, 429]) it(`does not amplify SDK HTTP ${status} failures`, async () => {
+    const check = vi.fn().mockRejectedValue(new ApiError('request failed', status))
+    const wait = vi.fn()
+    await expect(probeStorageRefExistence(check, wait)).resolves.toBe(false)
+    expect(check).toHaveBeenCalledOnce()
+    expect(wait).not.toHaveBeenCalled()
+  })
+
+  it('does not list storage or re-sign on a throttled preview', async () => {
+    const error = new ApiError('rate limited', 429)
+    const post = vi.fn(() => ({ json: () => Promise.reject(error) }))
+    const get = vi.fn()
+    const api = { post, get } as unknown as Parameters<typeof requestStoragePreviewURL>[0]
+    await expect(requestStoragePreviewURL(api, 'channel-a', 'storage://report.pptx', 'presentation')).rejects.toBe(error)
+    expect(post).toHaveBeenCalledOnce()
+    expect(get).not.toHaveBeenCalled()
+  })
   it('retries a transient server race until the file becomes visible', async () => {
     const check = vi.fn()
       .mockRejectedValueOnce({ response: { status: 500 } })

@@ -10,13 +10,27 @@ interface DialogProps {
 }
 
 function Dialog({ open, onOpenChange, children }: DialogProps) {
+  const layerRef = React.useRef<HTMLDivElement>(null)
+  React.useEffect(() => {
+    if (!open) return
+    const handleKeyDown = (event: KeyboardEvent) => {
+      const layers = document.querySelectorAll('[data-beeseed-dialog-layer]')
+      if (event.key !== 'Escape' || event.defaultPrevented || layers[layers.length - 1] !== layerRef.current) return
+      event.preventDefault()
+      onOpenChange(false)
+    }
+    document.addEventListener('keydown', handleKeyDown)
+    return () => document.removeEventListener('keydown', handleKeyDown)
+  }, [open, onOpenChange])
   if (!open) return null
   return (
     <div
+      ref={layerRef}
+      data-beeseed-dialog-layer=""
       className="fixed inset-0 z-[120] flex items-center justify-center"
       onClick={(e) => { if (e.target === e.currentTarget) onOpenChange(false) }}
     >
-      <div className="fixed inset-0 bg-black/10 backdrop-blur-xs" />
+      <div className="fixed inset-0 bg-black/10 backdrop-blur-xs" onClick={() => onOpenChange(false)} aria-hidden="true" />
       <div className="relative z-10">{children}</div>
     </div>
   )
@@ -31,15 +45,17 @@ function DialogContent({
 }: React.ComponentProps<'div'> & { showCloseButton?: boolean; onClose?: () => void }) {
   return (
     <div
+      role="dialog"
+      aria-modal="true"
       className={cn(
-        'w-[min(100vw-2rem,28rem)] max-w-none rounded-xl bg-popover p-4 text-sm text-popover-foreground ring-1 ring-foreground/10 shadow-lg',
+        'relative max-h-[calc(100dvh-2rem)] overflow-y-auto w-[min(100vw-2rem,28rem)] max-w-none rounded-xl bg-popover p-4 text-sm text-popover-foreground ring-1 ring-foreground/10 shadow-lg',
         className,
       )}
       {...props}
     >
       {children}
       {showCloseButton && onClose && (
-        <Button variant="ghost" size="icon-sm" className="absolute top-2 right-2" onClick={onClose} aria-label="关闭弹窗">
+        <Button type="button" variant="ghost" size="icon-sm" className="absolute top-2 right-2" onClick={onClose} aria-label="关闭弹窗">
           <X />
         </Button>
       )}

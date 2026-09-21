@@ -13,6 +13,25 @@ vi.mock('./StorageAttachmentPreview.js', () => ({
 }))
 
 describe('AgentRunTranscript', () => {
+  it.each([
+    ['completed', '本次处理已完成'],
+    ['error', '处理失败'],
+    ['stopped', '用户已停止本次处理'],
+    ['interrupted', '本次处理已中断'],
+    ['waiting_expired', '等待用户回答已超时'],
+    ['max_turns_reached', '已达到最大处理轮数'],
+  ] as const)('%s 不使用迟到的工具调用作为当前摘要', (status, summary) => {
+    const loop: AgentLoopState = {
+      runId: 'terminal-run', agentId: 'assistant', channelId: 'channel-1',
+      status, currentTurn: 1, startedAt: 1000, completedAt: 2000, turns: [],
+      events: [{ id: 'late-tool', type: 'tool_call', turnNumber: 1, timestamp: 2100,
+        tool: { id: 'ask', name: 'ask_user', status: 'calling', startedAt: 1900 } }],
+    }
+    const html = renderToStaticMarkup(<AgentRunTranscript loop={loop} />)
+    expect(html).toContain(summary)
+    expect(html).not.toContain('正在调用')
+  })
+
   it('等待回答时不把进程的 completed idle 当作用户状态', () => {
     const loop: AgentLoopState = {
       runId: 'waiting-run', agentId: 'assistant', channelId: 'channel-1',
