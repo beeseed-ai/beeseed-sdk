@@ -13,8 +13,10 @@ class FakeWebSocket {
   onmessage: ((event: { data: string }) => void) | null = null
   onclose: ((event: { code: number; reason: string }) => void) | null = null
   onerror: ((event: unknown) => void) | null = null
+  readonly url: string
 
-  constructor(readonly url: string) {
+  constructor(url: string) {
+    this.url = url
     FakeWebSocket.instances.push(this)
   }
 
