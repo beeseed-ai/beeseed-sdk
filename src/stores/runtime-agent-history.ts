@@ -109,6 +109,13 @@ export function runtimeRunTranscript(details: RuntimeRunDetails, finalContent?: 
         if (last?.type === 'assistant_content') last.content = (last.content || '') + update.delta
         else events.push({ ...base, type: 'assistant_content', content: update.delta })
       } else if (envelope.runtime_type === 'tool' && update) {
+        if (update.phase === 'progress' && update.name === 'agent_step') {
+          const stage = typeof update.stage === 'string' ? update.stage.trim() : ''
+          const step = typeof update.step === 'number' ? `第 ${update.step} 步` : ''
+          const summary = [stage, step].filter(Boolean).join(' · ') || 'Agent 正在处理…'
+          if (events.at(-1)?.summary !== summary) events.push({ ...base, type: 'progress', summary })
+          continue
+        }
         const callId = typeof update.callId === 'string' ? update.callId : ''
         const name = typeof update.name === 'string' ? update.name : callId
         if (!callId || !name) continue

@@ -37,11 +37,13 @@ describe('runtime history adapter',()=>{
     const cloudflareEvents=[
       cloudflareEvent(1,'tool',{phase:'started',callId:'cf-call-1',name:'knowledge_search',inputDigest:'sha256:redacted'}),
       cloudflareEvent(2,'tool',{phase:'completed',callId:'cf-call-1',name:'knowledge_search',success:true,status:200}),
-      cloudflareEvent(3,'chunk',{type:'text-delta',delta:'知识'}),
-      cloudflareEvent(4,'chunk',{type:'text-delta',delta:'结果'}),
+      cloudflareEvent(3,'tool',{phase:'progress',callId:'step:2',name:'agent_step',stage:'生成并检查 PPT',step:3}),
+      cloudflareEvent(4,'chunk',{type:'text-delta',delta:'知识'}),
+      cloudflareEvent(5,'chunk',{type:'text-delta',delta:'结果'}),
     ]
     const loop=runtimeRunTranscript({run,events:cloudflareEvents})
-    expect(loop.events?.map(item=>item.type)).toEqual(['tool_call','tool_result','assistant_content'])
+    expect(loop.events?.map(item=>item.type)).toEqual(['tool_call','tool_result','progress','assistant_content'])
+    expect(loop.events?.[2]).toMatchObject({summary:'生成并检查 PPT · 第 3 步'})
     expect(loop.events?.at(-1)).toMatchObject({content:'知识结果'})
     expect(loop.turns[0].toolCalls).toEqual([expect.objectContaining({
       toolCallId:'cf-call-1',name:'knowledge_search',status:'success',
