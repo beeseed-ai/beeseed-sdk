@@ -1,6 +1,6 @@
 import { createStore } from 'zustand/vanilla'
 import type { KyInstance } from 'ky'
-import { runtimeHistoryMessages, runtimeRunLoop, runtimeRunTranscript } from './runtime-agent-history.js'
+import { runtimeHistoryMessages, runtimeRunLoop, runtimeRunNeedsRefreshRecovery, runtimeRunTranscript } from './runtime-agent-history.js'
 import type { RuntimeRunSummary, RuntimeRunDetails } from './runtime-agent-history.js'
 import type {
   Message, ChatMessage, StreamState, WSEvent,
@@ -166,6 +166,14 @@ function emitStorageMutation(channelId: string, toolName: string) {
 
 function maybeEmitStorageMutationFromMessage(channelId: string, message: Message) {
   const meta = (message.metadata ?? {}) as Record<string, unknown>
+  if (
+    message.sender_type === 'agent'
+    && meta.source === 'scheduled_broadcast'
+    && message.content.includes('storage://')
+  ) {
+    emitStorageMutation(channelId, 'scheduled_broadcast')
+    return
+  }
   if (message.sender_type === 'agent' && parseMessageArtifacts(meta)?.some((artifact) => (
     artifact.objectId && !artifact.storageRef.startsWith('storage://workspace/')
   ))) {
@@ -1546,22 +1554,28 @@ export function createMessagesStore(config: MessagesStoreConfig) {
           set({ messages: map, askUserAnswerOutbox: outbox, agentLoops: loops, hasOlderMessages: olderMap, olderMessageCursors: cursorMap })
 
           const runtimeMessages = runtimeHistoryMessages(msgs)
-          if (runtimeMessages.length > 0) {
-            try {
-              const runIds = [...new Set(runtimeMessages.map(message => String(message.metadata!.run_id)))]
-              const data = await config.api.get(`channels/${channelId}/agent-runs`, {
-                searchParams: { run_ids: runIds.join(',') },
-              }).json<{ runs: RuntimeRunSummary[] }>()
-              const hydrated = new Map(get().agentLoops)
-              for (const run of data.runs) {
-                const message = runtimeMessages.find(message => message.metadata?.run_id === run.run_id && message.sender_agent_id === run.agent_id)
-                if (run.channel_id !== channelId || !message) continue
-                const key = agentLoopStoreKey(channelId, run.agent_id, run.run_id)
-                hydrated.set(key, runtimeRunLoop(run, message.content, hydrated.get(key) ?? runtimeLoopsBeforeRefresh.get(key)))
-              }
-              set({ agentLoops: hydrated })
-            } catch { /* Keep the final answer visible if runtime summaries are unavailable. */ }
-          }
+          try {
+            // A final Agent message does not exist while a Run is queued or
+            // executing. List recent channel Runs as well as hydrating final
+            // messages so a hard refresh can restore the active process card.
+            const data = await config.api.get(`channels/${channelId}/agent-runs`, {
+              searchParams: { limit: '100' },
+            }).json<{ runs?: RuntimeRunSummary[] }>()
+            const hydrated = new Map(get().agentLoops)
+            const typing = new Map(get().typingStatus)
+            for (const run of Array.isArray(data.runs) ? data.runs : []) {
+              const message = runtimeMessages.find(message => message.metadata?.run_id === run.run_id && message.sender_agent_id === run.agent_id)
+              if (run.channel_id !== channelId || (!message && !runtimeRunNeedsRefreshRecovery(run))) continue
+              const key = agentLoopStoreKey(channelId, run.agent_id, run.run_id)
+              const loop = runtimeRunLoop(run, message?.content, hydrated.get(key) ?? runtimeLoopsBeforeRefresh.get(key))
+              hydrated.set(key, loop)
+              const statusText = runStatusLabel(run.status)
+              const statusKey = typingKey(channelId, run.agent_id)
+              if (loop.status !== 'running') clearTypingForChannel(typing, channelId, run.agent_id)
+              else if (statusText && !typing.has(statusKey)) typing.set(statusKey, statusText)
+            }
+            set({ agentLoops: hydrated, typingStatus: typing })
+          } catch { /* Keep message and live state visible if runtime summaries are unavailable. */ }
           const runIds = visibleRunIdsFromMessages(msgs)
           if (runIds.length === 0) return
           try {
@@ -1786,12 +1800,6 @@ export function createMessagesStore(config: MessagesStoreConfig) {
           const olderMessageCursors = new Map(state.olderMessageCursors)
           olderMessageCursors.delete(event.channel_id)
 
-          const askUserAnswerOutbox = new Map(state.askUserAnswerOutbox)
-          for (const [key, entry] of askUserAnswerOutbox) {
-            if (entry.channelId === event.channel_id && (!userId || entry.userId === userId)) askUserAnswerOutbox.delete(key)
-          }
-          persistAskUserAnswerOutbox(askUserAnswerOutbox)
-
           const loadingAgentRunDetails = new Set(state.loadingAgentRunDetails)
           const loadedAgentRunDetails = new Set(state.loadedAgentRunDetails)
           for (const key of loadingAgentRunDetails) {
@@ -1808,7 +1816,6 @@ export function createMessagesStore(config: MessagesStoreConfig) {
             typingStatus,
             hasOlderMessages,
             olderMessageCursors,
-            askUserAnswerOutbox,
             loadingAgentRunDetails,
             loadedAgentRunDetails,
             loadingChannel: state.loadingChannel === event.channel_id ? null : state.loadingChannel,
@@ -2396,7 +2403,12 @@ export function createMessagesStore(config: MessagesStoreConfig) {
               ?? (['starting', 'running', 'waiting_tool'].includes(event.status) ? 'running' : undefined)
             if (nextStatus) {
               const loops = new Map(state.agentLoops)
-              loops.set(loopKey, { ...existing, status: nextStatus, completedAt: nextStatus === 'running' ? undefined : eventTimestamp })
+              loops.set(loopKey, {
+                ...existing,
+                status: nextStatus,
+                error: nextStatus === 'error' && event.reason ? event.reason : existing.error,
+                completedAt: nextStatus === 'running' ? undefined : eventTimestamp,
+              })
               set({ agentLoops: loops })
               if (nextStatus === 'waiting_for_user') {
                 const streams = new Map(state.streams)

@@ -188,8 +188,8 @@ export function MessageBubble({
   const isUser = message.role === 'user'
   const isImage = message.contentType === 'image'
   const visibleContent = existingRefs.length > 0 ? stripStorageReferenceBlock(message.content, existingRefSet) : message.content
-  const editableArtifacts = useMemo(
-    () => (message.artifacts ?? []).filter((artifact) => artifact.editable),
+  const artifacts = useMemo(
+    () => message.artifacts ?? [],
     [message.artifacts],
   )
 
@@ -287,9 +287,9 @@ export function MessageBubble({
                   />
                 )}
                 {existingRefs.length > 0 && <StorageAttachmentPreview channelId={channelId} refs={existingRefs} compact={!visibleContent} />}
-                {editableArtifacts.length > 0 && (
+                {artifacts.length > 0 && (
                   <EditableArtifactActions
-                    artifacts={editableArtifacts}
+                    artifacts={artifacts}
                     onPreview={(artifact) => setStoragePreviewTarget({ refText: artifact.storageRef, objectId: artifact.objectId })}
                     onRevise={(artifact) => onReviseArtifact?.(artifact, message)}
                   />
@@ -308,9 +308,9 @@ export function MessageBubble({
                   />
                 )}
                 {existingRefs.length > 0 && <StorageAttachmentPreview channelId={channelId} refs={existingRefs} compact={!visibleContent} />}
-                {editableArtifacts.length > 0 && (
+                {artifacts.length > 0 && (
                   <EditableArtifactActions
-                    artifacts={editableArtifacts}
+                    artifacts={artifacts}
                     onPreview={(artifact) => setStoragePreviewTarget({ refText: artifact.storageRef, objectId: artifact.objectId })}
                     onRevise={(artifact) => onReviseArtifact?.(artifact, message)}
                   />
@@ -433,14 +433,16 @@ export function EditableArtifactActions({
               {artifact.version ? ` · v${artifact.version}` : ''}
             </span>
           </button>
-          <button
-            type="button"
-            onClick={() => onRevise(artifact)}
-            className="inline-flex h-8 shrink-0 items-center gap-1 rounded-md border border-[#181d26] bg-[#181d26] px-2.5 text-xs font-medium text-white transition-colors hover:bg-[#0d1218]"
-          >
-            <PencilLine className="h-3.5 w-3.5" />
-            修改
-          </button>
+          {artifact.editable && (
+            <button
+              type="button"
+              onClick={() => onRevise(artifact)}
+              className="inline-flex h-8 shrink-0 items-center gap-1 rounded-md border border-[#181d26] bg-[#181d26] px-2.5 text-xs font-medium text-white transition-colors hover:bg-[#0d1218]"
+            >
+              <PencilLine className="h-3.5 w-3.5" />
+              修改
+            </button>
+          )}
         </div>
       ))}
     </div>

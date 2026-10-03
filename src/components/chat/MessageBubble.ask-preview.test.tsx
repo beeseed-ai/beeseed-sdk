@@ -42,7 +42,7 @@ describe('确认题卡文件预览', () => {
     await act(() => root!.render(<MessageBubble message={message} channelId="channel-a" currentUserId="user-a" isOwn={false} onSubmitAnswer={onSubmitAnswer} />))
     expect(probe).toHaveBeenCalledWith('channel-a', expect.arrayContaining(['storage://draft/deck.pptx', 'storage://draft/document.pdf', 'storage://draft/missing.pdf']))
     for (const name of ['deck.pptx', 'document.pdf']) {
-      const button = [...host.querySelectorAll('button')].find(b => b.textContent === name)
+      const button = [...host.querySelectorAll('button')].find(b => b.textContent === `storage://draft/${name}`)
       expect(button).toBeTruthy()
       await act(() => button!.click())
       const dialog = host.querySelector('[role="dialog"]')!

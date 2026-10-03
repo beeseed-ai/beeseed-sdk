@@ -45,6 +45,34 @@ describe('AgentRunTranscript', () => {
     expect(html).not.toContain('completed · idle')
   })
 
+  it('将积分不足的 402 错误替换为用户可理解的提示', () => {
+    const loop: AgentLoopState = {
+      runId: 'insufficient-points-run', historySource: 'runtime', agentId: 'assistant', channelId: 'channel-1',
+      status: 'error', currentTurn: 1, startedAt: 1000, completedAt: 2000, turns: [],
+      error: 'Reasonix turn failed: beeseed: status 402: {"error":"insufficient points"}',
+    }
+
+    const html = renderToStaticMarkup(<AgentRunTranscript loop={loop} />)
+
+    expect((html.match(/当前可用积分不足，请充值或等待次日积分补齐后再试。/g) ?? []).length).toBeGreaterThanOrEqual(2)
+    expect(html).not.toContain('Reasonix')
+    expect(html).not.toContain('402')
+    expect(html).not.toContain('insufficient points')
+  })
+
+  it('保留非 402 错误的原始提示', () => {
+    const loop: AgentLoopState = {
+      runId: 'generic-error-run', agentId: 'assistant', channelId: 'channel-1',
+      status: 'error', currentTurn: 1, startedAt: 1000, completedAt: 2000, turns: [],
+      error: 'Agent temporarily unavailable',
+    }
+
+    const html = renderToStaticMarkup(<AgentRunTranscript loop={loop} />)
+
+    expect(html).toContain('Agent temporarily unavailable')
+    expect(html).not.toContain('当前可用积分不足')
+  })
+
   it('keeps persisted runtime summaries expandable before details are loaded', () => {
     const loop: AgentLoopState = {
       runId: 'runtime-run', historySource: 'runtime', agentId: 'assistant', channelId: 'channel-1',
@@ -95,5 +123,27 @@ describe('AgentRunTranscript', () => {
     expect(html).toContain('aria-label="预览文件：demo.pptx"')
     expect(html).toContain('演示文稿 · v1')
     expect(html).toContain('修改')
+  })
+
+  it('renders read-only final message artifacts without a revise action', () => {
+    const loop: AgentLoopState = {
+      agentId: 'content-writer', channelId: 'channel-1', runId: 'run-read-only', turns: [],
+      status: 'completed', currentTurn: 1, startedAt: 1000, completedAt: 2000,
+      finalContent: 'PPT 已生成。',
+    }
+    const finalMessage: ChatMessage = {
+      role: 'assistant', content: loop.finalContent!, timestamp: 2000, msgId: 43,
+      isAgent: true, senderType: 'agent', senderId: 'content-writer', agentRunId: 'run-read-only',
+      artifacts: [{
+        artifactId: 'artifact-read-only', storageRef: 'storage://cloudflare-runtime/demo.pptx',
+        fileName: 'demo.pptx', artifactKind: 'pptx', editable: false,
+      }],
+    }
+
+    const html = renderToStaticMarkup(<AgentRunTranscript loop={loop} finalMessage={finalMessage} />)
+
+    expect(html).toContain('aria-label="预览文件：demo.pptx"')
+    expect(html).toContain('演示文稿')
+    expect(html).not.toContain('修改')
   })
 })

@@ -6,6 +6,7 @@ export interface RuntimeRunSummary {
   agent_id: string
   agent_session_id?: string
   status: string
+  queued_at?: string
   created_at: string
   started_at?: string
   completed_at?: string
@@ -19,7 +20,12 @@ export interface RuntimeRunEvent {
   seq: number
   event_type: string
   created_at?: string
-  payload: { method?: string; params?: { update?: Record<string, unknown>; status?: { phase?: string; state?: string } } }
+  payload: {
+    method?: string
+    params?: { update?: Record<string, unknown>; status?: { phase?: string; state?: string } }
+    runtime_type?: string
+    event?: Record<string, unknown>
+  }
 }
 
 export interface RuntimeRunDetails {
@@ -41,8 +47,14 @@ function runtimeStatus(status: string): AgentLoopState['status'] {
   return 'running'
 }
 
+export function runtimeRunNeedsRefreshRecovery(run: RuntimeRunSummary): boolean {
+  return run.status !== 'completed'
+}
+
 export function runtimeRunLoop(run: RuntimeRunSummary, finalContent?: string, previous?: AgentLoopState): AgentLoopState {
-  const startedAt = Date.parse(run.started_at || run.created_at)
+  // The user-visible total starts when the request entered the queue. Using
+  // started_at here hid the entire platform preparation delay from the card.
+  const startedAt = Date.parse(run.queued_at || run.created_at)
   let completedAt = run.completed_at ? Date.parse(run.completed_at) : undefined
   let status = runtimeStatus(run.status)
   if (previous && !['running', 'waiting_for_user'].includes(previous.status)
@@ -83,13 +95,44 @@ export function runtimeRunTranscript(details: RuntimeRunDetails, finalContent?: 
   const seen = new Set<string>()
   const ordered = [...details.events].sort((a, b) => a.runtime_epoch - b.runtime_epoch || a.seq - b.seq)
   for (const event of ordered) {
-    if (event.run_id !== details.run.run_id || event.event_type !== 'reasonix.acp') continue
+    if (event.run_id !== details.run.run_id || !['reasonix.acp', 'cloudflare.think'].includes(event.event_type)) continue
     const id = `${event.run_id}:${event.runtime_epoch}:${event.seq}`
     if (seen.has(id)) continue
     seen.add(id)
     const timestamp = event.created_at ? Date.parse(event.created_at) : loop.startedAt
     const base = { id, seq: event.seq, turnNumber: 1, timestamp }
     const envelope = event.payload
+    if (event.event_type === 'cloudflare.think') {
+      const update = envelope.event
+      if (envelope.runtime_type === 'chunk' && update?.type === 'text-delta' && typeof update.delta === 'string') {
+        const last = events.at(-1)
+        if (last?.type === 'assistant_content') last.content = (last.content || '') + update.delta
+        else events.push({ ...base, type: 'assistant_content', content: update.delta })
+      } else if (envelope.runtime_type === 'tool' && update) {
+        const callId = typeof update.callId === 'string' ? update.callId : ''
+        const name = typeof update.name === 'string' ? update.name : callId
+        if (!callId || !name) continue
+        const key = `${event.runtime_epoch}:${callId}`
+        const prior = tools.get(key)
+        if (update.phase === 'started') {
+          const tool: AgentLoopToolCall = {
+            id: `${event.run_id}:${key}`, toolCallId: callId, seq: event.seq, name,
+            status: 'calling', startedAt: timestamp,
+          }
+          tools.set(key, tool)
+          events.push({ ...base, type: 'tool_call', tool })
+        } else if (update.phase === 'completed') {
+          const tool: AgentLoopToolCall = {
+            ...prior, id: prior?.id || `${event.run_id}:${key}`, toolCallId: callId, seq: event.seq, name,
+            status: update.success === true ? 'success' : 'failed',
+            startedAt: prior?.startedAt ?? timestamp, completedAt: timestamp,
+          }
+          tools.set(key, tool)
+          events.push({ ...base, type: 'tool_result', tool })
+        }
+      }
+      continue
+    }
     if (envelope.method === 'session/update') {
       const update = envelope.params?.update
       if (!update) continue

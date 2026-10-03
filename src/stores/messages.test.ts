@@ -245,6 +245,34 @@ describe('ReasonIX run typing status', () => {
 
     expect(store.getState().getTyping('channel-a')).toBe('')
   })
+
+  it('keeps the failure reason on the live Run card', () => {
+    const store = createStore()
+    store.getState().handleEvent({
+      type: 'agent_ack',
+      channel_id: 'channel-a',
+      agent_id: 'agent-a',
+      run_id: 'run-a',
+      turn: 1,
+    })
+
+    store.getState().handleEvent({
+      type: 'agent_run_status',
+      channel_id: 'channel-a',
+      agent_id: 'agent-a',
+      run_id: 'run-a',
+      status: 'failed',
+      reason: 'Reasonix turn failed: beeseed: status 402: {"error":"insufficient points"}',
+    })
+
+    expect(store.getState().getAgentLoops('channel-a')).toEqual([
+      expect.objectContaining({
+        runId: 'run-a',
+        status: 'error',
+        error: 'Reasonix turn failed: beeseed: status 402: {"error":"insufficient points"}',
+      }),
+    ])
+  })
 })
 
 describe('ReasonIX ask_user lifecycle', () => {

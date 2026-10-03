@@ -18,6 +18,15 @@ export function keyFromStorageRef(ref: string) {
   }
 }
 
+export function storageRefDisplayText(ref: string) {
+  const key = keyFromStorageRef(ref)
+  const segments = key.split('/')
+  const lastIndex = segments.length - 1
+  const fileName = segments[lastIndex] || '云存储文件'
+  segments[lastIndex] = fileName.match(GENERATED_PREFIX_RE)?.[1] || fileName
+  return `storage://${segments.join('/')}`
+}
+
 export function fileNameFromStorageRef(ref: string) {
   const key = keyFromStorageRef(ref)
   const base = key.split('/').filter(Boolean).pop() || '云存储文件'
@@ -129,6 +138,7 @@ interface StorageRefChipProps {
 
 export function StorageRefChip({ refText, className, onClick }: StorageRefChipProps) {
   const key = keyFromStorageRef(refText)
+  const displayText = storageRefDisplayText(refText)
   return (
     <button
       type="button"
@@ -136,7 +146,7 @@ export function StorageRefChip({ refText, className, onClick }: StorageRefChipPr
         'inline-flex max-w-full items-center gap-1.5 rounded-md border border-[#d8dde6] bg-[#f8fafc] px-2 py-0.5 align-middle text-[0.9em] font-medium text-[#333840] transition-colors hover:border-[#9297a0] hover:bg-white',
         className,
       )}
-      title={key}
+      title={displayText}
       onClick={(e) => {
         e.preventDefault()
         e.stopPropagation()
@@ -144,7 +154,7 @@ export function StorageRefChip({ refText, className, onClick }: StorageRefChipPr
       }}
     >
       <FileText className="h-3.5 w-3.5 shrink-0 text-[#254fad]" />
-      <span className="min-w-0 truncate">{fileNameFromStorageRef(refText)}</span>
+      <span className="min-w-0 break-all text-left">{displayText}</span>
     </button>
   )
 }

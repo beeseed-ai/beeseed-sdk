@@ -48,6 +48,15 @@ describe('EditableArtifactActions', () => {
     expect(html).toContain('演示文稿 · v2')
   })
 
+  it('renders a preview card without a revise action for a read-only artifact', () => {
+    const html = renderToStaticMarkup(
+      <EditableArtifactActions artifacts={[{ ...artifact, editable: false }]} onPreview={vi.fn()} onRevise={vi.fn()} />,
+    )
+
+    expect(html).toContain('aria-label="预览文件：demo.pptx"')
+    expect(html).not.toContain('修改')
+  })
+
   it('previews the exact artifact storage reference without changing revise behavior', () => {
     const { onPreview, onRevise, previewButton, reviseButton } = artifactButtons()
 

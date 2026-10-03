@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { storageRefsFromText } from './storage-ref.js'
+import { storageRefDisplayText, storageRefsFromText } from './storage-ref.js'
 
 describe('storageRefsFromText', () => {
   it('excludes Markdown code delimiters from a storage reference', () => {
@@ -24,5 +24,14 @@ describe('storageRefsFromText', () => {
     expect(storageRefsFromText('storage://report%EF%BC%88final%EF%BC%89.pdf')).toEqual([
       'storage://report%EF%BC%88final%EF%BC%89.pdf',
     ])
+  })
+
+  it('keeps the readable directory while hiding a generated object UUID from the visible path', () => {
+    expect(storageRefDisplayText('storage://%E6%AF%8F%E6%97%A5%E6%96%B0%E9%97%BB/da7d0da1-ebdd-4475-ad27-5a18efc03a40-%E6%AF%8F%E6%97%A5%E6%96%B0%E9%97%BB_20260928.md'))
+      .toBe('storage://每日新闻/每日新闻_20260928.md')
+  })
+
+  it('does not change ordinary business paths that have no generated UUID prefix', () => {
+    expect(storageRefDisplayText('storage://notes/task.md')).toBe('storage://notes/task.md')
   })
 })

@@ -1038,7 +1038,7 @@ export type WSEvent =
   | { type: 'message'; channel_id: string; message: Message }
   | { type: 'ask_user_answer_ack'; channel_id: string; agent_session_id?: string; ask_id: string; answers: Record<string, unknown> }
   | { type: 'ask_user_answer_rejected'; channel_id?: string; agent_session_id?: string; ask_id: string; error: string; error_code?: string; retryable?: boolean }
-  | { type: 'messages_cleared'; channel_id: string; deleted_count: number }
+  | { type: 'messages_cleared'; channel_id: string; hidden_count: number; hidden_through_message_id: number }
   | ({ type: 'chunk'; channel_id: string; agent_id: string; run_id?: string; content: string; turn?: number } & AgentLoopWireFields)
   | ({ type: 'message_end'; channel_id: string; agent_id: string; run_id?: string; turn?: number; message: Message } & AgentLoopWireFields)
   | ({ type: 'thinking'; channel_id: string; agent_id: string; run_id?: string; content: string } & AgentLoopWireFields)

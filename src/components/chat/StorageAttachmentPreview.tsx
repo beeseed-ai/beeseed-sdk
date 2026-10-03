@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { Archive, Code2, Download, ExternalLink, File, FileAudio, FileImage, FileSpreadsheet, FileText, FileVideo, Presentation, RotateCw, X } from 'lucide-react'
 import { cn } from '../../lib/cn.js'
 import { storageAttachmentDownloadPayload, storagePresignDownloadPayload, storagePreviewPresignPayload } from '../../lib/storage-presign.js'
-import { fileNameFromStorageRef, keyFromStorageRef } from '../../lib/storage-ref.js'
+import { fileNameFromStorageRef, keyFromStorageRef, storageRefDisplayText } from '../../lib/storage-ref.js'
 import { useBeeSeedContext } from '../../provider/BeeSeedProvider.js'
 import { MarkdownRenderer } from './MarkdownRenderer.js'
 import type { StorageObject } from '../../core/types.js'
@@ -600,6 +600,7 @@ function StorageImageAttachment({ channelId, refText }: { channelId: string; ref
   const [failed, setFailed] = useState(false)
   const [previewOpen, setPreviewOpen] = useState(false)
   const name = fileNameFromStorageRef(refText)
+  const displayText = storageRefDisplayText(refText)
 
   useEffect(() => {
     let cancelled = false
@@ -622,7 +623,7 @@ function StorageImageAttachment({ channelId, refText }: { channelId: string; ref
     <>
       <button
         type="button"
-        title={keyFromStorageRef(refText)}
+        title={displayText}
         onClick={() => setPreviewOpen(true)}
         className="group relative block max-w-full overflow-hidden rounded-md border border-[#d8dde6] bg-[#f8fafc] text-left"
       >
@@ -640,7 +641,7 @@ function StorageImageAttachment({ channelId, refText }: { channelId: string; ref
         )}
         <div className="flex items-center gap-1.5 border-t border-[#e5e7eb] bg-white/95 px-2 py-1.5 text-xs text-[#333840]">
           <FileImage className="h-3.5 w-3.5 shrink-0 text-[#2563eb]" />
-          <span className="min-w-0 truncate">{name}</span>
+          <span className="min-w-0 break-all">{displayText}</span>
           <ExternalLink className="ml-auto h-3.5 w-3.5 shrink-0 text-[#888] opacity-0 transition-opacity group-hover:opacity-100" />
         </div>
       </button>
@@ -651,7 +652,7 @@ function StorageImageAttachment({ channelId, refText }: { channelId: string; ref
 
 function StorageFileAttachment({ channelId, refText }: { channelId: string; refText: string }) {
   const [previewOpen, setPreviewOpen] = useState(false)
-  const name = fileNameFromStorageRef(refText)
+  const displayText = storageRefDisplayText(refText)
   const kind = storageFileKindForRef(refText)
   const ext = extOf(refText)
   const Icon = storageFileIconForKind(kind)
@@ -660,7 +661,7 @@ function StorageFileAttachment({ channelId, refText }: { channelId: string; refT
     <>
       <button
         type="button"
-        title={keyFromStorageRef(refText)}
+        title={displayText}
         onClick={() => setPreviewOpen(true)}
         className={cn(
           'flex max-w-full items-center gap-2 rounded-md border border-[#d8dde6] bg-[#f8fafc] px-2.5 py-2 text-left transition-colors hover:border-[#aeb6c2] hover:bg-white',
@@ -670,7 +671,7 @@ function StorageFileAttachment({ channelId, refText }: { channelId: string; refT
           <Icon className="h-4 w-4" />
         </span>
         <span className="min-w-0 flex-1">
-          <span className="block truncate text-sm font-medium text-[#333840]">{name}</span>
+          <span className="block break-all text-sm font-medium text-[#333840]">{displayText}</span>
           <span className="block text-[10px] text-[#777169]">{storageFileCanPreview(kind) ? storageFileLabel(kind, ext) : `${storageFileLabel(kind, ext)} · 无法预览`}</span>
         </span>
         <ExternalLink className="h-4 w-4 shrink-0 text-[#888]" />

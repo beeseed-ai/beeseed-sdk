@@ -37,4 +37,28 @@ describe('Agent 正式产物交付刷新云存储', () => {
     if (count) expect((events[0] as CustomEvent).detail.channelId).toBe('channel-a')
     expect(store.getState().messages.get('channel-a')).toHaveLength(1)
   })
+
+  it.each([
+    ['携带文件引用的共享广播', 'agent', { source: 'scheduled_broadcast' }, '已保存：storage://每日新闻/id-每日新闻_20260927.md', 1],
+    ['不含文件引用的共享广播', 'agent', { source: 'scheduled_broadcast' }, '今日无更新', 0],
+    ['普通 Agent 文件文字', 'agent', {}, '参考 storage://每日新闻/id-每日新闻_20260927.md', 0],
+    ['用户伪造共享广播元数据', 'user', { source: 'scheduled_broadcast' }, 'storage://每日新闻/id-每日新闻_20260927.md', 0],
+  ] as const)('%s', (_name, senderType, metadata, content, count) => {
+    const dispatch = vi.spyOn(window, 'dispatchEvent')
+    const store = createMessagesStore({
+      api: {} as KyInstance, getCurrentChannelId: () => 'channel-a',
+      getCurrentUserId: () => 'user-a', sendWsCommand: vi.fn(),
+    })
+    const message: Message = {
+      id: 2, channel_id: 'channel-a', sender_type: senderType,
+      sender_agent_id: senderType === 'agent' ? 'agent-a' : undefined,
+      sender_user_id: senderType === 'user' ? 'user-a' : undefined,
+      content, msg_type: 'text', metadata,
+      created_at: '2026-09-28T12:00:00Z',
+    }
+    store.getState().handleEvent({ type: 'message', channel_id: 'channel-a', message })
+    const events = dispatch.mock.calls.map(([event]) => event).filter(event => event.type === 'beeseed:storage-mutated')
+    expect(events).toHaveLength(count)
+    if (count) expect((events[0] as CustomEvent).detail).toEqual({ channelId: 'channel-a', toolName: 'scheduled_broadcast' })
+  })
 })

@@ -5,7 +5,7 @@ import remarkBreaks from 'remark-breaks'
 import { signedFileLinksRemark } from '../../lib/signed-file-links.js'
 import { isLikelyFilePath } from '../../lib/file-path-utils.js'
 import { cn } from '../../lib/cn.js'
-import { StorageRefChip, isLikelyStoragePathRef, storageInlineRefMatches, storageRefFromKey } from '../../lib/storage-ref.js'
+import { StorageRefChip, isLikelyStoragePathRef, storageInlineRefMatches, storageRefDisplayText, storageRefFromKey } from '../../lib/storage-ref.js'
 import {
   markdownImageContext,
   markdownImageRendererContext,
@@ -57,7 +57,7 @@ function splitInlineTokens(
         <StorageRefChip key={`storage-${idx}`} refText={storageMatch.refText} onClick={onStorageRefClick} />,
       )
     } else {
-      storageParts.push(storageMatch.rawText)
+      storageParts.push(storageRefDisplayText(storageMatch.refText))
     }
     lastIndex = idx + storageMatch.length
   }
@@ -161,6 +161,7 @@ export const MarkdownRenderer = memo(function MarkdownRenderer({
               if (!storageRefAvailable || storageRefAvailable(text)) {
                 return <StorageRefChip refText={text} onClick={onStorageRefClick} />
               }
+              return <code className={INLINE_CODE_CLASS}>{storageRefDisplayText(text)}</code>
             }
             if (isLikelyStoragePathRef(text)) {
               const refText = storageRefFromKey(text)
@@ -192,7 +193,7 @@ export const MarkdownRenderer = memo(function MarkdownRenderer({
               if (!storageRefAvailable || storageRefAvailable(props.href)) {
                 return <StorageRefChip refText={props.href} onClick={onStorageRefClick} />
               }
-              return <>{props.children}</>
+              return <>{storageRefDisplayText(props.href)}</>
             }
             if (props.href && isLikelyStoragePathRef(props.href)) {
               const refText = storageRefFromKey(props.href)

@@ -38,6 +38,16 @@ function sameText(a?: string, b?: string): boolean {
   return oneLine(a) !== '' && oneLine(a) === oneLine(b)
 }
 
+const INSUFFICIENT_POINTS_MESSAGE = '当前可用积分不足，请充值或等待次日积分补齐后再试。'
+
+function userFacingAgentError(error?: string): string | undefined {
+  if (!error) return undefined
+  if (/\bstatus(?:\s+code)?\s*[:=]?\s*402\b/i.test(error) || /\binsufficient[\s_-]+points?\b/i.test(error)) {
+    return INSUFFICIENT_POINTS_MESSAGE
+  }
+  return error
+}
+
 function truncate(value: unknown, maxLen: number): string {
   if (typeof value === 'string') {
     const compact = displayFileLinks(value).replace(/\n/g, '↵')
@@ -390,8 +400,8 @@ function AssistantText({
     return refs
   }, [artifacts, content, channelId])
   const { isExistingRef } = useExistingStorageRefs(channelId, storageRefs)
-  const editableArtifacts = useMemo(
-    () => (artifacts ?? []).filter((artifact) => artifact.editable),
+  const messageArtifacts = useMemo(
+    () => artifacts ?? [],
     [artifacts],
   )
 
@@ -412,9 +422,9 @@ function AssistantText({
           {streaming && (
             <span className="ml-0.5 inline-block h-4 w-1.5 animate-pulse bg-[#181d26]/50 align-text-bottom" />
           )}
-          {editableArtifacts.length > 0 && (
+          {messageArtifacts.length > 0 && (
             <EditableArtifactActions
-              artifacts={editableArtifacts}
+              artifacts={messageArtifacts}
               onPreview={(artifact) => setStoragePreviewTarget({ refText: artifact.storageRef, objectId: artifact.objectId })}
               onRevise={(artifact) => onReviseArtifact?.(artifact)}
             />
@@ -523,7 +533,7 @@ export function AgentRunTranscript({
   const finalTurnNumber = finalAnswer && loop.status === 'completed'
     ? loop.turns[loop.turns.length - 1]?.turnNumber
     : undefined
-  const terminalError = displayError ?? loop.error
+  const terminalError = userFacingAgentError(displayError ?? loop.error)
   const hasFinalAnswer = loop.status === 'completed' && finalAnswer.trim() !== ''
   const orderedEvents = events?.length ? events : loop.events?.length ? loop.events : undefined
   const [processOpen, setProcessOpen] = useState(false)
