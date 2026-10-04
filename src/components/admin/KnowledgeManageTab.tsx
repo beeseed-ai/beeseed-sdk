@@ -1617,7 +1617,7 @@ function DetailPanel({
         <InfoRow label="大小" value={formatBytes(source.file_size)} />
         {source.file_key && (
           <div>
-            <div className="mb-1 text-xs text-muted-foreground">TOS 路径</div>
+            <div className="mb-1 text-xs text-muted-foreground">对象存储路径</div>
             <div className="break-all rounded-md bg-slate-50 p-2 font-mono text-xs text-slate-700">{source.file_key}</div>
           </div>
         )}
