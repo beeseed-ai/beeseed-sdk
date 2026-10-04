@@ -285,13 +285,14 @@ function buildTimelineGroups(messages: ChatMessage[], loops: AgentLoopState[]): 
   return groups
 }
 
-function AgentLoopBlock({ loop, members, finalMessage, events, showTerminal = true, onStop, onReviseArtifact, detailsLoading, onLoadDetails }: {
+function AgentLoopBlock({ loop, members, finalMessage, events, showTerminal = true, onStop, onQuote, onReviseArtifact, detailsLoading, onLoadDetails }: {
   loop: AgentLoopState
   members?: ChannelMemberInfo[]
   finalMessage?: ChatMessage
   events?: AgentLoopEventItem[]
   showTerminal?: boolean
   onStop?: (agentId: string, reason?: string, runId?: string) => void
+  onQuote?: (message: ChatMessage) => void
   onReviseArtifact?: (artifact: ChatArtifact, message: ChatMessage) => void
   detailsLoading?: boolean
   onLoadDetails?: () => Promise<void> | void
@@ -358,6 +359,7 @@ function AgentLoopBlock({ loop, members, finalMessage, events, showTerminal = tr
           showTerminal={showTerminal}
           processLoading={detailsLoading}
           onProcessOpen={onLoadDetails}
+          onQuote={onQuote}
           onReviseArtifact={onReviseArtifact}
         />
       </div>
@@ -599,6 +601,7 @@ export function MessageList({
                       events={group.events}
                       showTerminal={!!group.finalMessage || (isLastLoopGroup && !hasSeparateFinalMessage)}
                       onStop={onStopAgent}
+                      onQuote={onQuote}
                       onReviseArtifact={onReviseArtifact}
                       detailsLoading={group.loop.runId ? loadingAgentRunDetails?.has(`${group.loop.channelId}:${group.loop.agentId}:${group.loop.runId}`) : false}
                       onLoadDetails={group.loop.runId && onLoadAgentRunDetails

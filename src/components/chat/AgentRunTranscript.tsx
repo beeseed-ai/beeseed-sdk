@@ -1,5 +1,5 @@
 import { useMemo, useState, type ReactNode } from 'react'
-import { AlertCircle, Check, ChevronRight, Circle, Clock3, Sparkles, Wrench } from 'lucide-react'
+import { AlertCircle, Check, ChevronRight, Circle, Clock3, Copy, CornerDownLeft, Sparkles, Wrench } from 'lucide-react'
 import type { AgentLoopState, AgentLoopToolCall, AgentLoopSkillUse, ChatArtifact, ChatMessage, AgentLoopEventItem } from '../../core/types.js'
 import { cn } from '../../lib/cn.js'
 import { displayFileLinks } from '../../lib/signed-file-links.js'
@@ -22,6 +22,7 @@ interface Props {
   terminalAction?: ReactNode
   processLoading?: boolean
   onProcessOpen?: () => void
+  onQuote?: (message: ChatMessage) => void
   onReviseArtifact?: (artifact: ChatArtifact, message: ChatMessage) => void
   className?: string
 }
@@ -381,7 +382,9 @@ function AssistantText({
   artifacts,
   streaming = false,
   final = false,
+  finalMessage,
   actualCostPoints,
+  onQuote,
   onReviseArtifact,
 }: {
   channelId: string
@@ -389,25 +392,38 @@ function AssistantText({
   artifacts?: ChatArtifact[]
   streaming?: boolean
   final?: boolean
+  finalMessage?: ChatMessage
   actualCostPoints?: number
+  onQuote?: (message: ChatMessage) => void
   onReviseArtifact?: (artifact: ChatArtifact) => void
 }) {
+  const [copied, setCopied] = useState(false)
   const [storagePreviewTarget, setStoragePreviewTarget] = useState<{ refText: string; objectId?: string } | null>(null)
+  const publicContent = displayFileLinks(content, channelId)
   const storageRefs = useMemo(() => {
-    const refs = storageRefsFromText(displayFileLinks(content, channelId))
+    const refs = storageRefsFromText(publicContent)
     for (const artifact of artifacts ?? []) {
       if (artifact.storageRef.startsWith('storage://') && !refs.includes(artifact.storageRef)) {
         refs.push(artifact.storageRef)
       }
     }
     return refs
-  }, [artifacts, content, channelId])
+  }, [artifacts, publicContent])
   const { isExistingRef } = useExistingStorageRefs(channelId, storageRefs)
   const messageArtifacts = useMemo(
     () => artifacts ?? [],
     [artifacts],
   )
   const costLabel = final ? formatActualCostPoints(actualCostPoints) : undefined
+  const handleCopy = () => {
+    void navigator.clipboard.writeText(publicContent)
+    setCopied(true)
+    setTimeout(() => setCopied(false), 2000)
+  }
+  const handleQuote = () => {
+    if (!finalMessage) return
+    onQuote?.(publicContent === finalMessage.content ? finalMessage : { ...finalMessage, content: publicContent })
+  }
 
   return (
     <>
@@ -418,7 +434,7 @@ function AssistantText({
         <div className="text-sm leading-6 text-[#181d26]">
           <MarkdownRenderer
             channelId={channelId}
-            content={content}
+            content={publicContent}
             className="prose prose-sm max-w-none break-words [&_p]:my-1 [&_p:first-child]:mt-0 [&_p:last-child]:mb-0 [&_ul]:my-1 [&_ol]:my-1 [&_li]:my-0 [&_h1]:text-base [&_h2]:text-base [&_h3]:text-sm [&_h1]:font-semibold [&_h2]:font-semibold [&_h3]:font-semibold [&_code.inline-code]:rounded [&_code.inline-code]:bg-[#e8f5f8] [&_code.inline-code]:px-1 [&_code.inline-code]:py-0.5 [&_code.inline-code]:text-[#0f5267]"
             onStorageRefClick={(key) => setStoragePreviewTarget({ refText: storageRefFromKey(key) })}
             storageRefAvailable={isExistingRef}
@@ -433,8 +449,30 @@ function AssistantText({
               onRevise={(artifact) => onReviseArtifact?.(artifact)}
             />
           )}
-          {costLabel !== undefined && (
-            <div className="mt-1 text-[10px] leading-4 text-[#999]">消耗 {costLabel} 积分</div>
+          {final && (
+            <div className="mt-1 flex items-center gap-2 text-[10px] leading-4 text-[#999]">
+              <button
+                type="button"
+                aria-label={copied ? '已复制回复' : '复制回复'}
+                onClick={handleCopy}
+                className="flex items-center gap-1 transition-colors hover:text-[#555]"
+              >
+                {copied ? <Check className="size-3" /> : <Copy className="size-3" />}
+                {copied ? '已复制' : '复制'}
+              </button>
+              {finalMessage && onQuote && (
+                <button
+                  type="button"
+                  aria-label="引用回复"
+                  onClick={handleQuote}
+                  className="flex items-center gap-1 transition-colors hover:text-[#555]"
+                >
+                  <CornerDownLeft className="size-3" />
+                  引用
+                </button>
+              )}
+              {costLabel !== undefined && <span>· 消耗 {costLabel} 积分</span>}
+            </div>
           )}
         </div>
       </TranscriptLine>
@@ -532,6 +570,7 @@ export function AgentRunTranscript({
   terminalAction,
   processLoading = false,
   onProcessOpen,
+  onQuote,
   onReviseArtifact,
   className,
 }: Props) {
@@ -633,7 +672,9 @@ export function AgentRunTranscript({
           content={finalAnswer}
           artifacts={finalMessage?.artifacts}
           final
+          finalMessage={finalMessage}
           actualCostPoints={loop.actualCostPoints}
+          onQuote={onQuote}
           onReviseArtifact={finalMessage && onReviseArtifact
             ? (artifact) => onReviseArtifact(artifact, finalMessage)
             : undefined}

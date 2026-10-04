@@ -57,6 +57,34 @@ describe('signed file links across chat controls', () => {
     expect(host.textContent).toContain('· 消耗 243.95 积分')
   })
 
+  it('keeps copy and quote actions beside settled points for an Agent Run final answer', async () => {
+    const writeText = vi.fn().mockResolvedValue(undefined)
+    Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText } })
+    const quote = vi.fn()
+    const finalMessage: ChatMessage = {
+      role: 'assistant', content: raw, timestamp: 2000, msgId: 42,
+      isAgent: true, senderType: 'agent', senderId: 'assistant', agentRunId: 'run-actions',
+    }
+    const loop: AgentLoopState = {
+      runId: 'run-actions', historySource: 'runtime', agentId: 'assistant', channelId: 'channel-a',
+      status: 'completed', currentTurn: 1, startedAt: 1000, completedAt: 2000,
+      finalContent: raw, actualCostPoints: 0.48,
+      turns: [{ turnNumber: 1, toolCalls: [], skillUses: [], status: 'completed', startedAt: 1000, completedAt: 2000 }],
+    }
+
+    await render(<AgentRunTranscript loop={loop} finalMessage={finalMessage} onQuote={quote} />)
+
+    expectPrivateTextHidden()
+    expect(host.textContent).toContain('复制')
+    expect(host.textContent).toContain('引用')
+    expect(host.textContent).toContain('· 消耗 0.48 积分')
+    await act(() => host.querySelector<HTMLButtonElement>('button[aria-label="复制回复"]')!.click())
+    expect(writeText).toHaveBeenCalledWith('storage://docs/report.pdf')
+    await act(() => host.querySelector<HTMLButtonElement>('button[aria-label="引用回复"]')!.click())
+    expect(quote).toHaveBeenCalledWith(expect.objectContaining({ content: 'storage://docs/report.pdf' }))
+    expect(finalMessage.content).toBe(raw)
+  })
+
   for (const eventMode of [false, true]) it(`hides signed text in expanded ${eventMode ? 'event' : 'turn'} records`, async () => {
     const tool: AgentLoopToolCall = { id: 'call-a', name: 'storage_presign_download', status: 'success', startedAt: 1000, output: raw, args: { nested: { download: raw } } }
     const loop: AgentLoopState = {
