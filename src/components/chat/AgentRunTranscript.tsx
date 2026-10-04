@@ -10,6 +10,7 @@ import { RunStatusRow } from './RunStatusRow.js'
 import { StoragePreviewDialog, useExistingStorageRefs } from './StorageAttachmentPreview.js'
 import { SkillIcon } from '../skills/SkillIcon.js'
 import { EditableArtifactActions } from './MessageBubble.js'
+import { formatActualCostPoints } from '../../lib/points.js'
 
 interface Props {
   loop: AgentLoopState
@@ -380,6 +381,7 @@ function AssistantText({
   artifacts,
   streaming = false,
   final = false,
+  actualCostPoints,
   onReviseArtifact,
 }: {
   channelId: string
@@ -387,6 +389,7 @@ function AssistantText({
   artifacts?: ChatArtifact[]
   streaming?: boolean
   final?: boolean
+  actualCostPoints?: number
   onReviseArtifact?: (artifact: ChatArtifact) => void
 }) {
   const [storagePreviewTarget, setStoragePreviewTarget] = useState<{ refText: string; objectId?: string } | null>(null)
@@ -404,6 +407,7 @@ function AssistantText({
     () => artifacts ?? [],
     [artifacts],
   )
+  const costLabel = final ? formatActualCostPoints(actualCostPoints) : undefined
 
   return (
     <>
@@ -428,6 +432,9 @@ function AssistantText({
               onPreview={(artifact) => setStoragePreviewTarget({ refText: artifact.storageRef, objectId: artifact.objectId })}
               onRevise={(artifact) => onReviseArtifact?.(artifact)}
             />
+          )}
+          {costLabel !== undefined && (
+            <div className="mt-1 text-[10px] leading-4 text-[#999]">消耗 {costLabel} 积分</div>
           )}
         </div>
       </TranscriptLine>
@@ -626,6 +633,7 @@ export function AgentRunTranscript({
           content={finalAnswer}
           artifacts={finalMessage?.artifacts}
           final
+          actualCostPoints={loop.actualCostPoints}
           onReviseArtifact={finalMessage && onReviseArtifact
             ? (artifact) => onReviseArtifact(artifact, finalMessage)
             : undefined}

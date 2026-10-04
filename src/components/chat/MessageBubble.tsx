@@ -10,6 +10,7 @@ import { StorageAttachmentPreview, StoragePreviewDialog, useExistingStorageRefs 
 import { SkillIcon } from '../skills/SkillIcon.js'
 import { formatChatTimestamp } from '../../lib/format.js'
 import { displayFileLinks } from '../../lib/signed-file-links.js'
+import { formatActualCostPoints } from '../../lib/points.js'
 
 interface Props {
   message: ChatMessage
@@ -22,6 +23,7 @@ interface Props {
   onSubmitAnswer?: (askId: string, answers: Record<string, unknown>) => void
   onOpenWorkflowRun?: (runId: string) => void
   onReviseArtifact?: (artifact: ChatArtifact, message: ChatMessage) => void
+  actualCostPoints?: number
   className?: string
 }
 
@@ -73,7 +75,7 @@ function compactTaskSchedulerMessage(content: string): string {
 }
 
 export function MessageBubble({
-  message, channelId, currentUserId, onQuote, onMentionClick, onScrollToMessage, onSubmitAnswer, onOpenWorkflowRun, onReviseArtifact, className,
+  message, channelId, currentUserId, onQuote, onMentionClick, onScrollToMessage, onSubmitAnswer, onOpenWorkflowRun, onReviseArtifact, actualCostPoints, className,
 }: Props) {
   const [copied, setCopied] = useState(false)
   const [previewImage, setPreviewImage] = useState<string | null>(null)
@@ -103,6 +105,7 @@ export function MessageBubble({
 
   const timeStr = formatChatTimestamp(message.timestamp)
   const senderLabel = message.senderName || (message.isAgent ? 'Agent' : '用户')
+  const costLabel = formatActualCostPoints(actualCostPoints)
 
   // Ask-User card
   if (message.askUserData) {
@@ -332,6 +335,9 @@ export function MessageBubble({
                 <CornerDownLeft className="w-3 h-3" />
                 引用
               </button>
+            )}
+            {costLabel !== undefined && (
+              <span className="text-[10px] text-[#999]">· 消耗 {costLabel} 积分</span>
             )}
           </div>
         )}

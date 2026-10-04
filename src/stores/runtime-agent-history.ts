@@ -12,6 +12,7 @@ export interface RuntimeRunSummary {
   completed_at?: string
   failure_detail?: string
   output_text?: string
+  actual_cost_points?: number | null
 }
 
 export interface RuntimeRunEvent {
@@ -35,7 +36,7 @@ export interface RuntimeRunDetails {
 
 export function runtimeHistoryMessages(messages: Message[]): Message[] {
   return messages.filter(message => message.sender_type === 'agent'
-    && ['reasonix_runtime', 'agent_runtime'].includes(String(message.metadata?.source))
+    && ['reasonix_runtime', 'agent_runtime', 'cloudflare_think'].includes(String(message.metadata?.source))
     && typeof message.metadata?.run_id === 'string' && message.metadata.run_id.length > 0)
 }
 
@@ -63,11 +64,17 @@ export function runtimeRunLoop(run: RuntimeRunSummary, finalContent?: string, pr
     completedAt = previous.completedAt
   }
   const terminal = !['running', 'waiting_for_user'].includes(status)
+  const actualCostPoints = typeof run.actual_cost_points === 'number'
+    && Number.isFinite(run.actual_cost_points)
+    && run.actual_cost_points >= 0
+    ? run.actual_cost_points
+    : previous?.actualCostPoints
   return {
     ...previous,
     runId: run.run_id, channelId: run.channel_id, agentId: run.agent_id, historySource: 'runtime',
     startedAt, completedAt, status, currentTurn: 1,
     finalContent: finalContent ?? run.output_text ?? previous?.finalContent,
+    actualCostPoints,
     error: status === 'error' || status === 'stopped' ? run.failure_detail : undefined,
     turns: [{
       ...previous?.turns[0], turnNumber: 1, startedAt, completedAt,

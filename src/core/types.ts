@@ -428,6 +428,7 @@ export interface AgentLoopState {
   startedAt: number
   completedAt?: number
   finalContent?: string
+  actualCostPoints?: number
   error?: string
   todos?: AgentTodoItem[]
   events?: AgentLoopEventItem[]
@@ -1052,7 +1053,7 @@ export type WSEvent =
   | ({ type: 'agent_turn_start'; channel_id: string; agent_id: string; run_id?: string; turn: number } & AgentLoopWireFields)
   | ({ type: 'agent_thinking'; channel_id: string; agent_id: string; run_id?: string; turn: number; content?: string } & AgentLoopWireFields)
   | ({ type: 'agent_progress'; channel_id: string; agent_id: string; run_id?: string; turn: number; summary: string } & AgentLoopWireFields)
-  | ({ type: 'agent_run_status'; channel_id: string; agent_id: string; agent_session_id?: string; run_id: string; status: string; reason?: string } & AgentLoopWireFields)
+  | ({ type: 'agent_run_status'; channel_id: string; agent_id: string; agent_session_id?: string; run_id: string; status: string; reason?: string; actual_cost_points?: number } & AgentLoopWireFields)
   | ({ type: 'agent_todo_snapshot'; channel_id: string; agent_id: string; run_id?: string; turn?: number; todo?: AgentTodoItem; todos: AgentTodoItem[] } & AgentLoopWireFields)
   | ({ type: 'agent_todo_updated'; channel_id: string; agent_id: string; run_id?: string; turn?: number; todo?: AgentTodoItem; todos?: AgentTodoItem[] } & AgentLoopWireFields)
   | ({ type: 'agent_waiting_user'; channel_id: string; agent_id: string; run_id?: string; turn: number; summary: string } & AgentLoopWireFields)

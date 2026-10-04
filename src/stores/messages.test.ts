@@ -273,6 +273,21 @@ describe('ReasonIX run typing status', () => {
       }),
     ])
   })
+
+  it('keeps the authoritative actual cost from the live terminal status', () => {
+    const store = createStore()
+    store.getState().handleEvent({
+      type: 'agent_ack', channel_id: 'channel-a', agent_id: 'agent-a', run_id: 'run-a', turn: 1,
+    })
+    store.getState().handleEvent({
+      type: 'agent_run_status', channel_id: 'channel-a', agent_id: 'agent-a', run_id: 'run-a',
+      status: 'completed', actual_cost_points: 243.9456,
+    })
+
+    expect(store.getState().getAgentLoops('channel-a')[0]).toMatchObject({
+      status: 'completed', actualCostPoints: 243.9456,
+    })
+  })
 })
 
 describe('ReasonIX ask_user lifecycle', () => {

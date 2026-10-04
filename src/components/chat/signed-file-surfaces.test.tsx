@@ -48,6 +48,15 @@ describe('signed file links across chat controls', () => {
     expect(message.content).toBe(raw)
   })
 
+  it('shows settled points after the assistant message actions', async () => {
+    const message: ChatMessage = { role: 'assistant', content: '处理完成', timestamp: 1000, isAgent: true }
+    await render(<MessageBubble message={message} isOwn={false} channelId="channel-a" onQuote={vi.fn()} actualCostPoints={243.9456} />)
+
+    expect(host.textContent).toContain('复制')
+    expect(host.textContent).toContain('引用')
+    expect(host.textContent).toContain('· 消耗 243.95 积分')
+  })
+
   for (const eventMode of [false, true]) it(`hides signed text in expanded ${eventMode ? 'event' : 'turn'} records`, async () => {
     const tool: AgentLoopToolCall = { id: 'call-a', name: 'storage_presign_download', status: 'success', startedAt: 1000, output: raw, args: { nested: { download: raw } } }
     const loop: AgentLoopState = {

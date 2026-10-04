@@ -85,6 +85,19 @@ describe('AgentRunTranscript', () => {
     expect(html.match(/唯一最终结果/g)).toHaveLength(1)
   })
 
+  it('shows the exact settled Run cost rounded to two display decimals', () => {
+    const loop: AgentLoopState = {
+      runId: 'cost-run', historySource: 'runtime', agentId: 'assistant', channelId: 'channel-1',
+      status: 'completed', currentTurn: 1, startedAt: 1000, completedAt: 2000,
+      finalContent: '本次处理完成。', actualCostPoints: 243.9456,
+      turns: [{ turnNumber: 1, toolCalls: [], skillUses: [], status: 'completed', startedAt: 1000, completedAt: 2000 }],
+    }
+
+    const html = renderToStaticMarkup(<AgentRunTranscript loop={loop} />)
+
+    expect(html).toContain('消耗 243.95 积分')
+  })
+
   it('renders final message artifacts without requiring a history refresh', () => {
     const loop: AgentLoopState = {
       agentId: 'content-writer',

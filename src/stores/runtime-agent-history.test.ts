@@ -57,7 +57,8 @@ describe('runtime history adapter',()=>{
     expect(loop.events?.[0].summary).toBe('Agent 正在思考…')
   })
   it('only selects messages with runtime history references',()=>{
-    expect(runtimeHistoryMessages([message,{...message,metadata:{source:'agent_loop',run_id:'old-run'}},{...message,metadata:{source:'reasonix_runtime'}},{...message,sender_type:'user'}])).toEqual([message])
+    const cloudflareMessage={...message,id:43,metadata:{source:'cloudflare_think',run_id:'run-cloudflare'}}
+    expect(runtimeHistoryMessages([message,cloudflareMessage,{...message,metadata:{source:'agent_loop',run_id:'old-run'}},{...message,metadata:{source:'reasonix_runtime'}},{...message,sender_type:'user'}])).toEqual([message,cloudflareMessage])
   })
   it('does not reopen a completed run when a summary response arrives late',()=>{
     const completed=runtimeRunLoop(run,message.content)
@@ -69,6 +70,11 @@ describe('runtime history adapter',()=>{
     const loop=runtimeRunLoop({...run,queued_at:queuedAt})
     expect(loop.startedAt).toBe(Date.parse(queuedAt))
     expect(loop.completedAt! - loop.startedAt).toBe(70_000)
+  })
+  it('keeps the Hive-authoritative actual cost separate from the Run budget',()=>{
+    const loop=runtimeRunLoop({...run,actual_cost_points:243.9456})
+    expect(loop.actualCostPoints).toBe(243.9456)
+    expect(runtimeRunLoop({...run,actual_cost_points:null},undefined,loop).actualCostPoints).toBe(243.9456)
   })
   it('restores every non-completed runtime status after refresh',()=>{
     for (const status of ['queued','starting','running','waiting_tool','waiting_user','waiting_external','canceling','failed','timed_out']) {

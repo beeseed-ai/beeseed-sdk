@@ -2407,6 +2407,11 @@ export function createMessagesStore(config: MessagesStoreConfig) {
                 ...existing,
                 status: nextStatus,
                 error: nextStatus === 'error' && event.reason ? event.reason : existing.error,
+                actualCostPoints: typeof event.actual_cost_points === 'number'
+                  && Number.isFinite(event.actual_cost_points)
+                  && event.actual_cost_points >= 0
+                  ? event.actual_cost_points
+                  : existing.actualCostPoints,
                 completedAt: nextStatus === 'running' ? undefined : eventTimestamp,
               })
               set({ agentLoops: loops })

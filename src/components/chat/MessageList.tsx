@@ -609,6 +609,7 @@ export function MessageList({
                 )
               }
               const item = group.message
+              const messageLoop = matchingFinalLoop(item, visibleLoops)
               return (
                 <markdownImageContext.Provider
                   key={item.msgId ?? `m-${i}`}
@@ -625,6 +626,7 @@ export function MessageList({
                     onSubmitAnswer={onSubmitAnswer}
                     onOpenWorkflowRun={onOpenWorkflowRun}
                     onReviseArtifact={onReviseArtifact}
+                    actualCostPoints={messageLoop?.actualCostPoints}
                   />
                 </markdownImageContext.Provider>
               )
