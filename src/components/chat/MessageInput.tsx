@@ -508,7 +508,7 @@ export function MessageInput({
       }
 
       if (mentionOpen) {
-        const count = getFilteredCount(members, mentionQuery)
+        const count = getFilteredCount(members, mentionQuery, user?.id)
         if (e.key === 'ArrowDown') {
           e.preventDefault()
           setMentionIndex((i) => (i + 1) % Math.max(count, 1))
@@ -521,7 +521,7 @@ export function MessageInput({
         }
         if (e.key === 'Enter' || e.key === 'Tab') {
           e.preventDefault()
-          const member = getFilteredMember(members, mentionQuery, mentionIndex)
+          const member = getFilteredMember(members, mentionQuery, mentionIndex, user?.id)
           if (member) insertMention(member)
           return
         }
@@ -550,7 +550,7 @@ export function MessageInput({
       choosePendingAgent, chooseSkill, closeSkillMenu,
       workflowMenuOpen, closeWorkflowMenu,
       quickQuestionMenuOpen, closeQuickQuestionMenu,
-      mentionOpen, mentionQuery, mentionIndex, members, handleSend, insertMention, selectedSkills.length,
+      mentionOpen, mentionQuery, mentionIndex, members, user?.id, handleSend, insertMention, selectedSkills.length,
     ],
   )
 
@@ -745,6 +745,7 @@ export function MessageInput({
         {mentionOpen && members.length > 0 && (
           <MentionMenu
             members={members}
+            currentUserId={user?.id}
             query={mentionQuery}
             selectedIndex={mentionIndex}
             onSelect={insertMention}

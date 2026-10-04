@@ -5,33 +5,35 @@ import { Avatar, AvatarFallback, AvatarImage } from '../ui/avatar.js'
 
 interface Props {
   members: ChannelMemberInfo[]
+  currentUserId?: string
   query: string
   selectedIndex: number
   onSelect: (member: ChannelMemberInfo) => void
   onClose: () => void
 }
 
-function filterMembers(members: ChannelMemberInfo[], query: string): ChannelMemberInfo[] {
+function filterMembers(members: ChannelMemberInfo[], query: string, currentUserId?: string): ChannelMemberInfo[] {
   const q = query.toLowerCase()
   return members.filter((m) => {
+    if (currentUserId && m.member_type === 'user' && m.user_id === currentUserId) return false
     const name = m.display_name || m.nickname || m.agent_id || m.user_id || ''
     return name.toLowerCase().includes(q) || (m.chinese_name?.toLowerCase().includes(q) ?? false)
   })
 }
 
-export function getFilteredCount(members: ChannelMemberInfo[], query: string): number {
-  return filterMembers(members, query).length
+export function getFilteredCount(members: ChannelMemberInfo[], query: string, currentUserId?: string): number {
+  return filterMembers(members, query, currentUserId).length
 }
 
-export function getFilteredMember(members: ChannelMemberInfo[], query: string, index: number): ChannelMemberInfo | undefined {
-  return filterMembers(members, query)[index]
+export function getFilteredMember(members: ChannelMemberInfo[], query: string, index: number, currentUserId?: string): ChannelMemberInfo | undefined {
+  return filterMembers(members, query, currentUserId)[index]
 }
 
-export function MentionMenu({ members, query, selectedIndex, onSelect, onClose }: Props) {
+export function MentionMenu({ members, currentUserId, query, selectedIndex, onSelect, onClose }: Props) {
   const menuRef = useRef<HTMLDivElement>(null)
   const itemRefs = useRef<(HTMLDivElement | null)[]>([])
 
-  const filtered = filterMembers(members, query)
+  const filtered = filterMembers(members, query, currentUserId)
 
   useEffect(() => {
     itemRefs.current[selectedIndex]?.scrollIntoView({ block: 'nearest' })
