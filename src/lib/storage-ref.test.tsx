@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { storageRefDisplayText, storageRefsFromText } from './storage-ref.js'
+import { storageDirectoryDisplayName, storageRefDisplayText, storageRefsFromText } from './storage-ref.js'
 
 describe('storageRefsFromText', () => {
   it('excludes Markdown code delimiters from a storage reference', () => {
@@ -33,5 +33,13 @@ describe('storageRefsFromText', () => {
 
   it('does not change ordinary business paths that have no generated UUID prefix', () => {
     expect(storageRefDisplayText('storage://notes/task.md')).toBe('storage://notes/task.md')
+  })
+
+  it('uses understandable names for internal storage directories without changing the reference', () => {
+    const ref = 'storage://cloudflare-runtime/509c21e0-0e2c-4be9-a503-e7822f6145d6/09e56528-b2c2-5a52-b93f-42c62247492e/任天堂Switch2红蓝配色.pptx'
+    expect(storageRefDisplayText(ref)).toBe('storage://AI 生成文件/任天堂Switch2红蓝配色.pptx')
+    expect(storageDirectoryDisplayName('cloudflare-runtime/')).toBe('AI 生成文件')
+    expect(storageDirectoryDisplayName('reasonix-runtime/')).toBe('历史 AI 生成文件')
+    expect(storageDirectoryDisplayName('__chat_uploads/')).toBe('聊天附件')
   })
 })

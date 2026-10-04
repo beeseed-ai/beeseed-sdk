@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest'
 import type { KyInstance } from 'ky'
 import { createStorageStore } from './storage.js'
+import { ApiError } from '../core/errors.js'
 
 function deferred<T>() {
   let resolve!: (value: T) => void
@@ -123,5 +124,23 @@ describe('storage channel view', () => {
       expect(store.getState()).toMatchObject({ channelId: 'b', objects: [object('b.txt')], uploading: false, uploadError: null })
       expect(get).toHaveBeenCalledTimes(2)
     } finally { vi.unstubAllGlobals() }
+  })
+
+  it('shows a clear recovery message when the storage quota is exceeded', async () => {
+    const { store, get, post } = setup()
+    get.mockReturnValue({ json: async () => listing('existing.txt') })
+    post.mockReturnValue({
+      json: async () => {
+        throw new ApiError('subscription limit exceeded', 402, 'SUBSCRIPTION_LIMIT_EXCEEDED', {
+          code: 'SUBSCRIPTION_LIMIT_EXCEEDED',
+          limit_key: 'storage_bytes',
+          current: 524_000_000,
+          limit: 524_288_000,
+        })
+      },
+    })
+    await store.getState().browse('a')
+    await expect(store.getState().uploadFile('a', new File(['new'], 'new.txt'))).rejects.toThrow('云存储空间不足')
+    expect(store.getState().uploadError).toBe('云存储空间不足，无法上传此文件。当前已使用 499.7 MB / 500 MB。请删除不需要的文件后重试，或升级套餐获得更多空间。')
   })
 })

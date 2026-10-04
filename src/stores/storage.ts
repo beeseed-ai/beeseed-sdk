@@ -266,13 +266,10 @@ function storageUploadErrorMessage(err: unknown) {
     const code = typeof err.details?.code === 'string' ? err.details.code : err.code
     const limitKey = typeof err.details?.limit_key === 'string' ? err.details.limit_key : ''
     if (err.status === 402 && code === 'SUBSCRIPTION_LIMIT_EXCEEDED' && limitKey === 'storage_bytes') {
-      const planName = typeof err.details?.plan_name === 'string' && err.details.plan_name.trim()
-        ? err.details.plan_name.trim()
-        : '当前套餐'
       const current = typeof err.details?.current === 'number' ? err.details.current : null
       const limit = typeof err.details?.limit === 'number' ? err.details.limit : null
-      const usageText = current !== null && limit !== null ? `当前 ${formatBytes(current)} / ${formatBytes(limit)}，` : ''
-      return `存储容量已达${planName}上限，${usageText}暂时不能继续上传文件。`
+      const usageText = current !== null && limit !== null ? `当前已使用 ${formatBytes(current)} / ${formatBytes(limit)}。` : ''
+      return `云存储空间不足，无法上传此文件。${usageText}请删除不需要的文件后重试，或升级套餐获得更多空间。`
     }
     if (err.status === 402 && code === 'SUBSCRIPTION_REQUIRED') {
       return '当前套餐暂不支持上传文件，请开通套餐后继续。'

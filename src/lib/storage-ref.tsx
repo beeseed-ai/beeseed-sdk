@@ -4,6 +4,12 @@ import { cn } from './cn.js'
 export const STORAGE_REF_RE = /storage:\/\/[^\s`)\]}>（），。；：！？,;:!?]+/g
 const STORAGE_PATH_RE = /(^|[\s`([（「『【<])((?:[^\s`)\]}>，。；：！？,;!?]+\/)+[^\s`)\]}>，。；：！？,;!?]+\.(?:md|markdown|txt|pdf|doc|docx|xls|xlsx|ppt|pptx|csv|json|jsonl|yaml|yml|html|htm|png|jpg|jpeg|webp|gif|svg|zip|rar|7z|tar|gz|tgz|mp3|wav|m4a|mp4|mov|webm))(?![^\s`)\]}>，。；：！？,;!?])/gi
 const GENERATED_PREFIX_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}-(.+)$/i
+const STORAGE_DIRECTORY_LABELS: Record<string, string> = {
+  'cloudflare-runtime': 'AI 生成文件',
+  'reasonix-runtime': '历史 AI 生成文件',
+  '__chat_uploads': '聊天附件',
+}
+const RUNTIME_DIRECTORY_NAMES = new Set(['cloudflare-runtime', 'reasonix-runtime'])
 
 export function storageRefFromKey(key: string) {
   return `storage://${encodeURI(key.replace(/^\/+/, ''))}`
@@ -24,7 +30,16 @@ export function storageRefDisplayText(ref: string) {
   const lastIndex = segments.length - 1
   const fileName = segments[lastIndex] || '云存储文件'
   segments[lastIndex] = fileName.match(GENERATED_PREFIX_RE)?.[1] || fileName
-  return `storage://${segments.join('/')}`
+  const root = segments[0]?.toLowerCase() || ''
+  if (RUNTIME_DIRECTORY_NAMES.has(root) && segments.length > 1) {
+    return `storage://${storageDirectoryDisplayName(root)}/${segments[lastIndex]}`
+  }
+  return `storage://${segments.map(storageDirectoryDisplayName).join('/')}`
+}
+
+export function storageDirectoryDisplayName(pathOrSegment: string) {
+  const segment = pathOrSegment.replace(/\/$/, '').split('/').pop() || pathOrSegment
+  return STORAGE_DIRECTORY_LABELS[segment.toLowerCase()] || segment
 }
 
 export function fileNameFromStorageRef(ref: string) {

@@ -5,7 +5,7 @@ import { useDetailPanel } from '../../hooks/use-detail-panel.js'
 import { cn } from '../../lib/cn.js'
 import { formatBytes } from '../../lib/format.js'
 import { storageDisplayName } from '../../lib/storage-display.js'
-import { storageRefFromKey } from '../../lib/storage-ref.js'
+import { storageDirectoryDisplayName, storageRefFromKey } from '../../lib/storage-ref.js'
 import { Input } from '../ui/input.js'
 import { Button } from '../ui/button.js'
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '../ui/dialog.js'
@@ -147,7 +147,7 @@ export function CloudStoragePanel({ channelId, className, onReference }: Props) 
           <span key={i} className="flex items-center gap-1">
             {i > 0 && <span>/</span>}
             <button onClick={() => browse(crumb.prefix)} className="hover:text-foreground transition-colors">
-              {crumb.label}
+              {storageDirectoryDisplayName(crumb.label)}
             </button>
           </span>
         ))}
@@ -215,7 +215,7 @@ export function CloudStoragePanel({ channelId, className, onReference }: Props) 
                 className="flex items-center gap-3 px-4 py-2 w-full hover:bg-muted/50 transition-colors"
               >
                 <FolderOpen className="w-4 h-4 text-amber-500" />
-                <span className="text-sm">{dir.replace(/\/$/, '').split('/').pop()}</span>
+                <span className="text-sm">{storageDirectoryDisplayName(dir)}</span>
               </button>
             ))}
             {objects.map((obj) => {
