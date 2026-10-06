@@ -56,6 +56,7 @@ interface Props {
   onStopAgent?: (agentId: string, reason?: string, runId?: string) => void
   onOpenWorkflowRun?: (runId: string) => void
   onReviseArtifact?: (artifact: ChatArtifact, message: ChatMessage) => void
+  onReferenceFile?: (refText: string) => void
   hasOlder?: boolean
   loadingOlder?: boolean
   onLoadOlder?: () => Promise<void> | void
@@ -285,7 +286,7 @@ function buildTimelineGroups(messages: ChatMessage[], loops: AgentLoopState[]): 
   return groups
 }
 
-function AgentLoopBlock({ loop, members, finalMessage, events, showTerminal = true, onStop, onQuote, onReviseArtifact, detailsLoading, onLoadDetails }: {
+function AgentLoopBlock({ loop, members, finalMessage, events, showTerminal = true, onStop, onQuote, onReviseArtifact, onReferenceFile, detailsLoading, onLoadDetails }: {
   loop: AgentLoopState
   members?: ChannelMemberInfo[]
   finalMessage?: ChatMessage
@@ -294,6 +295,7 @@ function AgentLoopBlock({ loop, members, finalMessage, events, showTerminal = tr
   onStop?: (agentId: string, reason?: string, runId?: string) => void
   onQuote?: (message: ChatMessage) => void
   onReviseArtifact?: (artifact: ChatArtifact, message: ChatMessage) => void
+  onReferenceFile?: (refText: string) => void
   detailsLoading?: boolean
   onLoadDetails?: () => Promise<void> | void
 }) {
@@ -361,6 +363,7 @@ function AgentLoopBlock({ loop, members, finalMessage, events, showTerminal = tr
           onProcessOpen={onLoadDetails}
           onQuote={onQuote}
           onReviseArtifact={onReviseArtifact}
+          onReferenceFile={onReferenceFile}
         />
       </div>
     </div>
@@ -384,6 +387,7 @@ export function MessageList({
   onStopAgent,
   onOpenWorkflowRun,
   onReviseArtifact,
+  onReferenceFile,
   hasOlder = false,
   loadingOlder = false,
   onLoadOlder,
@@ -603,6 +607,7 @@ export function MessageList({
                       onStop={onStopAgent}
                       onQuote={onQuote}
                       onReviseArtifact={onReviseArtifact}
+                      onReferenceFile={onReferenceFile}
                       detailsLoading={group.loop.runId ? loadingAgentRunDetails?.has(`${group.loop.channelId}:${group.loop.agentId}:${group.loop.runId}`) : false}
                       onLoadDetails={group.loop.runId && onLoadAgentRunDetails
                         ? () => onLoadAgentRunDetails(group.loop.agentId, group.loop.runId!)
@@ -629,6 +634,7 @@ export function MessageList({
                     onSubmitAnswer={onSubmitAnswer}
                     onOpenWorkflowRun={onOpenWorkflowRun}
                     onReviseArtifact={onReviseArtifact}
+                    onReferenceFile={onReferenceFile}
                     actualCostPoints={messageLoop?.actualCostPoints}
                   />
                 </markdownImageContext.Provider>

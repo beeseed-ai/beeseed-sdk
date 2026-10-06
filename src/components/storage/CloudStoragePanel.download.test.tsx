@@ -33,3 +33,20 @@ it('下载期间禁止重复点击，失败后恢复按钮并显示错误', asyn
     expect(host.querySelector('[role="alert"]')?.textContent).toContain('文件下载失败')
   } finally { await act(() => root.unmount()) }
 })
+
+it('下载发起后保留用户手势重试和临时链接复制入口', async () => {
+  download.mockResolvedValue('https://worker.example/api/storage-preview/token/report.txt')
+  const writeText = vi.fn().mockResolvedValue(undefined)
+  Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText } })
+  const host = document.createElement('div'), root = createRoot(host)
+  try {
+    await act(() => root.render(<CloudStoragePanel channelId="download-test" />))
+    await act(async () => { host.querySelector<HTMLButtonElement>('[data-testid="storage-file-download"]')!.click() })
+    const fallback = host.querySelector<HTMLAnchorElement>('a[href="https://worker.example/api/storage-preview/token/report.txt"]')
+    expect(fallback?.textContent).toContain('再次下载')
+    expect(fallback?.download).toBe('report.txt')
+    await act(async () => { [...host.querySelectorAll('button')].find((button) => button.textContent === '复制临时下载链接')?.click() })
+    expect(writeText).toHaveBeenCalledWith('https://worker.example/api/storage-preview/token/report.txt')
+    expect(host.textContent).toContain('已复制')
+  } finally { await act(() => root.unmount()) }
+})

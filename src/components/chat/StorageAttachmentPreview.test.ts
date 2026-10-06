@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
-import { openStorageDownload, probeStorageRefExistence, requestStoragePreviewURL } from './StorageAttachmentPreview.js'
+import { openStorageDownload, probeStorageRefExistence, requestStoragePreviewURL, storageFileCanPreview, storageFileKindForRef } from './StorageAttachmentPreview.js'
 import { ApiError } from '../../core/errors.js'
 
 describe('presentation preview signing', () => {
@@ -25,27 +25,47 @@ describe('presentation preview signing', () => {
       json: { key: 'folder/report.pdf', object_id: 'pdf-v2' },
     })
   })
+
+  for (const [fileName, kind] of [
+    ['项目周报.docx', 'document'],
+    ['月度预算.xlsx', 'spreadsheet'],
+  ] as const) it(`requests an exact-object Office preview for ${fileName}`, async () => {
+    const post = vi.fn(() => ({ json: async () => ({ url: 'https://worker.example/api/storage-preview/token/file' }) }))
+    const api = { post } as unknown as Parameters<typeof requestStoragePreviewURL>[0]
+
+    expect(storageFileKindForRef(`storage://reports/${fileName}`)).toBe(kind)
+    expect(storageFileCanPreview(kind, fileName.endsWith('.docx') ? 'docx' : 'xlsx')).toBe(true)
+    await requestStoragePreviewURL(api, 'channel-a', `storage://reports/${fileName}`, kind, 'exact-object')
+
+    expect(post).toHaveBeenCalledWith('channels/channel-a/storage/presentation-preview', {
+      json: { key: `reports/${fileName}`, object_id: 'exact-object' },
+    })
+  })
+
+  it('does not advertise Apple Numbers as an Office online preview', () => {
+    expect(storageFileKindForRef('storage://reports/budget.numbers')).toBe('spreadsheet')
+    expect(storageFileCanPreview('spreadsheet', 'numbers')).toBe(false)
+  })
 })
 
 describe('openStorageDownload', () => {
-  it('downloads through a local blob instead of navigating to the signed URL', async () => {
+  it('hands the real attachment URL to the browser and keeps the retry URL', async () => {
     const requestURL = vi.fn().mockResolvedValue('https://storage.example/file')
-    const fetchFile = vi.fn().mockResolvedValue(new Response('pptx-bytes'))
-    const saveFile = vi.fn()
+    const launchDownload = vi.fn()
 
-    await openStorageDownload(requestURL, '中医科普.pptx', fetchFile, saveFile)
+    await expect(openStorageDownload(requestURL, '中医科普.pptx', launchDownload)).resolves.toBe('https://storage.example/file')
 
-    expect(fetchFile).toHaveBeenCalledWith('https://storage.example/file')
-    expect(saveFile).toHaveBeenCalledWith(expect.any(Blob), '中医科普.pptx')
+    expect(launchDownload).toHaveBeenCalledWith('https://storage.example/file', '中医科普.pptx')
   })
 
-  it('reports a failed file fetch without navigating away', async () => {
+  it('rejects an empty attachment URL before opening a new tab', async () => {
+    const launchDownload = vi.fn()
     await expect(openStorageDownload(
-      () => Promise.resolve('https://storage.example/file'),
+      () => Promise.resolve(''),
       '中医科普.pptx',
-      vi.fn().mockResolvedValue(new Response('', { status: 403 })),
-      vi.fn(),
-    )).rejects.toThrow('文件下载失败：HTTP 403')
+      launchDownload,
+    )).rejects.toThrow('下载链接为空')
+    expect(launchDownload).not.toHaveBeenCalled()
   })
 })
 

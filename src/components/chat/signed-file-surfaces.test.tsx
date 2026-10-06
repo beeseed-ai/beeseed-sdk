@@ -85,6 +85,31 @@ describe('signed file links across chat controls', () => {
     expect(finalMessage.content).toBe(raw)
   })
 
+  it('references a historical Agent artifact by its stable storage ref', async () => {
+    const referenceFile = vi.fn()
+    const finalMessage: ChatMessage = {
+      role: 'assistant', content: '文件已生成', timestamp: 2000, msgId: 43,
+      isAgent: true, senderType: 'agent', senderId: 'assistant', agentRunId: 'run-artifact-reference',
+      artifacts: [{
+        artifactId: 'artifact-a', objectId: 'object-a', storageRef: 'storage://reports/项目报告.pdf',
+        fileName: '项目报告.pdf', artifactKind: 'pdf', editable: false,
+      }],
+    }
+    const loop: AgentLoopState = {
+      runId: 'run-artifact-reference', historySource: 'runtime', agentId: 'assistant', channelId: 'channel-a',
+      status: 'completed', currentTurn: 1, startedAt: 1000, completedAt: 2000,
+      finalContent: '文件已生成',
+      turns: [{ turnNumber: 1, toolCalls: [], skillUses: [], status: 'completed', startedAt: 1000, completedAt: 2000 }],
+    }
+
+    await render(<AgentRunTranscript loop={loop} finalMessage={finalMessage} onReferenceFile={referenceFile} />)
+    const button = host.querySelector<HTMLButtonElement>('[aria-label="引用文件到聊天：项目报告.pdf"]')
+    expect(button).not.toBeNull()
+    expect(button?.className).toContain('md:group-hover/artifact:opacity-100')
+    await act(() => button!.click())
+    expect(referenceFile).toHaveBeenCalledWith('storage://reports/项目报告.pdf')
+  })
+
   for (const eventMode of [false, true]) it(`hides signed text in expanded ${eventMode ? 'event' : 'turn'} records`, async () => {
     const tool: AgentLoopToolCall = { id: 'call-a', name: 'storage_presign_download', status: 'success', startedAt: 1000, output: raw, args: { nested: { download: raw } } }
     const loop: AgentLoopState = {

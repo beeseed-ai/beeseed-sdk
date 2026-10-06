@@ -23,6 +23,7 @@ interface Props {
   onSubmitAnswer?: (askId: string, answers: Record<string, unknown>) => void
   onOpenWorkflowRun?: (runId: string) => void
   onReviseArtifact?: (artifact: ChatArtifact, message: ChatMessage) => void
+  onReferenceFile?: (refText: string) => void
   actualCostPoints?: number
   className?: string
 }
@@ -75,7 +76,7 @@ function compactTaskSchedulerMessage(content: string): string {
 }
 
 export function MessageBubble({
-  message, channelId, currentUserId, onQuote, onMentionClick, onScrollToMessage, onSubmitAnswer, onOpenWorkflowRun, onReviseArtifact, actualCostPoints, className,
+  message, channelId, currentUserId, onQuote, onMentionClick, onScrollToMessage, onSubmitAnswer, onOpenWorkflowRun, onReviseArtifact, onReferenceFile, actualCostPoints, className,
 }: Props) {
   const [copied, setCopied] = useState(false)
   const [previewImage, setPreviewImage] = useState<string | null>(null)
@@ -289,12 +290,13 @@ export function MessageBubble({
                     storageRefAvailable={isExistingRef}
                   />
                 )}
-                {existingRefs.length > 0 && <StorageAttachmentPreview channelId={channelId} refs={existingRefs} compact={!visibleContent} />}
+                {existingRefs.length > 0 && <StorageAttachmentPreview channelId={channelId} refs={existingRefs} compact={!visibleContent} onReference={onReferenceFile} />}
                 {artifacts.length > 0 && (
                   <EditableArtifactActions
                     artifacts={artifacts}
                     onPreview={(artifact) => setStoragePreviewTarget({ refText: artifact.storageRef, objectId: artifact.objectId })}
                     onRevise={(artifact) => onReviseArtifact?.(artifact, message)}
+                    onReference={onReferenceFile}
                   />
                 )}
               </>
@@ -310,12 +312,13 @@ export function MessageBubble({
                     storageRefAvailable={isExistingRef}
                   />
                 )}
-                {existingRefs.length > 0 && <StorageAttachmentPreview channelId={channelId} refs={existingRefs} compact={!visibleContent} />}
+                {existingRefs.length > 0 && <StorageAttachmentPreview channelId={channelId} refs={existingRefs} compact={!visibleContent} onReference={onReferenceFile} />}
                 {artifacts.length > 0 && (
                   <EditableArtifactActions
                     artifacts={artifacts}
                     onPreview={(artifact) => setStoragePreviewTarget({ refText: artifact.storageRef, objectId: artifact.objectId })}
                     onRevise={(artifact) => onReviseArtifact?.(artifact, message)}
+                    onReference={onReferenceFile}
                   />
                 )}
               </>
@@ -415,17 +418,19 @@ export function EditableArtifactActions({
   artifacts,
   onPreview,
   onRevise,
+  onReference,
 }: {
   artifacts: ChatArtifact[]
   onPreview: (artifact: ChatArtifact) => void
   onRevise: (artifact: ChatArtifact) => void
+  onReference?: (refText: string) => void
 }) {
   return (
     <div className="mt-2 flex w-full flex-col gap-1.5">
       {artifacts.map((artifact) => (
         <div
           key={artifact.artifactId}
-          className="flex max-w-full items-center gap-2 rounded-md border border-[#d8dde6] bg-white px-2.5 py-2"
+          className="group/artifact flex max-w-full items-center gap-2 rounded-md border border-[#d8dde6] bg-white px-2.5 py-2"
         >
           <button
             type="button"
@@ -439,6 +444,18 @@ export function EditableArtifactActions({
               {artifact.version ? ` · v${artifact.version}` : ''}
             </span>
           </button>
+          {onReference && (
+            <button
+              type="button"
+              title="引用到聊天"
+              aria-label={`引用文件到聊天：${artifact.fileName}`}
+              onClick={() => onReference(artifact.storageRef)}
+              className="inline-flex h-8 shrink-0 items-center gap-1 rounded-md border border-[#dddddd] bg-white px-2 text-xs font-medium text-[#181d26] opacity-100 transition-opacity focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1b61c9] md:opacity-0 md:group-hover/artifact:opacity-100 md:group-focus-within/artifact:opacity-100"
+            >
+              <CornerDownLeft className="h-3.5 w-3.5" />
+              引用
+            </button>
+          )}
           {artifact.editable && (
             <button
               type="button"

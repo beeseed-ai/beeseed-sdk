@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { Archive, Code2, Download, ExternalLink, File, FileAudio, FileImage, FileSpreadsheet, FileText, FileVideo, Presentation, RotateCw, X } from 'lucide-react'
+import { Archive, Code2, CornerDownLeft, Download, ExternalLink, File, FileAudio, FileImage, FileSpreadsheet, FileText, FileVideo, Presentation, RotateCw, X } from 'lucide-react'
 import { cn } from '../../lib/cn.js'
 import { storageAttachmentDownloadPayload, storagePresignDownloadPayload, storagePreviewPresignPayload } from '../../lib/storage-presign.js'
 import { fileNameFromStorageRef, keyFromStorageRef, storageRefDisplayText } from '../../lib/storage-ref.js'
@@ -13,9 +13,10 @@ interface Props {
   channelId: string
   refs: string[]
   compact?: boolean
+  onReference?: (refText: string) => void
 }
 
-export type StorageFileKind = 'image' | 'pdf' | 'html' | 'text' | 'code' | 'spreadsheet' | 'presentation' | 'archive' | 'audio' | 'video' | 'file'
+export type StorageFileKind = 'image' | 'pdf' | 'html' | 'text' | 'code' | 'document' | 'spreadsheet' | 'presentation' | 'archive' | 'audio' | 'video' | 'file'
 
 const IMAGE_EXTS = new Set(['png', 'jpg', 'jpeg', 'webp', 'gif', 'svg'])
 const HTML_EXTS = new Set(['html', 'htm'])
@@ -35,6 +36,7 @@ const CODE_EXTS = new Set([
   'vue', 'svelte', 'astro',
 ])
 const CODE_FILENAMES = new Set(['dockerfile', 'makefile', 'rakefile', 'gemfile', 'procfile'])
+const DOCUMENT_EXTS = new Set(['docx'])
 const SHEET_EXTS = new Set(['xls', 'xlsx', 'numbers'])
 const PRESENTATION_EXTS = new Set(['ppt', 'pptx', 'key', 'odp'])
 const ARCHIVE_EXTS = new Set(['zip', 'rar', '7z', 'tar', 'gz', 'tgz'])
@@ -146,6 +148,7 @@ export function storageFileKindForRef(ref: string): StorageFileKind {
   if (IMAGE_EXTS.has(ext)) return 'image'
   if (ext === 'pdf') return 'pdf'
   if (HTML_EXTS.has(ext)) return 'html'
+  if (DOCUMENT_EXTS.has(ext)) return 'document'
   if (SHEET_EXTS.has(ext)) return 'spreadsheet'
   if (PRESENTATION_EXTS.has(ext)) return 'presentation'
   if (CODE_FILENAMES.has(baseName)) return 'code'
@@ -162,6 +165,7 @@ export function storageFileIconForKind(kind: StorageFileKind) {
   case 'image': return FileImage
   case 'pdf':
   case 'text': return FileText
+  case 'document': return FileText
   case 'html':
   case 'code': return Code2
   case 'spreadsheet': return FileSpreadsheet
@@ -178,6 +182,7 @@ export function storageFileLabel(kind: StorageFileKind, ext: string) {
   if (kind === 'image') return ext.toUpperCase() || '图片'
   if (kind === 'html') return 'HTML'
   if (kind === 'code') return ext.toUpperCase() || '代码'
+  if (kind === 'document') return ext.toUpperCase() || 'Word 文档'
   if (kind === 'spreadsheet') return ext.toUpperCase() || '表格'
   if (kind === 'presentation') return ext.toUpperCase() || '演示文稿'
   if (kind === 'archive') return ext.toUpperCase() || '压缩包'
@@ -187,16 +192,20 @@ export function storageFileLabel(kind: StorageFileKind, ext: string) {
   return ext.toUpperCase() || '文件'
 }
 
-export function storageFileCanPreview(kind: StorageFileKind) {
-  return kind === 'image' || kind === 'pdf' || kind === 'html' || kind === 'text' || kind === 'code' || kind === 'presentation' || kind === 'audio' || kind === 'video'
+function isOfficeOnlinePreview(kind: StorageFileKind, ext: string) {
+  return kind === 'presentation' || (kind === 'document' && ext === 'docx') || (kind === 'spreadsheet' && ext === 'xlsx')
 }
 
-export function storagePreviewUsesProxy(kind: StorageFileKind) {
-  return kind === 'pdf' || kind === 'html' || kind === 'text' || kind === 'code' || kind === 'presentation'
+export function storageFileCanPreview(kind: StorageFileKind, ext = '') {
+  return kind === 'image' || kind === 'pdf' || kind === 'html' || kind === 'text' || kind === 'code' || isOfficeOnlinePreview(kind, ext) || kind === 'audio' || kind === 'video'
 }
 
-function storagePreviewEndpointForKind(kind: StorageFileKind) {
-  if (kind === 'presentation') return 'presentation-preview'
+export function storagePreviewUsesProxy(kind: StorageFileKind, ext = '') {
+  return kind === 'pdf' || kind === 'html' || kind === 'text' || kind === 'code' || isOfficeOnlinePreview(kind, ext)
+}
+
+function storagePreviewEndpointForKind(kind: StorageFileKind, ext: string) {
+  if (isOfficeOnlinePreview(kind, ext)) return 'presentation-preview'
   if (kind === 'pdf') return 'pdf-preview'
   if (kind === 'html') return 'html-preview'
   if (kind === 'text' || kind === 'code') return 'text-preview'
@@ -247,7 +256,7 @@ export async function requestStoragePreviewURL(
   kind: StorageFileKind,
   objectId?: string,
 ) {
-  const proxyEndpoint = storagePreviewEndpointForKind(kind)
+  const proxyEndpoint = storagePreviewEndpointForKind(kind, extOf(refText))
   const requestForKey = (key: string) => proxyEndpoint
     ? api.post(`channels/${channelId}/storage/${proxyEndpoint}`, {
       json: storagePresignDownloadPayload(key, { objectId }),
@@ -277,9 +286,10 @@ function officeOnlinePreviewURL(fileURL: string) {
 
 const OFFICE_PREVIEW_GUIDANCE_DELAY_MS = 30_000
 
-function PresentationPreview({
+function OfficeOnlinePreview({
   url,
   name,
+  kind,
   attempt,
   downloading,
   onReload,
@@ -287,6 +297,7 @@ function PresentationPreview({
 }: {
   url: string
   name: string
+  kind: Extract<StorageFileKind, 'document' | 'spreadsheet' | 'presentation'>
   attempt: number
   downloading: boolean
   onReload: () => void
@@ -294,6 +305,8 @@ function PresentationPreview({
 }) {
   const [showGuidance, setShowGuidance] = useState(false)
   const officeUrl = officeOnlinePreviewURL(url)
+  const OfficeIcon = kind === 'spreadsheet' ? FileSpreadsheet : kind === 'document' ? FileText : Presentation
+  const typeLabel = kind === 'spreadsheet' ? 'Excel 表格' : kind === 'document' ? 'Word 文档' : '演示文稿'
 
   useEffect(() => {
     setShowGuidance(false)
@@ -304,8 +317,8 @@ function PresentationPreview({
   return (
     <div className="space-y-3">
       <div className="flex flex-wrap items-center gap-2 rounded border border-[#e5e5e5] bg-white px-3 py-2 text-xs text-[#5f6b7a]">
-        <Presentation className="h-4 w-4 shrink-0 text-[#254fad]" />
-        <span className="min-w-0 basis-[calc(100%-1.5rem)] sm:flex-1 sm:basis-auto">正在使用 Office 在线预览演示文稿。</span>
+        <OfficeIcon className="h-4 w-4 shrink-0 text-[#254fad]" />
+        <span className="min-w-0 basis-[calc(100%-1.5rem)] sm:flex-1 sm:basis-auto">正在使用 Office 在线预览：{typeLabel}。</span>
         <button
           type="button"
           onClick={onReload}
@@ -374,31 +387,65 @@ export function storageFileLabelForRef(refText: string) {
   return storageFileLabel(storageFileKindForRef(refText), extOf(refText))
 }
 
-function saveDownloadedBlob(blob: Blob, fileName: string) {
-  const objectURL = URL.createObjectURL(blob)
+function launchStorageDownload(url: string, fileName: string) {
   const link = document.createElement('a')
-  link.href = objectURL
+  link.href = url
   link.download = fileName
-  link.rel = 'noopener'
+  link.target = '_blank'
+  link.rel = 'noopener noreferrer'
   link.style.display = 'none'
   document.body.appendChild(link)
   link.click()
   link.remove()
-  window.setTimeout(() => URL.revokeObjectURL(objectURL), 1_000)
 }
 
 export async function openStorageDownload(
   requestURL: () => Promise<string>,
   fileName: string,
-  fetchFile: typeof window.fetch = window.fetch.bind(window),
-  saveFile: (blob: Blob, fileName: string) => void = saveDownloadedBlob,
+  launchDownload: (url: string, fileName: string) => void = launchStorageDownload,
 ) {
   const url = await requestURL()
   if (!url) throw new Error('下载链接为空')
 
-  const response = await fetchFile(url)
-  if (!response.ok) throw new Error(`文件下载失败：HTTP ${response.status}`)
-  saveFile(await response.blob(), fileName)
+  // Blob downloads work in full Chrome but are commonly ignored by embedded
+  // browsers. Keep the attachment response as a real browser navigation so
+  // the host can handle Content-Disposition, and return the short-lived URL so
+  // the UI can offer a user-gesture retry/copy fallback.
+  launchDownload(url, fileName)
+  return url
+}
+
+function StorageDownloadNotice({ url, fileName }: { url: string; fileName: string }) {
+  const [copyStatus, setCopyStatus] = useState<'idle' | 'copied' | 'failed'>('idle')
+
+  const copyLink = async () => {
+    try {
+      await navigator.clipboard.writeText(url)
+      setCopyStatus('copied')
+    } catch {
+      setCopyStatus('failed')
+    }
+  }
+
+  return (
+    <div role="status" className="flex flex-wrap items-center gap-2 border-b border-[#e5e5e5] bg-[#f8fafc] px-4 py-2 text-xs text-[#5f6b7a]">
+      <span>下载已发起。内置浏览器没有保存文件时，可再次打开或复制临时链接到主浏览器。</span>
+      <a
+        href={url}
+        download={fileName}
+        target="_blank"
+        rel="noopener noreferrer"
+        className="font-medium text-[#254fad] underline underline-offset-2"
+      >
+        再次下载
+      </a>
+      <button type="button" onClick={() => void copyLink()} className="font-medium text-[#254fad] underline underline-offset-2">
+        复制临时下载链接
+      </button>
+      {copyStatus === 'copied' && <span>已复制</span>}
+      {copyStatus === 'failed' && <span role="alert" className="text-destructive">复制失败，请使用“再次下载”。</span>}
+    </div>
+  )
 }
 
 export function StoragePreviewDialog({ channelId, refText, objectId, onClose }: { channelId: string; refText: string; objectId?: string; onClose: () => void }) {
@@ -414,7 +461,9 @@ export function StoragePreviewDialog({ channelId, refText, objectId, onClose }: 
   const [loading, setLoading] = useState(true)
   const [downloading, setDownloading] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const [presentationAttempt, setPresentationAttempt] = useState(0)
+  const [downloadError, setDownloadError] = useState<string | null>(null)
+  const [downloadURL, setDownloadURL] = useState<string | null>(null)
+  const [officeAttempt, setOfficeAttempt] = useState(0)
 
   useEffect(() => {
     let cancelled = false
@@ -423,10 +472,12 @@ export function StoragePreviewDialog({ channelId, refText, objectId, onClose }: 
     setText(null)
     setLoading(true)
     setError(null)
+    setDownloadError(null)
+    setDownloadURL(null)
 
     if (config.useMockData) {
       setLoading(false)
-      setError(storageFileCanPreview(kind) ? '当前是模拟数据，无法加载文件内容。' : '此文件类型暂不支持预览。')
+      setError(storageFileCanPreview(kind, ext) ? '当前是模拟数据，无法加载文件内容。' : '此文件类型暂不支持预览。')
       return
     }
 
@@ -453,21 +504,23 @@ export function StoragePreviewDialog({ channelId, refText, objectId, onClose }: 
       })
 
     return () => { cancelled = true }
-  }, [api, config.useMockData, ext, kind, refText, objectId, channelId, presentationAttempt, handleRateLimit])
+  }, [api, config.useMockData, ext, kind, refText, objectId, channelId, officeAttempt, handleRateLimit])
 
-  const reloadPresentation = () => {
+  const reloadOfficePreview = () => {
     if (isCoolingDown()) return
     setUrl(null)
     setLoading(true)
     setError(null)
-    setPresentationAttempt((attempt) => attempt + 1)
+    setOfficeAttempt((attempt) => attempt + 1)
   }
 
   const download = async () => {
     if (config.useMockData || downloading || isCoolingDown()) return
     setDownloading(true)
+    setDownloadError(null)
+    setDownloadURL(null)
     try {
-      await openStorageDownload(async () => {
+      const nextDownloadURL = await openStorageDownload(async () => {
         const key = objectId
           ? keyFromStorageRef(refText)
           : await resolvePreviewKey(api, channelId, keyFromStorageRef(refText))
@@ -476,8 +529,9 @@ export function StoragePreviewDialog({ channelId, refText, objectId, onClose }: 
         }).json<{ url: string }>()
         return data.url
       }, name)
+      setDownloadURL(nextDownloadURL)
     } catch (err) {
-      setError(handleRateLimit(err) ? '请求过于频繁，请稍后重试。' : '文件下载失败，请稍后重试。')
+      setDownloadError(handleRateLimit(err) ? '请求过于频繁，请稍后重试。' : '文件下载失败，请稍后重试。')
     } finally {
       setDownloading(false)
     }
@@ -518,6 +572,9 @@ export function StoragePreviewDialog({ channelId, refText, objectId, onClose }: 
           </button>
         </div>
 
+        {downloadURL && <StorageDownloadNotice url={downloadURL} fileName={name} />}
+        {downloadError && <div role="alert" className="border-b border-[#e5e5e5] px-4 py-2 text-xs text-destructive">{downloadError}{remainingSeconds > 0 && ` 请等待 ${remainingSeconds} 秒。`}</div>}
+
         <div className="min-h-0 flex-1 overflow-auto bg-[#f8fafc] p-4">
           {loading ? (
             <div className="flex h-48 items-center justify-center text-sm text-[#777169]">正在加载预览...</div>
@@ -526,11 +583,11 @@ export function StoragePreviewDialog({ channelId, refText, objectId, onClose }: 
               <Icon className="h-9 w-9 text-[#9aa1aa]" />
               <div className="text-sm font-medium text-[#333840]">无法预览此文件</div>
               <div role="alert" className="max-w-sm text-xs text-[#777169]">{error}{remainingSeconds > 0 && ` 请等待 ${remainingSeconds} 秒。`}</div>
-              {kind === 'presentation' && !config.useMockData && (
+              {isOfficeOnlinePreview(kind, ext) && !config.useMockData && (
                 <div className="mt-2 flex flex-wrap items-center justify-center gap-2">
                   <button
                     type="button"
-                    onClick={reloadPresentation}
+                    onClick={reloadOfficePreview}
                     disabled={remainingSeconds > 0}
                     className="inline-flex h-8 items-center gap-1.5 rounded-md border border-[#9297a0] bg-white px-3 text-xs font-medium text-[#181d26] hover:bg-[#f8fafc]"
                   >
@@ -560,13 +617,14 @@ export function StoragePreviewDialog({ channelId, refText, objectId, onClose }: 
               sandbox="allow-scripts"
               className="h-[70vh] w-full rounded border border-[#e5e5e5] bg-white"
             />
-          ) : kind === 'presentation' && url ? (
-            <PresentationPreview
+          ) : isOfficeOnlinePreview(kind, ext) && url ? (
+            <OfficeOnlinePreview
               url={url}
               name={name}
-              attempt={presentationAttempt}
+              kind={kind as Extract<StorageFileKind, 'document' | 'spreadsheet' | 'presentation'>}
+              attempt={officeAttempt}
               downloading={downloading || remainingSeconds > 0}
-              onReload={reloadPresentation}
+              onReload={reloadOfficePreview}
               onDownload={() => void download()}
             />
           ) : kind === 'audio' && url ? (
@@ -594,7 +652,7 @@ export function StoragePreviewDialog({ channelId, refText, objectId, onClose }: 
   )
 }
 
-function StorageImageAttachment({ channelId, refText }: { channelId: string; refText: string }) {
+function StorageImageAttachment({ channelId, refText, onReference }: { channelId: string; refText: string; onReference?: (refText: string) => void }) {
   const { api, config } = useBeeSeedContext()
   const [url, setUrl] = useState<string | null>(null)
   const [failed, setFailed] = useState(false)
@@ -621,36 +679,50 @@ function StorageImageAttachment({ channelId, refText }: { channelId: string; ref
 
   return (
     <>
-      <button
-        type="button"
-        title={displayText}
-        onClick={() => setPreviewOpen(true)}
-        className="group relative block max-w-full overflow-hidden rounded-md border border-[#d8dde6] bg-[#f8fafc] text-left"
-      >
-        {url ? (
-          <img
-            src={url}
-            alt={name}
-            className="max-h-56 w-full max-w-[360px] object-contain bg-[#f8fafc]"
-            loading="lazy"
-          />
-        ) : (
-          <div className="flex h-32 w-56 items-center justify-center text-[#9aa1aa]">
-            <FileImage className="h-8 w-8" />
+      <div className="group/storage-file relative w-fit max-w-full">
+        <button
+          type="button"
+          title={displayText}
+          onClick={() => setPreviewOpen(true)}
+          className="group relative block max-w-full overflow-hidden rounded-md border border-[#d8dde6] bg-[#f8fafc] text-left"
+        >
+          {url ? (
+            <img
+              src={url}
+              alt={name}
+              className="max-h-56 w-full max-w-[360px] object-contain bg-[#f8fafc]"
+              loading="lazy"
+            />
+          ) : (
+            <div className="flex h-32 w-56 items-center justify-center text-[#9aa1aa]">
+              <FileImage className="h-8 w-8" />
+            </div>
+          )}
+          <div className="flex items-center gap-1.5 border-t border-[#e5e7eb] bg-white/95 px-2 py-1.5 text-xs text-[#333840]">
+            <FileImage className="h-3.5 w-3.5 shrink-0 text-[#2563eb]" />
+            <span className="min-w-0 break-all">{displayText}</span>
+            <ExternalLink className="ml-auto h-3.5 w-3.5 shrink-0 text-[#888] opacity-0 transition-opacity group-hover:opacity-100" />
           </div>
+        </button>
+        {onReference && (
+          <button
+            type="button"
+            title="引用到聊天"
+            aria-label={`引用文件到聊天：${displayText}`}
+            onClick={() => onReference(refText)}
+            className="absolute right-2 top-2 inline-flex h-8 items-center gap-1 rounded-md border border-[#dddddd] bg-white px-2 text-xs font-medium text-[#181d26] shadow-sm opacity-100 transition-opacity focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1b61c9] md:opacity-0 md:group-hover/storage-file:opacity-100 md:group-focus-within/storage-file:opacity-100"
+          >
+            <CornerDownLeft className="h-3.5 w-3.5" />
+            引用
+          </button>
         )}
-        <div className="flex items-center gap-1.5 border-t border-[#e5e7eb] bg-white/95 px-2 py-1.5 text-xs text-[#333840]">
-          <FileImage className="h-3.5 w-3.5 shrink-0 text-[#2563eb]" />
-          <span className="min-w-0 break-all">{displayText}</span>
-          <ExternalLink className="ml-auto h-3.5 w-3.5 shrink-0 text-[#888] opacity-0 transition-opacity group-hover:opacity-100" />
-        </div>
-      </button>
+      </div>
       {previewOpen && <StoragePreviewDialog channelId={channelId} refText={refText} onClose={() => setPreviewOpen(false)} />}
     </>
   )
 }
 
-function StorageFileAttachment({ channelId, refText }: { channelId: string; refText: string }) {
+function StorageFileAttachment({ channelId, refText, onReference }: { channelId: string; refText: string; onReference?: (refText: string) => void }) {
   const [previewOpen, setPreviewOpen] = useState(false)
   const displayText = storageRefDisplayText(refText)
   const kind = storageFileKindForRef(refText)
@@ -659,29 +731,41 @@ function StorageFileAttachment({ channelId, refText }: { channelId: string; refT
 
   return (
     <>
-      <button
-        type="button"
-        title={displayText}
-        onClick={() => setPreviewOpen(true)}
-        className={cn(
-          'flex max-w-full items-center gap-2 rounded-md border border-[#d8dde6] bg-[#f8fafc] px-2.5 py-2 text-left transition-colors hover:border-[#aeb6c2] hover:bg-white',
+      <div className="group/storage-file flex max-w-full items-center gap-1 rounded-md border border-[#d8dde6] bg-[#f8fafc] px-1.5 py-1.5 transition-colors hover:border-[#aeb6c2] hover:bg-white">
+        <button
+          type="button"
+          title={displayText}
+          onClick={() => setPreviewOpen(true)}
+          className="flex min-w-0 flex-1 items-center gap-2 rounded-sm px-1 py-0.5 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1b61c9]"
+        >
+          <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded bg-white text-[#254fad]">
+            <Icon className="h-4 w-4" />
+          </span>
+          <span className="min-w-0 flex-1">
+            <span className="block break-all text-sm font-medium text-[#333840]">{displayText}</span>
+            <span className="block text-[10px] text-[#777169]">{storageFileCanPreview(kind, ext) ? storageFileLabel(kind, ext) : `${storageFileLabel(kind, ext)} · 无法预览`}</span>
+          </span>
+          <ExternalLink className="h-4 w-4 shrink-0 text-[#888]" />
+        </button>
+        {onReference && (
+          <button
+            type="button"
+            title="引用到聊天"
+            aria-label={`引用文件到聊天：${displayText}`}
+            onClick={() => onReference(refText)}
+            className="inline-flex h-8 shrink-0 items-center gap-1 rounded-md border border-[#dddddd] bg-white px-2 text-xs font-medium text-[#181d26] opacity-100 transition-opacity focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1b61c9] md:opacity-0 md:group-hover/storage-file:opacity-100 md:group-focus-within/storage-file:opacity-100"
+          >
+            <CornerDownLeft className="h-3.5 w-3.5" />
+            引用
+          </button>
         )}
-      >
-        <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded bg-white text-[#254fad]">
-          <Icon className="h-4 w-4" />
-        </span>
-        <span className="min-w-0 flex-1">
-          <span className="block break-all text-sm font-medium text-[#333840]">{displayText}</span>
-          <span className="block text-[10px] text-[#777169]">{storageFileCanPreview(kind) ? storageFileLabel(kind, ext) : `${storageFileLabel(kind, ext)} · 无法预览`}</span>
-        </span>
-        <ExternalLink className="h-4 w-4 shrink-0 text-[#888]" />
-      </button>
+      </div>
       {previewOpen && <StoragePreviewDialog channelId={channelId} refText={refText} onClose={() => setPreviewOpen(false)} />}
     </>
   )
 }
 
-export function StorageAttachmentPreview({ channelId, refs, compact }: Props) {
+export function StorageAttachmentPreview({ channelId, refs, compact, onReference }: Props) {
   const { existingRefs: items } = useExistingStorageRefs(channelId, refs)
   if (items.length === 0) return null
 
@@ -689,8 +773,8 @@ export function StorageAttachmentPreview({ channelId, refs, compact }: Props) {
     <div className={cn('flex flex-col gap-2', compact ? 'mt-1' : 'mt-2')}>
       {items.map((refText) => (
         storageFileKindForRef(refText) === 'image'
-          ? <StorageImageAttachment key={refText} channelId={channelId} refText={refText} />
-          : <StorageFileAttachment key={refText} channelId={channelId} refText={refText} />
+          ? <StorageImageAttachment key={refText} channelId={channelId} refText={refText} onReference={onReference} />
+          : <StorageFileAttachment key={refText} channelId={channelId} refText={refText} onReference={onReference} />
       ))}
     </div>
   )

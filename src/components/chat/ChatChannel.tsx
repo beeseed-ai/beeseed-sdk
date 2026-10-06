@@ -51,7 +51,7 @@ export function ChatChannel({ channelId, className, header, renderMessageImage }
     loadingAgentRunDetails,
     loadAgentRunDetails,
   } = useChat(channelId, { markRead: true })
-  const { composerInsertText, consumeComposerInsert, openWorkflowRun } = useDetailPanel()
+  const { composerInsertText, consumeComposerInsert, insertIntoComposer, openWorkflowRun, setActiveFeature, setPanel } = useDetailPanel()
   const [quotedMessage, setQuotedMessage] = useState<ChatMessage | null>(null)
   const [revisionTarget, setRevisionTarget] = useState<ArtifactRevisionTarget | null>(null)
   const [configSkillOptions, setConfigSkillOptions] = useState<SkillShortcutOption[]>([])
@@ -174,6 +174,12 @@ export function ChatChannel({ channelId, className, header, renderMessageImage }
     })
   }, [])
 
+  const handleReferenceFile = useCallback((refText: string) => {
+    insertIntoComposer(refText)
+    setActiveFeature('chat')
+    setPanel(true)
+  }, [insertIntoComposer, setActiveFeature, setPanel])
+
   return (
     <div className={cn('flex h-full flex-col bg-[#fafafa]', className)}>
       {header}
@@ -206,6 +212,7 @@ export function ChatChannel({ channelId, className, header, renderMessageImage }
                 onStopAgent={stopAgent}
                 onOpenWorkflowRun={openWorkflowRun}
                 onReviseArtifact={handleReviseArtifact}
+                onReferenceFile={handleReferenceFile}
                 hasOlder={hasOlderMessages}
                 loadingOlder={loadingOlderMessages}
                 onLoadOlder={loadOlderMessages}

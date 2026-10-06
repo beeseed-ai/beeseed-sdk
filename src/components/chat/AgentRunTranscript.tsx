@@ -24,6 +24,7 @@ interface Props {
   onProcessOpen?: () => void
   onQuote?: (message: ChatMessage) => void
   onReviseArtifact?: (artifact: ChatArtifact, message: ChatMessage) => void
+  onReferenceFile?: (refText: string) => void
   className?: string
 }
 
@@ -386,6 +387,7 @@ function AssistantText({
   actualCostPoints,
   onQuote,
   onReviseArtifact,
+  onReferenceFile,
 }: {
   channelId: string
   content: string
@@ -396,6 +398,7 @@ function AssistantText({
   actualCostPoints?: number
   onQuote?: (message: ChatMessage) => void
   onReviseArtifact?: (artifact: ChatArtifact) => void
+  onReferenceFile?: (refText: string) => void
 }) {
   const [copied, setCopied] = useState(false)
   const [storagePreviewTarget, setStoragePreviewTarget] = useState<{ refText: string; objectId?: string } | null>(null)
@@ -447,6 +450,7 @@ function AssistantText({
               artifacts={messageArtifacts}
               onPreview={(artifact) => setStoragePreviewTarget({ refText: artifact.storageRef, objectId: artifact.objectId })}
               onRevise={(artifact) => onReviseArtifact?.(artifact)}
+              onReference={onReferenceFile}
             />
           )}
           {final && (
@@ -572,6 +576,7 @@ export function AgentRunTranscript({
   onProcessOpen,
   onQuote,
   onReviseArtifact,
+  onReferenceFile,
   className,
 }: Props) {
   const isRunning = loop.status === 'running'
@@ -675,6 +680,7 @@ export function AgentRunTranscript({
           finalMessage={finalMessage}
           actualCostPoints={loop.actualCostPoints}
           onQuote={onQuote}
+          onReferenceFile={onReferenceFile}
           onReviseArtifact={finalMessage && onReviseArtifact
             ? (artifact) => onReviseArtifact(artifact, finalMessage)
             : undefined}

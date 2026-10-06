@@ -5,7 +5,7 @@ import type { CreateScheduledTaskInput } from '../../stores/tasks.js'
 import { cn } from '../../lib/cn.js'
 import { formatBytes, formatTime } from '../../lib/format.js'
 import { storageDisplayName } from '../../lib/storage-display.js'
-import { storageRefFromKey } from '../../lib/storage-ref.js'
+import { storageDirectoryDisplayName, storageRefFromKey } from '../../lib/storage-ref.js'
 import { useDetailPanel } from '../../hooks/use-detail-panel.js'
 import { useStorage } from '../../hooks/use-storage.js'
 import { useAuth } from '../../hooks/use-auth.js'
@@ -96,10 +96,6 @@ function normalizeModelTier(value: unknown): ModelTierName | '' {
 
 function avatarPresetUrl(preset: string | undefined) {
   return preset ? `/avatars/agents/${preset}.svg` : ''
-}
-
-function directoryDisplayName(dir: string) {
-  return dir.replace(/\/$/, '').split('/').pop() || dir
 }
 
 function parseInviteTargets(value: string) {
@@ -637,7 +633,7 @@ export function DetailPanel({ channelId, members = [], tasks = [], files = [], o
                     >
                       <FolderOpen className="w-4 h-4 text-amber-500 mt-0.5 shrink-0" />
                       <span className="min-w-0 flex-1">
-                        <span className="block truncate text-xs">{directoryDisplayName(dir)}</span>
+                        <span className="block truncate text-xs">{storageDirectoryDisplayName(dir)}</span>
                         <span className="block text-[10px] text-muted-foreground">文件夹</span>
                       </span>
                     </button>

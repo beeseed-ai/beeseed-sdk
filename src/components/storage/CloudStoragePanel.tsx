@@ -55,6 +55,8 @@ export function CloudStoragePanel({ channelId, className, onReference }: Props) 
   const downloadPending = useRef(false)
   const [downloadingKey, setDownloadingKey] = useState<string | null>(null)
   const [downloadError, setDownloadError] = useState<string | null>(null)
+  const [downloadReady, setDownloadReady] = useState<{ url: string; fileName: string } | null>(null)
+  const [downloadCopyStatus, setDownloadCopyStatus] = useState<'idle' | 'copied' | 'failed'>('idle')
 
   if (!channelId) {
     return <div className="flex-1 flex items-center justify-center text-muted-foreground text-sm">选择一个对话查看文件</div>
@@ -76,14 +78,28 @@ export function CloudStoragePanel({ channelId, className, onReference }: Props) 
     downloadPending.current = true
     setDownloadingKey(key)
     setDownloadError(null)
+    setDownloadReady(null)
+    setDownloadCopyStatus('idle')
     try {
       const object = objects.find((item) => item.key === key)
-      await openStorageDownload(async () => (await downloadFile(key)) || '', object ? storageDisplayName(object) : key.split('/').pop() || '下载文件')
+      const fileName = object ? storageDisplayName(object) : key.split('/').pop() || '下载文件'
+      const url = await openStorageDownload(async () => (await downloadFile(key)) || '', fileName)
+      setDownloadReady({ url, fileName })
     } catch (error) {
       setDownloadError(handleRateLimit(error) ? '请求过于频繁，请稍后重试。' : '文件下载失败，请稍后重试。')
     } finally {
       downloadPending.current = false
       setDownloadingKey(null)
+    }
+  }
+
+  async function copyDownloadLink() {
+    if (!downloadReady) return
+    try {
+      await navigator.clipboard.writeText(downloadReady.url)
+      setDownloadCopyStatus('copied')
+    } catch {
+      setDownloadCopyStatus('failed')
     }
   }
 
@@ -155,6 +171,15 @@ export function CloudStoragePanel({ channelId, className, onReference }: Props) 
 
       {notice && <p role="status" className="mx-4 mt-3 rounded-md border bg-muted/50 px-3 py-2 text-sm text-foreground">{notice}</p>}
       {downloadingKey && <p role="status" className="px-4 py-2 text-xs text-muted-foreground">正在下载文件…</p>}
+      {downloadReady && (
+        <div role="status" className="flex flex-wrap items-center gap-2 border-b border-border px-4 py-2 text-xs text-muted-foreground">
+          <span>下载已发起。内置浏览器没有保存文件时，可再次打开或复制临时链接到主浏览器。</span>
+          <a href={downloadReady.url} download={downloadReady.fileName} target="_blank" rel="noopener noreferrer" className="font-medium text-foreground underline underline-offset-2">再次下载</a>
+          <button type="button" onClick={() => void copyDownloadLink()} className="font-medium text-foreground underline underline-offset-2">复制临时下载链接</button>
+          {downloadCopyStatus === 'copied' && <span>已复制</span>}
+          {downloadCopyStatus === 'failed' && <span role="alert" className="text-destructive">复制失败，请使用“再次下载”。</span>}
+        </div>
+      )}
       {downloadError && <p role="alert" className="px-4 py-2 text-xs text-destructive">{downloadError}{remainingSeconds > 0 && ` 请等待 ${remainingSeconds} 秒。`}</p>}
       {error && (
         <div role="alert" className="flex items-center gap-2 border-b border-border px-4 py-2 text-xs text-destructive">
