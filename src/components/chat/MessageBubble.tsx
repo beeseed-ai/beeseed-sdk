@@ -4,7 +4,7 @@ import type { ChatArtifact, ChatMessage } from '../../core/types.js'
 import { cn } from '../../lib/cn.js'
 import { storageRefFromKey, storageRefsFromText, stripStorageReferenceBlock } from '../../lib/storage-ref.js'
 import { MarkdownRenderer } from './MarkdownRenderer.js'
-import { ImagePreview } from './ImagePreview.js'
+import { MessageImage } from './MessageImage.js'
 import { AskUserCard } from './AskUserCard.js'
 import { StorageAttachmentPreview, StoragePreviewDialog, useExistingStorageRefs } from './StorageAttachmentPreview.js'
 import { SkillIcon } from '../skills/SkillIcon.js'
@@ -79,7 +79,6 @@ export function MessageBubble({
   message, channelId, currentUserId, onQuote, onMentionClick, onScrollToMessage, onSubmitAnswer, onOpenWorkflowRun, onReviseArtifact, onReferenceFile, actualCostPoints, className,
 }: Props) {
   const [copied, setCopied] = useState(false)
-  const [previewImage, setPreviewImage] = useState<string | null>(null)
   const [storagePreviewTarget, setStoragePreviewTarget] = useState<StoragePreviewTarget | null>(null)
   const [openSkillId, setOpenSkillId] = useState<string | null>(null)
   const publicContent = message.isAgent ? displayFileLinks(message.content, channelId) : message.content
@@ -227,11 +226,12 @@ export function MessageBubble({
 
         {/* Message body */}
         {isImage ? (
-          <img
+          <MessageImage
+            channelId={channelId}
             src={message.content}
-            alt="image"
+            storageRef={message.imageStorageRef}
+            alt="图片"
             className="max-w-[260px] max-h-[200px] object-cover rounded-lg cursor-pointer"
-            onClick={() => setPreviewImage(message.content)}
           />
         ) : (
           <div className={cn(
@@ -399,7 +399,6 @@ export function MessageBubble({
         )}
       </div>
 
-      {previewImage && <ImagePreview src={previewImage} onClose={() => setPreviewImage(null)} />}
       {storagePreviewTarget && <StoragePreviewDialog channelId={channelId} refText={storagePreviewTarget.refText} objectId={storagePreviewTarget.objectId} onClose={() => setStoragePreviewTarget(null)} />}
     </div>
   )

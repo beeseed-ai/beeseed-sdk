@@ -3,6 +3,49 @@ import type { KyInstance } from 'ky'
 import type { ChatMessage, Message } from '../core/types.js'
 import { createMessagesStore, parseMessage } from './messages.js'
 
+describe('image message storage references', () => {
+  const base: Message = {
+    id: 91,
+    channel_id: 'channel-a',
+    sender_type: 'agent',
+    sender_agent_id: 'agent-a',
+    content: 'https://objects.example/expired.png?Signature=expired',
+    msg_type: 'image',
+    created_at: '2026-10-13T00:00:00Z',
+  }
+
+  it('keeps the display URL while exposing the stable storage reference', () => {
+    const parsed = parseMessage({
+      ...base,
+      metadata: {
+        image_url: 'https://objects.example/expired.png?Signature=expired',
+        storage_ref: 'storage://platform/fal/orgs/org-a/jobs/38/fal_1.png',
+      },
+    })
+
+    expect(parsed).toMatchObject({
+      contentType: 'image',
+      content: 'https://objects.example/expired.png?Signature=expired',
+      imageStorageRef: 'storage://platform/fal/orgs/org-a/jobs/38/fal_1.png',
+    })
+  })
+
+  it('builds the stable reference from legacy storage_key metadata', () => {
+    expect(parseMessage({
+      ...base,
+      metadata: { storage_key: 'platform/fal/orgs/org-a/jobs/38/fal 1.png' },
+    })?.imageStorageRef).toBe('storage://platform/fal/orgs/org-a/jobs/38/fal%201.png')
+  })
+
+  it('does not add image storage state to normal text messages', () => {
+    expect(parseMessage({
+      ...base,
+      msg_type: 'text',
+      metadata: { storage_ref: 'storage://platform/fal/ignored.png' },
+    })?.imageStorageRef).toBeUndefined()
+  })
+})
+
 describe('ask_user agent session binding', () => {
   const storage = new Map<string, string>()
 

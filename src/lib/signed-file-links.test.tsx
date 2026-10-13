@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { renderToStaticMarkup } from 'react-dom/server'
-import { displayFileLinks, HIDDEN_FILE_LINK } from './signed-file-links.js'
+import { displayFileLinks, HIDDEN_FILE_LINK, storageRefFromSignedImageURL } from './signed-file-links.js'
 import { MarkdownRenderer } from '../components/chat/MarkdownRenderer.js'
 
 const channel = 'channel-a'
@@ -47,6 +47,15 @@ describe('signed file link presentation', () => {
     const visible = html.replace(/<[^>]*>/g, '')
     expect(visible).not.toContain('qa-signature')
     expect(visible).toContain('report.pdf')
+  })
+
+  it('recovers stable image references from current-channel and legacy generated-image URLs', () => {
+    expect(storageRefFromSignedImageURL(raw, channel)).toBe('storage://docs/report.pdf')
+    expect(storageRefFromSignedImageURL(raw, 'channel-b')).toBeNull()
+
+    const fal = 'https://beeseed-apps.tos-s3-cn-hongkong.volces.com/beeseed-apps/platform/fal/orgs/org-a/jobs/38/fal_1.png?X-Amz-Signature=expired'
+    expect(storageRefFromSignedImageURL(fal, channel)).toBe('storage://platform/fal/orgs/org-a/jobs/38/fal_1.png')
+    expect(storageRefFromSignedImageURL('https://example.invalid/platform/fal/a.png?Signature=foreign', channel)).toBeNull()
   })
 
   it('makes delivered file references clickable in tight Markdown lists', () => {

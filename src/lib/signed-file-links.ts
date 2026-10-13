@@ -12,6 +12,37 @@ function signedFileURL(value: string): URL | null {
   }
 }
 
+function storageRefForKey(key: string): string | null {
+  const parts = key.split('/')
+  if (!key || parts.some(part => !part || part === '.' || part === '..') || /[\r\n\\]/.test(key)) return null
+  return 'storage://' + parts.map(part => encodeURIComponent(part).replace(/[!'()*]/g, char => '%' + char.charCodeAt(0).toString(16).toUpperCase())).join('/')
+}
+
+export function storageRefFromSignedImageURL(value: string, channelId?: string): string | null {
+  const url = signedFileURL(value)
+  if (!url) return null
+
+  const appFile = url.pathname.match(/^\/apps\/[^/]+\/channels\/([^/]+)\/(.+)$/)
+  if (appFile) {
+    if (!channelId || appFile[1] !== channelId) return null
+    try { return storageRefForKey(decodeURIComponent(appFile[2]!)) } catch { return null }
+  }
+
+  const host = url.hostname.toLowerCase()
+  const isBeeSeedObjectStore = host === 'beeseed-apps.tos-s3-cn-hongkong.volces.com'
+    || host.endsWith('.r2.cloudflarestorage.com')
+  if (!isBeeSeedObjectStore) return null
+
+  try {
+    const path = decodeURIComponent(url.pathname)
+    const marker = '/platform/fal/'
+    const markerIndex = path.indexOf(marker)
+    return markerIndex >= 0 ? storageRefForKey(path.slice(markerIndex + 1)) : null
+  } catch {
+    return null
+  }
+}
+
 function displaySignedURL(value: string, channelId?: string): string | null {
   const url = signedFileURL(value)
   if (!url) return null
@@ -20,10 +51,7 @@ function displaySignedURL(value: string, channelId?: string): string | null {
     if (match?.[1] === channelId) {
       try {
         const key = decodeURIComponent(match[2]!)
-        const parts = key.split('/')
-        if (parts.every(part => part && part !== '.' && part !== '..') && !/[\r\n\\]/.test(key)) {
-          return 'storage://' + parts.map(part => encodeURIComponent(part).replace(/[!'()*]/g, char => '%' + char.charCodeAt(0).toString(16).toUpperCase())).join('/')
-        }
+        return storageRefForKey(key)
       } catch { /* An invalid encoded path is not a file reference. */ }
     }
   }

@@ -2,7 +2,7 @@ import { memo, useContext, useMemo, type ReactNode } from 'react'
 import Markdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import remarkBreaks from 'remark-breaks'
-import { signedFileLinksRemark } from '../../lib/signed-file-links.js'
+import { signedFileLinksRemark, storageRefFromSignedImageURL } from '../../lib/signed-file-links.js'
 import { isLikelyFilePath } from '../../lib/file-path-utils.js'
 import { cn } from '../../lib/cn.js'
 import { StorageRefChip, isLikelyStoragePathRef, storageInlineRefMatches, storageRefDisplayText, storageRefFromKey } from '../../lib/storage-ref.js'
@@ -12,6 +12,7 @@ import {
   type MarkdownImageContext,
   type MarkdownImageRenderer,
 } from './MarkdownImageRendering.js'
+import { MessageImage } from './MessageImage.js'
 
 const MENTION_RE = /@([一-鿿\w][一-鿿\w\-]*)/g
 const INLINE_CODE_CLASS = 'px-1.5 py-0.5 rounded bg-[#e8f5f8] text-[#0f5267] text-[0.9em] font-mono'
@@ -214,7 +215,10 @@ export const MarkdownRenderer = memo(function MarkdownRenderer({
             )
           },
           img(props: { src?: string; alt?: string; title?: string }) {
-            const defaultImage = <img src={props.src} alt={props.alt ?? ''} title={props.title} />
+            const stableRef = props.src ? storageRefFromSignedImageURL(props.src, channelId) : null
+            const defaultImage = stableRef && props.src
+              ? <MessageImage channelId={channelId} src={props.src} storageRef={stableRef} alt={props.alt} title={props.title} />
+              : <img src={props.src} alt={props.alt ?? ''} title={props.title} />
             return imageRenderer?.({
               src: props.src,
               alt: props.alt,

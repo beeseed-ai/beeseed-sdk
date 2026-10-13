@@ -49,6 +49,10 @@ export function useBeeSeedContext() {
   return ctx
 }
 
+export function useOptionalBeeSeedContext() {
+  return useContext(BeeSeedContext)
+}
+
 interface Props {
   config: BeeSeedConfig
   children: ReactNode

@@ -803,6 +803,13 @@ export function parseMessage(m: Message, myUserId?: string): ChatMessage | null 
   const rawContent = m.msg_type === 'image'
     ? ((meta.image_url as string) || m.content)
     : m.content
+  const imageStorageRef = m.msg_type === 'image'
+    ? (typeof meta.storage_ref === 'string' && meta.storage_ref.startsWith('storage://')
+        ? meta.storage_ref
+        : typeof meta.storage_key === 'string' && meta.storage_key.trim()
+          ? `storage://${encodeURI(meta.storage_key.replace(/^\/+/, ''))}`
+          : undefined)
+    : undefined
 
   let quotedMessage: ChatMessage['quotedMessage'] | undefined
   let content = rawContent
@@ -834,6 +841,7 @@ export function parseMessage(m: Message, myUserId?: string): ChatMessage | null 
     senderId: m.sender_agent_id ?? m.sender_user_id ?? undefined,
     agentRunId: m.sender_type === 'agent' ? metadataRunId(meta) : undefined,
     contentType: m.msg_type !== 'text' ? m.msg_type : undefined,
+    imageStorageRef,
     suggestions: Array.isArray(meta.suggestions) ? meta.suggestions as string[] : undefined,
     thinkingContent: (meta.thinking_content as string) || undefined,
     selectedSkills: parseSelectedSkills(meta),

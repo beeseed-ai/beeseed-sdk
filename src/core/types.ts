@@ -251,6 +251,7 @@ export interface ChatMessage {
   isAgent?: boolean
   // Content variants
   contentType?: string
+  imageStorageRef?: string
   isThinking?: boolean
   thinkingContent?: string
   isSlowHint?: boolean
