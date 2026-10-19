@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState, useCallback } from 'react'
-import type { ArtifactRevisionTarget, ChannelMemberInfo, ChannelRuntimeSettings, ChatArtifact, ChatMessage, ReasonixChannelRuntimePublication, SkillShortcutAgent, SkillShortcutOption } from '../../core/types.js'
+import type { ArtifactRevisionTarget, ChannelMemberInfo, ChannelRuntimeSettings, ChatArtifact, ChatMessage, SkillShortcutAgent, SkillShortcutOption } from '../../core/types.js'
 import { cn } from '../../lib/cn.js'
 import { useAuth } from '../../hooks/use-auth.js'
 import { useAppConfig } from '../../hooks/use-app-config.js'
@@ -55,7 +55,6 @@ export function ChatChannel({ channelId, className, header, renderMessageImage }
   const [quotedMessage, setQuotedMessage] = useState<ChatMessage | null>(null)
   const [revisionTarget, setRevisionTarget] = useState<ArtifactRevisionTarget | null>(null)
   const [configSkillOptions, setConfigSkillOptions] = useState<SkillShortcutOption[]>([])
-  const [runtimePublication, setRuntimePublication] = useState<ReasonixChannelRuntimePublication | null>(null)
   const channelSettings = useMemo(
     () => parseChannelRuntimeSettings(channels.find((channel) => channel.id === channelId)?.settings),
     [channels, channelId],
@@ -63,35 +62,11 @@ export function ChatChannel({ channelId, className, header, renderMessageImage }
   const welcomeTitle = channelSettings.welcome_title
   const welcomeMessage = channelSettings.welcome_message || branding.welcomeMessage
   const quickQuestions = channelSettings.quick_questions ?? []
-  const channel = channels.find((item) => item.id === channelId)
-  useEffect(() => {
-    let cancelled = false
-    setRuntimePublication(null)
-    if (!channel?.publication_status) return
-    void api.get(`admin/reasonix/channels/${encodeURIComponent(channelId)}/runtime-publication`)
-      .json<{ publication?: ReasonixChannelRuntimePublication }>()
-      .then((data) => {
-        if (!cancelled) setRuntimePublication(data.publication ?? null)
-      })
-      .catch(() => undefined)
-    return () => { cancelled = true }
-  }, [api, channel?.active_revision, channel?.desired_revision, channel?.effective_revision, channel?.publication_status, channelId])
-
-  const effectiveSkillsByAgent = useMemo(() => {
-    if (!runtimePublication?.effective_agents) return null
-    return new Map(runtimePublication.effective_agents.map((agent) => [agent.agent_id, new Set(agent.skill_ids)]))
-  }, [runtimePublication])
-  const visibleMembers = useMemo(() => {
-    if (!effectiveSkillsByAgent) return members
-    return members.filter((member) => member.member_type !== 'agent' || Boolean(member.agent_id && effectiveSkillsByAgent.has(member.agent_id)))
-  }, [effectiveSkillsByAgent, members])
+  const visibleMembers = members
   const memberSkillOptions = useMemo(
-    () => filterEffectiveSkillOptions(buildSkillOptionsFromMembers(visibleMembers), effectiveSkillsByAgent),
-    [effectiveSkillsByAgent, visibleMembers],
+    () => buildSkillOptionsFromMembers(visibleMembers),
+    [visibleMembers],
   )
-  const publicationBlocked = Boolean(channel?.publication_status)
-    && !channel?.active_revision
-    && channel?.publication_status !== 'active'
 
   useEffect(() => {
     let cancelled = false
@@ -123,7 +98,6 @@ export function ChatChannel({ channelId, className, header, renderMessageImage }
       for (const { agent, cfg } of agentConfigs) {
         if (!cfg) continue
         for (const name of collectSkillNames(cfg)) {
-          if (effectiveSkillsByAgent && !effectiveSkillsByAgent.get(agent.agent_id)?.has(name)) continue
           const existing = byName.get(name)
           if (existing) {
             if (!existing.agents?.some((item) => item.agent_id === agent.agent_id)) {
@@ -146,7 +120,7 @@ export function ChatChannel({ channelId, className, header, renderMessageImage }
     return () => {
       cancelled = true
     }
-  }, [api, channelId, effectiveSkillsByAgent, loading, visibleMembers])
+  }, [api, channelId, loading, visibleMembers])
 
   const skillOptions = useMemo(
     () => orderSkillMenuItems(
@@ -229,13 +203,6 @@ export function ChatChannel({ channelId, className, header, renderMessageImage }
 
           {/* Input area — centered at max-width */}
           <div className="mx-auto w-full shrink-0 px-4 pb-4" style={{ maxWidth: CHAT_MAX_WIDTH + 32 }}>
-            {publicationBlocked && (
-              <p role="status" aria-live="polite" className="mb-2 text-sm text-muted-foreground">
-                {channel?.publication_status === 'failed'
-                  ? '频道初始化失败，暂时无法发送消息。'
-                  : '正在准备频道，完成后即可发送消息。'}
-              </p>
-            )}
             <MessageInput
               channelId={channelId}
               onSend={handleSend}
@@ -249,7 +216,6 @@ export function ChatChannel({ channelId, className, header, renderMessageImage }
               skillOptions={skillOptions}
               quickQuestions={quickQuestions}
               placeholder={branding.inputPlaceholder}
-              disabled={publicationBlocked}
             />
           </div>
         </div>
@@ -377,17 +343,6 @@ function mergeSkillOptions(memberOptions: SkillShortcutOption[], configOptions: 
     if (!current.icon_url && option.icon_url) current.icon_url = option.icon_url
   }
   return [...byName.values()]
-}
-
-function filterEffectiveSkillOptions(
-  options: SkillShortcutOption[],
-  effectiveSkillsByAgent: Map<string, Set<string>> | null,
-): SkillShortcutOption[] {
-  if (!effectiveSkillsByAgent) return options
-  return options.flatMap((option) => {
-    const agents = (option.agents ?? []).filter((agent) => effectiveSkillsByAgent.get(agent.agent_id)?.has(option.name))
-    return agents.length > 0 ? [{ ...option, agents }] : []
-  })
 }
 
 function parseChannelRuntimeSettings(settings: string | undefined): ChannelRuntimeSettings {
